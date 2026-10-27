@@ -35,13 +35,6 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip';
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
@@ -110,6 +103,10 @@ const WIRE_COLORS = [
 ];
 
 export default function App() {
+  // --- Menubar Active Menu (File, View, Window) ---
+  const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'window' | null>(null);
+  const menubarRef = useRef<HTMLDivElement>(null);
+
   // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
   const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire'>('select');
   const [showWireColorMenu, setShowWireColorMenu] = useState(false);
@@ -348,6 +345,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedCompId]);
 
+  // --- Close Menubar Dropdown when Clicking Outside ---
+  useEffect(() => {
+    const handleMenubarClickOutside = (e: MouseEvent) => {
+      if (menubarRef.current && !menubarRef.current.contains(e.target as Node)) {
+        setActiveMenu(null);
+      }
+    };
+    if (activeMenu) {
+      document.addEventListener('mousedown', handleMenubarClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleMenubarClickOutside);
+  }, [activeMenu]);
+
   // --- Close Wire Color Menu when Clicking Outside ---
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -445,204 +455,280 @@ export default function App() {
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
         
         {/* 1. Top Window Titlebar (Menubar + Wide Drag Area + Window Controls) */}
-        <header
-          data-tauri-drag-region
-          onMouseDown={(e) => {
-            if (e.buttons === 1) tauriInvoke('start_drag_window');
-          }}
-          onDoubleClick={() => tauriInvoke('toggle_maximize_window')}
-          className="h-7 bg-[#0e0e11] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
-        >
+        <header className="h-7 bg-[#0e0e11] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-50 shrink-0 cursor-default">
           {/* Left Menubar */}
           <div
-            className="flex items-center gap-0.5 pointer-events-auto"
-            onMouseDown={(e) => e.stopPropagation()}
+            ref={menubarRef}
+            className="flex items-center gap-0.5"
+            data-tauri-drag-region="false"
           >
             <span className="font-semibold text-xs text-zinc-300 tracking-tight pl-1 pr-2 select-none">
               MicroRustSim
             </span>
 
             {/* Menubar: File */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => setActiveMenu(activeMenu === 'file' ? null : 'file')}
+                onMouseEnter={() => {
+                  if (activeMenu) setActiveMenu('file');
+                }}
+                className={`text-xs h-5 px-2 rounded transition-colors ${
+                  activeMenu === 'file'
+                    ? 'bg-[#1f1f23] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
+                }`}
+              >
+                File
+              </button>
+
+              {activeMenu === 'file' && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-48 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSketchCode(DEFAULT_BLINK_CODE);
+                      setStatusMessage('New Project Created');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    File
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-48 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => {
-                    setSketchCode(DEFAULT_BLINK_CODE);
-                    setStatusMessage('New Project Created');
-                  }}
-                >
-                  <GoPlus className="text-zinc-400" /> New Project
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setStatusMessage('Project Saved to SQLite')}
-                >
-                  <GoFile className="text-zinc-400" /> Save Project
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[#27272a]" />
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-400 focus:bg-zinc-800"
-                  onClick={() => {
-                    navigator.clipboard.writeText(sketchCode);
-                    setStatusMessage('Code copied to clipboard');
-                  }}
-                >
-                  Copy Sketch Code
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <GoPlus className="text-zinc-400" /> New Project
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusMessage('Project Saved to SQLite');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoFile className="text-zinc-400" /> Save Project
+                  </button>
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(sketchCode);
+                      setStatusMessage('Code copied to clipboard');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    Copy Sketch Code
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Menubar: View */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}
+                onMouseEnter={() => {
+                  if (activeMenu) setActiveMenu('view');
+                }}
+                className={`text-xs h-5 px-2 rounded transition-colors ${
+                  activeMenu === 'view'
+                    ? 'bg-[#1f1f23] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
+                }`}
+              >
+                View
+              </button>
+
+              {activeMenu === 'view' && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-56 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditor(!showEditor);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    View
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-56 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
-                <DropdownMenuItem
-                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setShowEditor(!showEditor)}
-                >
-                  <span className="flex items-center gap-2">
-                    <GoCode className="text-zinc-400" /> Code Editor
-                  </span>
-                  {showEditor && <GoCheck className="text-emerald-400" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setShowPalette(!showPalette)}
-                >
-                  <span className="flex items-center gap-2">
-                    <GoPackage className="text-zinc-400" /> Component Palette
-                  </span>
-                  {showPalette && <GoCheck className="text-emerald-400" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setShowDrawer(!showDrawer)}
-                >
-                  <span className="flex items-center gap-2">
-                    <GoTerminal className="text-zinc-400" /> Bottom Console
-                  </span>
-                  {showDrawer && <GoCheck className="text-emerald-400" />}
-                </DropdownMenuItem>
+                    <span className="flex items-center gap-2">
+                      <GoCode className="text-zinc-400" /> Code Editor
+                    </span>
+                    {showEditor && <GoCheck className="text-emerald-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPalette(!showPalette);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoPackage className="text-zinc-400" /> Component Palette
+                    </span>
+                    {showPalette && <GoCheck className="text-emerald-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDrawer(!showDrawer);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoTerminal className="text-zinc-400" /> Bottom Console
+                    </span>
+                    {showDrawer && <GoCheck className="text-emerald-400" />}
+                  </button>
 
-                <DropdownMenuSeparator className="bg-[#27272a]" />
+                  <div className="h-px bg-[#27272a] my-1" />
 
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setBottomTab('waveform');
-                  }}
-                >
-                  <GoGraph className="text-zinc-400" /> Switch to Logic Waveform
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setBottomTab('serial');
-                  }}
-                >
-                  <GoTerminal className="text-zinc-400" /> Switch to Serial Monitor
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setBottomTab('build');
-                  }}
-                >
-                  <GoGear className="text-zinc-400" /> Switch to Build Output
-                </DropdownMenuItem>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDrawer(true);
+                      setBottomTab('waveform');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoGraph className="text-zinc-400" /> Switch to Logic Waveform
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDrawer(true);
+                      setBottomTab('serial');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoTerminal className="text-zinc-400" /> Switch to Serial Monitor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDrawer(true);
+                      setBottomTab('build');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoGear className="text-zinc-400" /> Switch to Build Output
+                  </button>
 
-                <DropdownMenuSeparator className="bg-[#27272a]" />
+                  <div className="h-px bg-[#27272a] my-1" />
 
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => {
-                    setZoom(1.0);
-                    setPan({ x: 80, y: 50 });
-                  }}
-                >
-                  Reset Zoom & Center (100%)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setZoom((z) => Math.min(3.0, z * 1.15))}
-                >
-                  <GoZoomIn className="text-zinc-400" /> Zoom In
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => setZoom((z) => Math.max(0.3, z * 0.85))}
-                >
-                  <GoZoomOut className="text-zinc-400" /> Zoom Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoom(1.0);
+                      setPan({ x: 80, y: 50 });
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    Reset Zoom & Center (100%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoom((z) => Math.min(3.0, z * 1.15));
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoZoomIn className="text-zinc-400" /> Zoom In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoom((z) => Math.max(0.3, z * 0.85));
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoZoomOut className="text-zinc-400" /> Zoom Out
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Menubar: Window */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => setActiveMenu(activeMenu === 'window' ? null : 'window')}
+                onMouseEnter={() => {
+                  if (activeMenu) setActiveMenu('window');
+                }}
+                className={`text-xs h-5 px-2 rounded transition-colors ${
+                  activeMenu === 'window'
+                    ? 'bg-[#1f1f23] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
+                }`}
+              >
+                Window
+              </button>
+
+              {activeMenu === 'window' && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-52 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      tauriInvoke('minimize_window');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    Window
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-52 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => tauriInvoke('minimize_window')}
-                >
-                  Minimize
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
-                  onClick={() => tauriInvoke('toggle_maximize_window')}
-                >
-                  Maximize / Restore
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[#27272a]" />
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-red-400 focus:bg-zinc-800"
-                  onClick={() => tauriInvoke('close_window')}
-                >
-                  Close Window
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    Minimize
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      tauriInvoke('toggle_maximize_window');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    Maximize / Restore
+                  </button>
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      tauriInvoke('close_window');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-red-400 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    Close Window
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Center Drag Region (Allows moving window effortlessly in normal/minimal mode) */}
           <div
             data-tauri-drag-region
-            className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-500 pointer-events-none"
+            onMouseDown={(e) => {
+              if (e.buttons === 1) tauriInvoke('start_drag_window');
+            }}
+            onDoubleClick={() => tauriInvoke('toggle_maximize_window')}
+            className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-500 cursor-default select-none"
           >
             {projectName} — MicroRustSim
           </div>
