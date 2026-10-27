@@ -295,6 +295,40 @@ export default function App() {
     persistLayout({ showInspector: next });
   };
 
+  const handleResetLayoutToDefault = () => {
+    const defaultLayout: WorkspaceLayout = {
+      leftColumnSize: 26,
+      centerColumnSize: 52,
+      rightColumnSize: 22,
+      leftEditorSplit: 55,
+      leftExplorerSplit: 45,
+      centerCanvasSplit: 70,
+      centerTerminalSplit: 30,
+      rightPaletteSplit: 45,
+      rightInspectorSplit: 55,
+      showEditor: true,
+      showExplorer: true,
+      showTerminal: true,
+      showPalette: true,
+      showInspector: true,
+    };
+    setShowEditor(true);
+    setShowExplorer(true);
+    setShowTerminal(true);
+    setShowPalette(true);
+    setShowInspector(true);
+    setLayoutConfig(defaultLayout);
+    // Force re-mount of panels so default sizes take effect immediately
+    setLayoutLoaded(false);
+    setTimeout(() => setLayoutLoaded(true), 20);
+    // Persist default layout to SQLite
+    tauriInvoke('save_user_setting', {
+      key: 'workspace_layout',
+      value: JSON.stringify(defaultLayout),
+    }).catch((err) => console.warn('Failed to reset layout in SQLite:', err));
+    setStatusMessage('Workspace layout reset to defaults.');
+  };
+
   // --- Project Management & On-Disk Storage ---
   const [projectName, setProjectName] = useState('Blink_Lab_Uno');
   const [projectPath, setProjectPath] = useState<string | null>(null);
@@ -1549,6 +1583,16 @@ export default function App() {
 
                   <div className="h-px bg-[#27272a] my-1" />
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetLayoutToDefault();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <GoSync className="text-zinc-400" /> Reset Layout to Default
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
