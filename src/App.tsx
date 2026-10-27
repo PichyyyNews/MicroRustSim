@@ -20,6 +20,7 @@ import {
   GoZoomOut,
   GoCpu,
   GoX,
+  GoCopy,
 } from 'react-icons/go';
 import {
   MousePointer,
@@ -97,6 +98,10 @@ async function tauriInvoke<T>(cmd: string, args: Record<string, any> = {}): Prom
     console.debug(`[Tauri Mock] ${cmd}`, args);
     return null;
   }
+}
+
+function stripAnsi(text: string): string {
+  return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 }
 
 const PauseIcon = ({ className }: { className?: string }) => (
@@ -375,9 +380,20 @@ export default function App() {
   const [buildLogs, setBuildLogs] = useState<string>('Ready to compile sketches with avr-gcc.\n');
   const [serialInput, setSerialInput] = useState('');
   const [baudRate, setBaudRate] = useState(9600);
+  const [copiedTerminal, setCopiedTerminal] = useState(false);
   const [logicHistory, setLogicHistory] = useState<[number, number][]>([]);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
   const serialContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleCopyTerminalLogs = useCallback(() => {
+    const text = bottomTab === 'serial' ? serialLogs : buildLogs;
+    if (text) {
+      navigator.clipboard.writeText(text);
+      setCopiedTerminal(true);
+      setStatusMessage('Terminal logs copied to clipboard');
+      setTimeout(() => setCopiedTerminal(false), 2000);
+    }
+  }, [bottomTab, serialLogs, buildLogs]);
 
   // --- Sketch Code & Project ---
   const [sketchCode, setSketchCode] = useState(DEFAULT_BLINK_CODE);
@@ -1029,11 +1045,14 @@ export default function App() {
     try {
       const res = await tauriInvoke<{ success: boolean; output: string; hex: string | null }>(
         'compile_and_upload',
-        { sketch: sketchCode }
+        {
+          sketch: sketchCode,
+          files: fileContents,
+        }
       );
 
       if (res) {
-        setBuildLogs(res.output);
+        setBuildLogs(stripAnsi(res.output));
         if (res.success) {
           setLastCompiledCode(sketchCode);
           setStatusMessage('Build Succeeded. Running @ 16 MHz.');
@@ -2783,26 +2802,51 @@ export default function App() {
                               {/* Tab Specific Action Controls */}
                               <div className="flex items-center gap-1.5">
                                 {bottomTab === 'serial' && (
-                                  <>
-                                    <select
-                                      value={baudRate}
-                                      onChange={(e) => setBaudRate(Number(e.target.value))}
-                                      className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
-                                    >
-                                      <option value={9600}>9600 baud</option>
-                                      <option value={115200}>115200 baud</option>
-                                    </select>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-xs"
-                                      onClick={() => setSerialLogs('')}
-                                      title="Clear Serial Console"
-                                      className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                                    >
-                                      <GoTrash />
-                                    </Button>
-                                  </>
+                                  <select
+                                    value={baudRate}
+                                    onChange={(e) => setBaudRate(Number(e.target.value))}
+                                    className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
+                                  >
+                                    <option value={9600}>9600 baud</option>
+                                    <option value={115200}>115200 baud</option>
+                                  </select>
                                 )}
+
+                                {/* Copy Terminal Logs */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={handleCopyTerminalLogs}
+                                  title={copiedTerminal ? 'Copied to clipboard!' : 'Copy output logs'}
+                                  className="h-5 px-1.5 flex items-center gap-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors text-[11px]"
+                                >
+                                  {copiedTerminal ? (
+                                    <>
+                                      <GoCheck className="w-3.5 h-3.5 text-zinc-200" />
+                                      <span className="text-[10px] text-zinc-300">Copied</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <GoCopy className="w-3.5 h-3.5 text-zinc-400" />
+                                      <span className="text-[10px] text-zinc-400">Copy</span>
+                                    </>
+                                  )}
+                                </Button>
+
+                                {/* Clear Button */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => {
+                                    if (bottomTab === 'serial') setSerialLogs('');
+                                    else if (bottomTab === 'build') setBuildLogs('');
+                                  }}
+                                  title={bottomTab === 'serial' ? 'Clear Serial Logs' : 'Clear Build Output'}
+                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                                >
+                                  <GoTrash />
+                                </Button>
+
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
@@ -2816,12 +2860,12 @@ export default function App() {
                             </div>
 
                             {/* Tab Content: Serial Monitor */}
-                            <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0 flex flex-col">
+                            <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs select-text m-0 flex flex-col">
                               <div
                                 ref={serialContainerRef}
-                                className="flex-1 min-h-0 overflow-y-auto pr-2 select-text font-mono text-xs text-zinc-300"
+                                className="flex-1 min-h-0 overflow-y-auto pr-2 select-text cursor-text font-mono text-xs text-zinc-300 selection:bg-zinc-700 selection:text-white"
                               >
-                                <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0">
+                                <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0 select-text cursor-text selection:bg-zinc-700 selection:text-white">
                                   {serialLogs}
                                 </pre>
                               </div>
@@ -2862,10 +2906,12 @@ export default function App() {
                             </TabsContent>
 
                             {/* Tab Content: Build Output */}
-                            <TabsContent value="build" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
-                              <ScrollArea className="h-full">
-                                <div className="whitespace-pre-wrap leading-relaxed">{buildLogs}</div>
-                              </ScrollArea>
+                            <TabsContent value="build" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs select-text m-0 flex flex-col">
+                              <div className="flex-1 min-h-0 overflow-y-auto pr-2 select-text cursor-text font-mono text-xs text-zinc-300 selection:bg-zinc-700 selection:text-white">
+                                <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0 select-text cursor-text selection:bg-zinc-700 selection:text-white">
+                                  {buildLogs}
+                                </pre>
+                              </div>
                             </TabsContent>
                           </Tabs>
                         </footer>

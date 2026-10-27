@@ -34,7 +34,11 @@ pub struct StepResult {
 }
 
 pub enum SimCommand {
-    CompileAndUpload { sketch: String, reply: SyncSender<CompileResult> },
+    CompileAndUpload {
+        sketch: String,
+        files: Option<std::collections::HashMap<String, String>>,
+        reply: SyncSender<CompileResult>,
+    },
     Start,
     Pause,
     Reset,
@@ -92,10 +96,14 @@ fn get_initial_data() -> InitialData {
 }
 
 #[tauri::command]
-fn compile_and_upload(sketch: String, state: State<'_, AppState>) -> Result<CompileResult, String> {
+fn compile_and_upload(
+    sketch: String,
+    files: Option<std::collections::HashMap<String, String>>,
+    state: State<'_, AppState>,
+) -> Result<CompileResult, String> {
     let (tx, rx) = sync_channel(1);
     state.sim_tx
-        .send(SimCommand::CompileAndUpload { sketch, reply: tx })
+        .send(SimCommand::CompileAndUpload { sketch, files, reply: tx })
         .map_err(|e| e.to_string())?;
     rx.recv().map_err(|e| e.to_string())
 }
@@ -361,8 +369,8 @@ pub fn run() {
 
         while let Ok(cmd) = sim_rx.recv() {
             match cmd {
-                SimCommand::CompileAndUpload { sketch, reply } => {
-                    let res = compiler.compile(&sketch, "arduino:avr:uno");
+                SimCommand::CompileAndUpload { sketch, files, reply } => {
+                    let res = compiler.compile_with_files(&sketch, files.as_ref(), "arduino:avr:uno");
                     match res {
                         Ok(comp_out) => {
                             let _ = engine.mcu.load_hex(&comp_out.hex);
