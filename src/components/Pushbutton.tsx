@@ -32,7 +32,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       {/* 1a (Top-Left) */}
       <div
         title="Pin 1a"
-        className="absolute -top-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
+        className="absolute -top-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-115 hover:shadow-[0_0_4px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1a', e);
@@ -41,7 +41,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       {/* 1b (Top-Right) */}
       <div
         title="Pin 1b"
-        className="absolute -top-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
+        className="absolute -top-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-115 hover:shadow-[0_0_4px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1b', e);
@@ -50,7 +50,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       {/* 2a (Bottom-Left) */}
       <div
         title="Pin 2a"
-        className="absolute -bottom-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
+        className="absolute -bottom-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-115 hover:shadow-[0_0_4px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2a', e);
@@ -59,7 +59,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       {/* 2b (Bottom-Right) */}
       <div
         title="Pin 2b"
-        className="absolute -bottom-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
+        className="absolute -bottom-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-115 hover:shadow-[0_0_4px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2b', e);

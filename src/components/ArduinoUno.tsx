@@ -84,14 +84,14 @@ export const ArduinoUno: React.FC<ArduinoUnoProps> = ({ pin13Lit, onPinMouseDown
         <div
           key={name}
           title={`Pin: ${name}`}
-          className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-transparent hover:border-white hover:bg-white hover:scale-150 hover:shadow-[0_0_12px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white/80 transition-all cursor-crosshair z-30 flex items-center justify-center group"
+          className="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-transparent hover:border-white hover:bg-white hover:scale-115 hover:shadow-[0_0_5px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-30 flex items-center justify-center group"
           style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.(name, e);
           }}
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-transparent group-hover:bg-black transition-colors" />
+          <div className="w-1 h-1 rounded-full bg-transparent group-hover:bg-zinc-950 transition-colors" />
         </div>
       ))}
     </div>

@@ -21,7 +21,7 @@ export const Resistor: React.FC<ResistorProps> = ({ ohms, onPinMouseDown }) => {
       {/* Left Lead */}
       <div
         title="Pin 1"
-        className="w-4 h-1.5 bg-zinc-300 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-l shadow"
+        className="w-4 h-1.5 bg-zinc-300 hover:bg-white hover:scale-105 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-l shadow"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1', e);
@@ -42,7 +42,7 @@ export const Resistor: React.FC<ResistorProps> = ({ ohms, onPinMouseDown }) => {
       {/* Right Lead */}
       <div
         title="Pin 2"
-        className="w-4 h-1.5 bg-zinc-300 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-r shadow"
+        className="w-4 h-1.5 bg-zinc-300 hover:bg-white hover:scale-105 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-r shadow"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2', e);

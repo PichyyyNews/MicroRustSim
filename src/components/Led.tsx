@@ -43,7 +43,7 @@ export const Led: React.FC<LedProps> = ({ color, isLit, onPinMouseDown }) => {
         {/* Anode (Longer lead, curved) */}
         <div
           title="Anode (+)"
-          className="w-1.5 h-6 bg-zinc-300 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
+          className="w-1.5 h-6 bg-zinc-300 hover:bg-white hover:scale-105 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('anode', e);
@@ -55,7 +55,7 @@ export const Led: React.FC<LedProps> = ({ color, isLit, onPinMouseDown }) => {
         {/* Cathode (Shorter lead) */}
         <div
           title="Cathode (-)"
-          className="w-1.5 h-5 bg-zinc-400 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
+          className="w-1.5 h-5 bg-zinc-400 hover:bg-white hover:scale-105 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('cathode', e);

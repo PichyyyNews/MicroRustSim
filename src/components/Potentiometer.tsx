@@ -67,7 +67,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
         {/* GND */}
         <div
           title="GND (Pin 1)"
-          className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('1', e);
@@ -79,7 +79,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
         {/* WIPER */}
         <div
           title="Wiper ADC (Pin 2)"
-          className="w-2 h-3.5 bg-zinc-300 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3.5 bg-zinc-300 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('2', e);
@@ -91,7 +91,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
         {/* VCC */}
         <div
           title="5V VCC (Pin 3)"
-          className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-125 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('3', e);
