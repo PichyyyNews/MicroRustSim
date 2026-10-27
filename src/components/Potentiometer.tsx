@@ -41,7 +41,10 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
   };
 
   return (
-    <div className="relative w-14 h-16 flex flex-col items-center select-none cursor-move">
+    <div
+      className="relative select-none cursor-move flex flex-col items-center"
+      style={{ width: '56px', height: '64px' }}
+    >
       {/* Rotary Knob Body */}
       <div
         className="w-10 h-10 rounded-full bg-zinc-800 border-2 border-zinc-600 shadow-md relative flex items-center justify-center cursor-ns-resize"

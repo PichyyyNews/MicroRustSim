@@ -970,7 +970,21 @@ export default function App() {
       if (comp.kind === 'arduino_uno') {
         w = 285.2;
         h = 209;
-        const offset = ARDUINO_PINS[pinName];
+        // Direct lookup or alias resolution
+        let offset = ARDUINO_PINS[pinName];
+        if (!offset) {
+          const upper = pinName.toUpperCase();
+          offset = ARDUINO_PINS[upper];
+          if (!offset) {
+            const clean = upper.replace(/[._-]/g, '');
+            if (clean === 'GND' || clean === 'GND3') offset = ARDUINO_PINS['GND'];
+            else if (clean === 'GND1') offset = ARDUINO_PINS['GND_1'];
+            else if (clean === 'GND2') offset = ARDUINO_PINS['GND_2'];
+            else if (clean === '33V' || clean === '3V3') offset = ARDUINO_PINS['3.3V'];
+            else if (clean === 'RST') offset = ARDUINO_PINS['RESET'];
+            else if (clean.startsWith('D') && ARDUINO_PINS[clean.slice(1)]) offset = ARDUINO_PINS[clean.slice(1)];
+          }
+        }
         if (offset) local = offset;
       } else if (comp.kind === 'breadboard') {
         w = 540;
@@ -990,49 +1004,95 @@ export default function App() {
           j: 174,
         };
 
-        if (pinName.startsWith('top_plus_')) {
-          const col = parseInt(pinName.replace('top_plus_', ''), 10) || 1;
+        const pLower = pinName.toLowerCase();
+        if (pLower.includes('top') && (pLower.includes('plus') || pLower.includes('+'))) {
+          const m = pLower.match(/\d+/);
+          const col = m ? parseInt(m[0], 10) : 1;
           local = { x: X0 + (col - 1) * dx, y: 26 };
-        } else if (pinName.startsWith('top_minus_')) {
-          const col = parseInt(pinName.replace('top_minus_', ''), 10) || 1;
+        } else if (pLower.includes('top') && (pLower.includes('minus') || pLower.includes('-'))) {
+          const m = pLower.match(/\d+/);
+          const col = m ? parseInt(m[0], 10) : 1;
           local = { x: X0 + (col - 1) * dx, y: 39 };
-        } else if (pinName.startsWith('bot_plus_')) {
-          const col = parseInt(pinName.replace('bot_plus_', ''), 10) || 1;
+        } else if ((pLower.includes('bot') || pLower.includes('bottom')) && (pLower.includes('plus') || pLower.includes('+'))) {
+          const m = pLower.match(/\d+/);
+          const col = m ? parseInt(m[0], 10) : 1;
           local = { x: X0 + (col - 1) * dx, y: 201 };
-        } else if (pinName.startsWith('bot_minus_')) {
-          const col = parseInt(pinName.replace('bot_minus_', ''), 10) || 1;
+        } else if ((pLower.includes('bot') || pLower.includes('bottom')) && (pLower.includes('minus') || pLower.includes('-'))) {
+          const m = pLower.match(/\d+/);
+          const col = m ? parseInt(m[0], 10) : 1;
+          local = { x: X0 + (col - 1) * dx, y: 223 };
+        } else if (pLower.startsWith('tp.') || pLower.startsWith('tp_') || pLower.startsWith('t+.')) {
+          const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 26 };
+        } else if (pLower.startsWith('tm.') || pLower.startsWith('tm_') || pLower.startsWith('t-.')) {
+          const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 39 };
+        } else if (pLower.startsWith('bp.') || pLower.startsWith('bp_') || pLower.startsWith('b+.')) {
+          const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 201 };
+        } else if (pLower.startsWith('bm.') || pLower.startsWith('bm_') || pLower.startsWith('b-.')) {
+          const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
           local = { x: X0 + (col - 1) * dx, y: 223 };
         } else {
-          const parts = pinName.split('_');
-          if (parts.length === 2 && rowY[parts[0]]) {
-            const row = parts[0];
-            const col = parseInt(parts[1], 10) || 1;
+          // Check for row pin like 'a_15', 'a15', '15.a', '15a', 'a.15'
+          const m1 = pLower.match(/^([a-j])[._-]?(\d+)$/);
+          const m2 = pLower.match(/^(\d+)[._-]?([a-j])$/);
+          if (m1) {
+            const row = m1[1];
+            const col = parseInt(m1[2], 10) || 1;
+            local = { x: X0 + (col - 1) * dx, y: rowY[row] };
+          } else if (m2) {
+            const row = m2[2];
+            const col = parseInt(m2[1], 10) || 1;
             local = { x: X0 + (col - 1) * dx, y: rowY[row] };
           }
         }
       } else if (comp.kind === 'led') {
-        w = 50;
-        h = 70;
-        if (pinName === 'anode') local = { x: 19, y: 60 };
-        else if (pinName === 'cathode') local = { x: 31, y: 56 };
+        w = 48;
+        h = 64;
+        const normPin = pinName.toLowerCase();
+        if (normPin.startsWith('a') || normPin === '+' || normPin === '1' || normPin.includes('anode')) {
+          local = { x: 17, y: 56 };
+        } else {
+          local = { x: 31, y: 52 };
+        }
       } else if (comp.kind === 'resistor') {
-        w = 64;
+        w = 80;
         h = 20;
-        if (pinName === '1') local = { x: 4, y: 10 };
-        else if (pinName === '2') local = { x: 60, y: 10 };
+        const normPin = pinName.toLowerCase();
+        if (normPin === '1' || normPin.includes('l') || normPin.startsWith('pin1') || normPin === 'a') {
+          local = { x: 4, y: 10 };
+        } else {
+          local = { x: 76, y: 10 };
+        }
       } else if (comp.kind === 'pushbutton') {
         w = 48;
         h = 48;
-        if (pinName === '1a' || pinName === '1') local = { x: 2, y: 2 };
-        else if (pinName === '1b') local = { x: 46, y: 2 };
-        else if (pinName === '2a' || pinName === '2') local = { x: 2, y: 46 };
-        else if (pinName === '2b') local = { x: 46, y: 46 };
+        const normPin = pinName.toLowerCase();
+        if (normPin === '1a' || normPin === '1.l' || normPin === '1_l' || normPin === '1' || normPin === 'tl') {
+          local = { x: 0, y: 0 };
+        } else if (normPin === '1b' || normPin === '1.r' || normPin === '1_r' || normPin === 'tr') {
+          local = { x: 48, y: 0 };
+        } else if (normPin === '2a' || normPin === '2.l' || normPin === '2_l' || normPin === '2' || normPin === 'bl') {
+          local = { x: 0, y: 48 };
+        } else if (normPin === '2b' || normPin === '2.r' || normPin === '2_r' || normPin === 'br') {
+          local = { x: 48, y: 48 };
+        } else {
+          local = { x: 0, y: 0 };
+        }
       } else if (comp.kind === 'potentiometer') {
-        w = 52;
-        h = 80;
-        if (pinName === '1' || pinName === 'VCC') local = { x: 22, y: 76 };
-        else if (pinName === '2' || pinName === 'SIG') local = { x: 32, y: 76 };
-        else if (pinName === '3' || pinName === 'GND') local = { x: 42, y: 76 };
+        w = 56;
+        h = 64;
+        const normPin = pinName.toUpperCase();
+        if (normPin === '1' || normPin === 'GND' || normPin.includes('GND')) {
+          local = { x: 16, y: 64 };
+        } else if (normPin === '2' || normPin === 'SIG' || normPin === 'WIPER' || normPin.includes('SIG')) {
+          local = { x: 28, y: 64 };
+        } else if (normPin === '3' || normPin === 'VCC' || normPin === '5V' || normPin.includes('VCC')) {
+          local = { x: 40, y: 64 };
+        } else {
+          local = { x: 28, y: 64 };
+        }
       }
 
       if (!local) local = { x: 20, y: 20 };

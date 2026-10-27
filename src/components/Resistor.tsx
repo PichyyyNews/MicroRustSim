@@ -17,7 +17,10 @@ export const Resistor: React.FC<ResistorProps> = ({ ohms, onPinMouseDown }) => {
   const bands = getBands(ohms);
 
   return (
-    <div className="relative flex items-center select-none cursor-move">
+    <div
+      className="relative flex items-center select-none cursor-move"
+      style={{ width: '80px', height: '20px' }}
+    >
       {/* Left Lead */}
       <div
         title="Pin 1"

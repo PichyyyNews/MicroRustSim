@@ -19,7 +19,10 @@ export const Led: React.FC<LedProps> = ({ color, isLit, onPinMouseDown }) => {
   const current = COLOR_MAP[color] || COLOR_MAP.red;
 
   return (
-    <div className="relative w-12 h-16 flex flex-col items-center select-none cursor-move">
+    <div
+      className="relative select-none cursor-move flex flex-col items-center"
+      style={{ width: '48px', height: '64px' }}
+    >
       {/* 5mm LED Epoxy Dome */}
       <div
         className={`w-7 h-7 rounded-t-full rounded-b-sm border-2 transition-all duration-150 relative ${
