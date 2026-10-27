@@ -32,3 +32,26 @@ export interface PinDefinition {
   x: number; // offset relative to component
   y: number;
 }
+
+export interface ProjectFileEntry {
+  name: string;
+  path: string;
+  relative_path: string;
+  is_dir: boolean;
+  size: number;
+}
+
+export interface ProjectData {
+  name: string;
+  path: string;
+  sketch_code: string;
+  diagram_json: string;
+  metadata_json: string;
+  files: ProjectFileEntry[];
+}
+
+export interface RecentProject {
+  name: string;
+  path: string;
+  last_opened: string;
+}

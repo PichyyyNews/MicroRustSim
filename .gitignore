@@ -27,3 +27,5 @@ package-lock.json
 data/
 *.db-journal
 *.db-wal
+
+/target_tests/

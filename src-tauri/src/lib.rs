@@ -4,7 +4,10 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sim_compiler::{ArduinoCliBackend, BuiltinSketches, CompilerBackend, MockCompilerBackend};
 use sim_core::{components, LogicState, PinId, SimulationEngine, Wire};
-use sim_storage::{ProjectMetadata, ProjectStorage};
+use sim_storage::{
+    DirectoryProject, FileEntry, ProjectData, ProjectMetadata, ProjectStorage,
+    RecentProject,
+};
 use tauri::State;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -192,6 +195,78 @@ fn load_project_db(name: String, state: State<'_, AppState>) -> Result<Option<St
 fn list_projects_db(state: State<'_, AppState>) -> Result<Vec<ProjectMetadata>, String> {
     let storage = state.storage.lock();
     storage.list_projects().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_project_dir(
+    parent_path: String,
+    name: String,
+    sketch: Option<String>,
+    diagram: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProjectData, String> {
+    let proj = DirectoryProject::create_project_dir(
+        std::path::Path::new(&parent_path),
+        &name,
+        sketch.as_deref(),
+        diagram.as_deref(),
+    )?;
+    let storage = state.storage.lock();
+    let _ = storage.add_recent_project(&proj.name, &proj.path);
+    Ok(proj)
+}
+
+#[tauri::command]
+fn open_project_dir(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ProjectData, String> {
+    let proj = DirectoryProject::open_project_dir(std::path::Path::new(&path))?;
+    let storage = state.storage.lock();
+    let _ = storage.add_recent_project(&proj.name, &proj.path);
+    Ok(proj)
+}
+
+#[tauri::command]
+fn save_project_to_disk(
+    path: String,
+    sketch: String,
+    diagram: String,
+    meta: Option<String>,
+) -> Result<(), String> {
+    DirectoryProject::save_project_files(
+        std::path::Path::new(&path),
+        &sketch,
+        &diagram,
+        meta.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn read_dir_tree(path: String) -> Result<Vec<FileEntry>, String> {
+    DirectoryProject::read_dir_tree(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+fn write_project_file(path: String, content: String) -> Result<(), String> {
+    DirectoryProject::write_file_content(std::path::Path::new(&path), &content)
+}
+
+#[tauri::command]
+fn delete_project_file(path: String) -> Result<(), String> {
+    DirectoryProject::delete_file_entry(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+fn list_recent_projects(state: State<'_, AppState>) -> Result<Vec<RecentProject>, String> {
+    let storage = state.storage.lock();
+    storage.list_recent_projects().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_recent_project(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let storage = state.storage.lock();
+    storage.remove_recent_project(&path).map_err(|e| e.to_string())
 }
 
 pub fn run() {
@@ -389,6 +464,14 @@ pub fn run() {
             save_project_db,
             load_project_db,
             list_projects_db,
+            create_project_dir,
+            open_project_dir,
+            save_project_to_disk,
+            read_dir_tree,
+            write_project_file,
+            delete_project_file,
+            list_recent_projects,
+            remove_recent_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

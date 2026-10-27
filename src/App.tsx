@@ -12,13 +12,28 @@ import {
   GoTrash,
   GoGear,
   GoFile,
+  GoFileDirectory,
+  GoClock,
   GoSidebarCollapse,
   GoCheck,
   GoZoomIn,
   GoZoomOut,
   GoCpu,
 } from 'react-icons/go';
-import { MousePointer, Move, Cable, ChevronDown, Check, Eraser, RotateCw, FlipHorizontal, CornerDownRight, Spline } from 'lucide-react';
+import {
+  MousePointer,
+  Move,
+  Cable,
+  ChevronDown,
+  Check,
+  Eraser,
+  RotateCw,
+  FlipHorizontal,
+  CornerDownRight,
+  Spline,
+  SlidersHorizontal,
+  FolderOpen,
+} from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
 import { Button } from '@/components/ui/button';
@@ -39,6 +54,14 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 import { ArduinoUno, ARDUINO_PINS } from './components/ArduinoUno';
 import { Breadboard } from './components/Breadboard';
@@ -48,7 +71,16 @@ import { Pushbutton } from './components/Pushbutton';
 import { Potentiometer } from './components/Potentiometer';
 import { WireLayer, getOrthoVertices, updateOrthoSegment } from './components/WireLayer';
 import { LogicWaveform } from './components/LogicWaveform';
-import { CircuitComponent, CircuitWire } from './types';
+import { FileExplorer } from './components/FileExplorer';
+import { PropertyInspector } from './components/PropertyInspector';
+import {
+  CircuitComponent,
+  CircuitWire,
+  ComponentKind,
+  ProjectFileEntry,
+  ProjectData,
+  RecentProject,
+} from './types';
 
 // Safely invoke Tauri IPC commands with web preview fallback
 async function tauriInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T | null> {
@@ -168,8 +200,27 @@ export default function App() {
   // --- UI Layout & Drawers ---
   const [showEditor, setShowEditor] = useState(true);
   const [showPalette, setShowPalette] = useState(true);
-  const [showDrawer, setShowDrawer] = useState(true);
+  const [showExplorer, setShowExplorer] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(true);
+  const [showInspector, setShowInspector] = useState(true);
   const [bottomTab, setBottomTab] = useState<'serial' | 'waveform' | 'build'>('serial');
+
+  // --- Project Management & On-Disk Storage ---
+  const [projectName, setProjectName] = useState('Blink_Lab_Uno');
+  const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [projectFiles, setProjectFiles] = useState<ProjectFileEntry[]>([
+    { name: 'sketch.ino', path: 'sketch.ino', relative_path: 'sketch.ino', is_dir: false, size: DEFAULT_BLINK_CODE.length },
+    { name: 'diagram.json', path: 'diagram.json', relative_path: 'diagram.json', is_dir: false, size: 520 },
+    { name: 'project.json', path: 'project.json', relative_path: 'project.json', is_dir: false, size: 180 },
+  ]);
+  const [activeFile, setActiveFile] = useState('sketch.ino');
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('My_Arduino_Lab');
+  const [newProjectParentPath, setNewProjectParentPath] = useState('');
+  const [showOpenProjectModal, setShowOpenProjectModal] = useState(false);
+  const [openProjectPathInput, setOpenProjectPathInput] = useState('');
 
   // --- Simulation & MCU State ---
   const [isRunning, setIsRunning] = useState(false);
@@ -189,7 +240,6 @@ export default function App() {
 
   // --- Sketch Code & Project ---
   const [sketchCode, setSketchCode] = useState(DEFAULT_BLINK_CODE);
-  const [projectName] = useState('Blink_Lab_Uno');
   const [statusMessage, setStatusMessage] = useState('Ready');
 
   // --- Canvas Viewport (Pan & Zoom) ---
@@ -232,6 +282,247 @@ export default function App() {
       color: wire.color,
     });
   }, []);
+
+  // --- Load Recent Projects on App Mount ---
+  const loadRecentProjects = useCallback(async () => {
+    const res = await tauriInvoke<RecentProject[]>('list_recent_projects');
+    if (res) setRecentProjects(res);
+  }, []);
+
+  useEffect(() => {
+    loadRecentProjects();
+  }, [loadRecentProjects]);
+
+  // --- Export Wokwi Diagram Schema ---
+  const exportWokwiDiagram = useCallback(
+    (comps: CircuitComponent[], wList: CircuitWire[]) => ({
+      version: 1,
+      author: 'MicroRustSim User',
+      editor: 'microrustsim',
+      parts: comps.map((c) => ({
+        type: c.kind === 'arduino_uno' ? 'wokwi-arduino-uno' : `wokwi-${c.kind}`,
+        id: c.id,
+        top: c.y,
+        left: c.x,
+        attrs: {
+          ...c.props,
+          rotation: c.rotation || 0,
+          flipped: c.flipped || false,
+        },
+      })),
+      connections: wList.map((w) => [
+        `${w.fromComp}:${w.fromPin}`,
+        `${w.toComp}:${w.toPin}`,
+        w.color,
+        w.waypoints && w.waypoints.length > 0 ? w.waypoints.map((wp) => [wp.x, wp.y]) : [],
+      ]),
+    }),
+    []
+  );
+
+  // --- Import Wokwi Diagram Schema ---
+  const importWokwiDiagram = useCallback(
+    (diagramJson: string) => {
+      try {
+        const parsed = JSON.parse(diagramJson);
+        if (parsed.parts && Array.isArray(parsed.parts)) {
+          const newComps: CircuitComponent[] = parsed.parts.map((p: any) => {
+            let kind: ComponentKind = 'resistor';
+            if (p.type?.includes('uno')) kind = 'arduino_uno';
+            else if (p.type?.includes('breadboard')) kind = 'breadboard';
+            else if (p.type?.includes('led')) kind = 'led';
+            else if (p.type?.includes('resistor')) kind = 'resistor';
+            else if (p.type?.includes('pushbutton') || p.type?.includes('btn')) kind = 'pushbutton';
+            else if (p.type?.includes('potentiometer') || p.type?.includes('pot')) kind = 'potentiometer';
+
+            const { rotation, flipped, ...restProps } = p.attrs || {};
+            return {
+              id: p.id,
+              kind,
+              x: p.left || 100,
+              y: p.top || 100,
+              rotation: rotation || 0,
+              flipped: flipped || false,
+              props: restProps,
+            };
+          });
+
+          const newWires: CircuitWire[] = (parsed.connections || []).map((conn: any, idx: number) => {
+            const from = (conn[0] || '').split(':');
+            const to = (conn[1] || '').split(':');
+            const color = conn[2] || '#22c55e';
+            const waypoints = (conn[3] || []).map((pt: any) => ({
+              x: Array.isArray(pt) ? pt[0] : pt.x || 0,
+              y: Array.isArray(pt) ? pt[1] : pt.y || 0,
+            }));
+            return {
+              id: `w_imported_${idx}`,
+              fromComp: from[0] || 'uno1',
+              fromPin: from[1] || '13',
+              toComp: to[0] || 'led1',
+              toPin: to[1] || 'anode',
+              color,
+              waypoints,
+            };
+          });
+
+          setComponents(newComps);
+          setWires(newWires);
+          for (const w of newWires) {
+            syncWireToRust(w);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to import diagram.json:', e);
+      }
+    },
+    [syncWireToRust]
+  );
+
+  // --- Project Management Functions ---
+  const handleSaveProject = useCallback(async () => {
+    if (!projectPath) {
+      await tauriInvoke('save_project_db', { name: projectName, sketch: sketchCode });
+      setIsDirty(false);
+      setStatusMessage(`Saved ${projectName} to SQLite`);
+      return;
+    }
+
+    const diag = JSON.stringify(exportWokwiDiagram(components, wires), null, 2);
+    const meta = JSON.stringify(
+      {
+        name: projectName,
+        board: 'arduino:avr:uno',
+        mcu: 'atmega328p',
+        baud_rate: baudRate,
+        updated_at: Date.now(),
+      },
+      null,
+      2
+    );
+
+    await tauriInvoke('save_project_to_disk', {
+      path: projectPath,
+      sketch: sketchCode,
+      diagram: diag,
+      meta,
+    });
+
+    setIsDirty(false);
+    setStatusMessage(`Saved ${projectName}`);
+    const tree = await tauriInvoke<ProjectFileEntry[]>('read_dir_tree', { path: projectPath });
+    if (tree) setProjectFiles(tree);
+  }, [projectPath, projectName, sketchCode, components, wires, baudRate, exportWokwiDiagram]);
+
+  const handleCreateProject = useCallback(
+    async (parentPath: string, name: string) => {
+      const diag = JSON.stringify(exportWokwiDiagram(components, wires), null, 2);
+      const res = await tauriInvoke<ProjectData>('create_project_dir', {
+        parentPath: parentPath || '.',
+        name,
+        sketch: sketchCode,
+        diagram: diag,
+      });
+      if (res) {
+        setProjectName(res.name);
+        setProjectPath(res.path);
+        setSketchCode(res.sketch_code);
+        setProjectFiles(res.files);
+        setActiveFile('sketch.ino');
+        setIsDirty(false);
+        setStatusMessage(`Project created: ${res.name}`);
+        setShowNewProjectModal(false);
+        loadRecentProjects();
+      }
+    },
+    [components, wires, sketchCode, exportWokwiDiagram, loadRecentProjects]
+  );
+
+  const handleOpenProject = useCallback(
+    async (dirPath: string) => {
+      const res = await tauriInvoke<ProjectData>('open_project_dir', { path: dirPath });
+      if (res) {
+        setProjectName(res.name);
+        setProjectPath(res.path);
+        setSketchCode(res.sketch_code);
+        if (res.diagram_json) {
+          importWokwiDiagram(res.diagram_json);
+        }
+        setProjectFiles(res.files);
+        setActiveFile('sketch.ino');
+        setIsDirty(false);
+        setStatusMessage(`Opened: ${res.name}`);
+        setShowOpenProjectModal(false);
+        loadRecentProjects();
+      }
+    },
+    [importWokwiDiagram, loadRecentProjects]
+  );
+
+  const handleRefreshFiles = useCallback(async () => {
+    if (projectPath) {
+      const tree = await tauriInvoke<ProjectFileEntry[]>('read_dir_tree', { path: projectPath });
+      if (tree) setProjectFiles(tree);
+    }
+  }, [projectPath]);
+
+  const handleCreateFile = useCallback(
+    async (fileName: string) => {
+      if (!projectPath) return;
+      const fullPath = `${projectPath}/${fileName}`;
+      await tauriInvoke('write_project_file', { path: fullPath, content: '' });
+      handleRefreshFiles();
+    },
+    [projectPath, handleRefreshFiles]
+  );
+
+  const handleDeleteFile = useCallback(
+    async (filePath: string) => {
+      await tauriInvoke('delete_project_file', { path: filePath });
+      handleRefreshFiles();
+    },
+    [handleRefreshFiles]
+  );
+
+  // --- Parametric Property Updates ---
+  const handleUpdateComponent = useCallback((id: string, updates: Partial<CircuitComponent>) => {
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c, ...updates };
+        if (updates.props) {
+          next.props = { ...c.props, ...updates.props };
+        }
+        return next;
+      })
+    );
+    setIsDirty(true);
+
+    if (updates.props?.ohms !== undefined) {
+      tauriInvoke('add_resistor', { id, ohms: updates.props.ohms });
+    }
+    if (updates.props?.color !== undefined) {
+      tauriInvoke('add_led', { id, color: updates.props.color });
+    }
+    if (updates.props?.value !== undefined) {
+      tauriInvoke('set_potentiometer', { id, value: updates.props.value });
+    }
+  }, []);
+
+  const handleUpdateWire = useCallback(
+    (id: string, updates: Partial<CircuitWire>) => {
+      setWires((prev) =>
+        prev.map((w) => {
+          if (w.id !== id) return w;
+          const updated = { ...w, ...updates };
+          syncWireToRust(updated);
+          return updated;
+        })
+      );
+      setIsDirty(true);
+    },
+    [syncWireToRust]
+  );
 
   // --- Wire Actions: Delete, Color, Routing Mode ---
   const handleDeleteWire = useCallback((wireId: string) => {
@@ -446,17 +737,17 @@ export default function App() {
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
     const el = serialContainerRef.current;
-    if (bottomTab === 'serial' && showDrawer && el) {
+    if (bottomTab === 'serial' && showTerminal && el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [serialLogs, bottomTab, showDrawer]);
+  }, [serialLogs, bottomTab, showTerminal]);
 
   // --- Compile & Upload ---
   const handleCompile = async (): Promise<boolean> => {
     setIsCompiling(true);
     setStatusMessage('Compiling sketch with arduino-cli...');
     setBottomTab('build');
-    setShowDrawer(true);
+    setShowTerminal(true);
 
     try {
       const res = await tauriInvoke<{ success: boolean; output: string; hex: string | null }>(
@@ -512,7 +803,7 @@ export default function App() {
         setIsRunning(true);
         await tauriInvoke('start_simulation');
         setBottomTab('serial');
-        setShowDrawer(true);
+        setShowTerminal(true);
         setStatusMessage('Simulation Running @ 16 MHz');
       }
     }
@@ -747,6 +1038,12 @@ export default function App() {
   // --- Keyboard Shortcuts (V: Select, M: Move, W: Wire, E: Eraser, R: Rotate, F: Flip, Del: Delete) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        handleSaveProject();
+        return;
+      }
+
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -788,6 +1085,7 @@ export default function App() {
     handleFlipSelected,
     handleDeleteComponent,
     handleDeleteWire,
+    handleSaveProject,
   ]);
 
   // --- Close Menubar Dropdown when Clicking Outside ---
@@ -934,31 +1232,78 @@ export default function App() {
 
               {activeMenu === 'file' && (
                 <div
-                  className="absolute top-full left-0 mt-1 w-48 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  className="absolute top-full left-0 mt-1 w-56 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <button
                     type="button"
                     onClick={() => {
-                      setSketchCode(DEFAULT_BLINK_CODE);
-                      setStatusMessage('New Project Created');
+                      setShowNewProjectModal(true);
                       setActiveMenu(null);
                     }}
-                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    <GoPlus className="text-zinc-400" /> New Project
+                    <span className="flex items-center gap-2">
+                      <GoPlus className="text-zinc-400" /> New Project...
+                    </span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => {
-                      setStatusMessage('Project Saved to SQLite');
+                      setShowOpenProjectModal(true);
                       setActiveMenu(null);
                     }}
-                    className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    <GoFile className="text-zinc-400" /> Save Project
+                    <span className="flex items-center gap-2">
+                      <GoFileDirectory className="text-zinc-400" /> Open Project Folder...
+                    </span>
                   </button>
+
+                  {/* Open Recent Submenu */}
+                  {recentProjects.length > 0 && (
+                    <div className="py-0.5 border-t border-[#27272a] mt-1 pt-1">
+                      <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
+                        <GoClock className="w-3 h-3" /> Recent Projects
+                      </div>
+                      {recentProjects.slice(0, 4).map((rec) => (
+                        <button
+                          key={rec.path}
+                          type="button"
+                          onClick={() => {
+                            handleOpenProject(rec.path);
+                            setActiveMenu(null);
+                          }}
+                          className="w-full px-3 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 text-left truncate flex items-center justify-between group"
+                        >
+                          <span className="truncate">{rec.name}</span>
+                          <span className="text-[10px] text-zinc-600 truncate max-w-[80px]">
+                            {rec.path.split('/').pop()}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="h-px bg-[#27272a] my-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSaveProject();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoFile className="text-zinc-400" /> Save Project
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+S</span>
+                  </button>
+
+                  <div className="h-px bg-[#27272a] my-1" />
+
                   <button
                     type="button"
                     onClick={() => {
@@ -994,9 +1339,13 @@ export default function App() {
 
               {activeMenu === 'view' && (
                 <div
-                  className="absolute top-full left-0 mt-1 w-56 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  className="absolute top-full left-0 mt-1 w-60 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Left Column
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1006,10 +1355,44 @@ export default function App() {
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <GoCode className="text-zinc-400" /> Code Editor
+                      <GoCode className="text-zinc-400" /> Code Editor (Left Top)
                     </span>
                     {showEditor && <GoCheck className="text-emerald-400" />}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExplorer(!showExplorer);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FolderOpen className="w-3.5 h-3.5 text-zinc-400" /> File Explorer (Left Bottom)
+                    </span>
+                    {showExplorer && <GoCheck className="text-emerald-400" />}
+                  </button>
+
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Center & Right Columns
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTerminal(!showTerminal);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoTerminal className="text-zinc-400" /> Terminal & Logs (Center Bottom)
+                    </span>
+                    {showTerminal && <GoCheck className="text-emerald-400" />}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1019,22 +1402,23 @@ export default function App() {
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <GoPackage className="text-zinc-400" /> Component Palette
+                      <GoPackage className="text-zinc-400" /> Component Palette (Right Top)
                     </span>
                     {showPalette && <GoCheck className="text-emerald-400" />}
                   </button>
+
                   <button
                     type="button"
                     onClick={() => {
-                      setShowDrawer(!showDrawer);
+                      setShowInspector(!showInspector);
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <GoTerminal className="text-zinc-400" /> Bottom Console
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" /> Property Inspector (Right Bottom)
                     </span>
-                    {showDrawer && <GoCheck className="text-emerald-400" />}
+                    {showInspector && <GoCheck className="text-emerald-400" />}
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
@@ -1042,7 +1426,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowDrawer(true);
+                      setShowTerminal(true);
                       setBottomTab('waveform');
                       setActiveMenu(null);
                     }}
@@ -1053,7 +1437,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowDrawer(true);
+                      setShowTerminal(true);
                       setBottomTab('serial');
                       setActiveMenu(null);
                     }}
@@ -1064,7 +1448,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowDrawer(true);
+                      setShowTerminal(true);
                       setBottomTab('build');
                       setActiveMenu(null);
                     }}
@@ -1625,9 +2009,26 @@ export default function App() {
             </Tooltip>
           </div>
 
-          {/* Right Status */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-400 font-mono">{projectName}</span>
+          {/* Right Status & Save */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveProject}
+              title={isDirty ? 'Unsaved changes • Click to save (Ctrl+S)' : 'All changes saved (Ctrl+S)'}
+              className={`h-6 px-2 flex items-center gap-1.5 rounded text-[11px] font-mono border transition-colors ${
+                isDirty
+                  ? 'border-amber-700/60 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40'
+                  : 'border-zinc-800 bg-[#18181b] text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isDirty ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+              <span>{isDirty ? 'Unsaved' : 'Saved'}</span>
+            </button>
+
+            <span className="text-xs text-zinc-400 font-mono truncate max-w-[140px]" title={projectPath || projectName}>
+              {projectName}
+            </span>
+
             <Badge
               variant="outline"
               className={`font-mono text-xs gap-1.5 h-6 px-2.5 border-zinc-800 ${
@@ -1646,18 +2047,17 @@ export default function App() {
           </div>
         </div>
 
-        {/* 2. Main Resizable Workspace (Left Editor, Center Canvas, Right Palette, Bottom Terminal) */}
-        <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">
+        {/* 2. Main 3-Column Resizable Workspace (Left: Editor & Explorer, Center: Canvas & Terminal, Right: Palette & Property) */}
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
           
-          {/* Top Resizable Section: Editor + Canvas + Component Palette */}
-          <ResizablePanel id="workspace-top" defaultSize="72%" minSize="30%">
-            <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-              
-              {/* Left Sidebar: Monaco Code Editor */}
-              {showEditor && (
-                <>
-                  <ResizablePanel id="editor-panel" defaultSize="26%" minSize="15%" maxSize="55%">
-                    <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
+          {/* Left Column: Monaco Code Editor (Top) & File Explorer (Bottom) */}
+          {(showEditor || showExplorer) && (
+            <>
+              <ResizablePanel id="left-column-panel" defaultSize="26%" minSize="16%" maxSize="45%">
+                <ResizablePanelGroup orientation="vertical" className="h-full w-full">
+                  {showEditor && (
+                    <ResizablePanel id="editor-panel" defaultSize={showExplorer ? "55%" : "100%"} minSize="20%">
+                      <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
                           <GoFile className="text-zinc-500" /> sketch.ino
@@ -1703,13 +2103,38 @@ export default function App() {
                         />
                       </div>
                     </aside>
-                  </ResizablePanel>
-                  <ResizableHandle withHandle />
-                </>
-              )}
+                    </ResizablePanel>
+                  )}
+                  {showEditor && showExplorer && <ResizableHandle withHandle orientation="horizontal" />}
+                  {showExplorer && (
+                    <ResizablePanel id="explorer-panel" defaultSize={showEditor ? "45%" : "100%"} minSize="20%">
+                      <FileExplorer
+                          projectName={projectName}
+                          projectPath={projectPath}
+                          files={projectFiles}
+                          activeFile={activeFile}
+                          onSelectFile={(filePath) => {
+                            setActiveFile(filePath);
+                            if (filePath.endsWith('.ino')) {
+                              setShowEditor(true);
+                            }
+                          }}
+                          onCreateFile={handleCreateFile}
+                          onDeleteFile={handleDeleteFile}
+                          onRefresh={handleRefreshFiles}
+                        />
+                    </ResizablePanel>
+                  )}
+                </ResizablePanelGroup>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
 
-              {/* Center Canvas: Interactive Breadboard & Circuit Simulator */}
-              <ResizablePanel id="canvas-panel" minSize="30%">
+          {/* Center Column: Interactive Canvas (Top) & Terminal / Waveform (Bottom) */}
+          <ResizablePanel id="center-column-panel" minSize="30%">
+            <ResizablePanelGroup orientation="vertical" className="h-full w-full">
+              <ResizablePanel id="canvas-panel" defaultSize={showTerminal ? "70%" : "100%"} minSize="25%">
                 <main
                   className={`h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] ${
                     activeTool === 'wire' ? 'cursor-crosshair' : 'cursor-default'
@@ -1912,12 +2337,134 @@ export default function App() {
                 </main>
               </ResizablePanel>
 
-              {/* Right Sidebar: Component Library Palette */}
-              {showPalette && (
+              {showTerminal && (
                 <>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel id="palette-panel" defaultSize="22%" minSize="14%" maxSize="40%">
-                    <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
+                  <ResizableHandle withHandle orientation="horizontal" />
+                  <ResizablePanel id="terminal-panel" defaultSize="30%" minSize="15%" maxSize="65%">
+                    <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
+                          <Tabs
+                            value={bottomTab}
+                            onValueChange={(val) => setBottomTab(val as any)}
+                            className="flex-1 flex flex-col h-full"
+                          >
+                            {/* Tabs Bar */}
+                            <div className="h-7 px-2 border-b border-[#222226] flex items-center justify-between bg-[#121215] shrink-0">
+                              <TabsList variant="line" className="h-7 gap-2 bg-transparent p-0">
+                                <TabsTrigger value="serial" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                                  <GoTerminal className="text-xs" /> Serial Monitor
+                                </TabsTrigger>
+                                <TabsTrigger value="waveform" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                                  <GoGraph className="text-xs" /> Logic Waveform
+                                </TabsTrigger>
+                                <TabsTrigger value="build" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                                  <GoGear className="text-xs" /> Build Output
+                                </TabsTrigger>
+                              </TabsList>
+
+                              {/* Tab Specific Action Controls */}
+                              <div className="flex items-center gap-1.5">
+                                {bottomTab === 'serial' && (
+                                  <>
+                                    <select
+                                      value={baudRate}
+                                      onChange={(e) => setBaudRate(Number(e.target.value))}
+                                      className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
+                                    >
+                                      <option value={9600}>9600 baud</option>
+                                      <option value={115200}>115200 baud</option>
+                                    </select>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      onClick={() => setSerialLogs('')}
+                                      title="Clear Serial Console"
+                                      className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                                    >
+                                      <GoTrash />
+                                    </Button>
+                                  </>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => setShowTerminal(false)}
+                                  title="Collapse Terminal"
+                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                                >
+                                  <GoSidebarCollapse className="-rotate-90" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Tab Content: Serial Monitor */}
+                            <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0 flex flex-col">
+                              <div
+                                ref={serialContainerRef}
+                                className="flex-1 min-h-0 overflow-y-auto pr-2 select-text font-mono text-xs text-zinc-300"
+                              >
+                                <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0">
+                                  {serialLogs}
+                                </pre>
+                              </div>
+                              <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
+                                <Input
+                                  type="text"
+                                  placeholder="Send command to Arduino UART..."
+                                  value={serialInput}
+                                  onChange={(e) => setSerialInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && serialInput) {
+                                      tauriInvoke('write_serial', { input: serialInput });
+                                      setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                      setSerialInput('');
+                                    }
+                                  }}
+                                  className="flex-1 h-6 text-xs bg-[#18181b] border-zinc-800 text-zinc-200"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    if (serialInput) {
+                                      tauriInvoke('write_serial', { input: serialInput });
+                                      setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                      setSerialInput('');
+                                    }
+                                  }}
+                                  className="h-6 px-2.5 text-xs bg-zinc-200 text-zinc-900 hover:bg-zinc-100 font-medium"
+                                >
+                                  Send
+                                </Button>
+                              </div>
+                            </TabsContent>
+
+                            {/* Tab Content: High-DPI Crisp Waveform */}
+                            <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
+                              <LogicWaveform history={logicHistory} />
+                            </TabsContent>
+
+                            {/* Tab Content: Build Output */}
+                            <TabsContent value="build" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
+                              <ScrollArea className="h-full">
+                                <div className="whitespace-pre-wrap leading-relaxed">{buildLogs}</div>
+                              </ScrollArea>
+                            </TabsContent>
+                          </Tabs>
+                        </footer>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          {/* Right Column: Component Palette (Top) & Property Inspector (Bottom) */}
+          {(showPalette || showInspector) && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel id="right-column-panel" defaultSize="22%" minSize="15%" maxSize="45%">
+                <ResizablePanelGroup orientation="vertical" className="h-full w-full">
+                  {showPalette && (
+                    <ResizablePanel id="palette-panel" defaultSize={showInspector ? "45%" : "100%"} minSize="20%">
+                      <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
                           <GoPackage className="text-zinc-500" /> Components
@@ -2083,163 +2630,192 @@ export default function App() {
                             </CollapsibleContent>
                           </Collapsible>
 
-                          {/* Component Inspector & Deletion */}
+                          {/* Component Inspector */}
                           {selectedCompId && (
                             <div className="pt-2 border-t border-[#222226]">
                               <span className="text-[10px] font-mono text-zinc-400 block mb-1">
                                 Selected: {selectedCompId}
                               </span>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  setComponents((prev) => prev.filter((c) => c.id !== selectedCompId));
-                                  setWires((prev) =>
-                                    prev.filter(
-                                      (w) => w.fromComp !== selectedCompId && w.toComp !== selectedCompId
-                                    )
-                                  );
-                                  setSelectedCompId(null);
-                                }}
-                                className="w-full h-7 text-xs gap-1.5"
-                              >
-                                <GoTrash /> Delete Component
-                              </Button>
                             </div>
                           )}
                         </div>
                       </ScrollArea>
                     </aside>
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
-          </ResizablePanel>
-
-          {/* Bottom Resizable Section: Serial Monitor, Logic Waveform & Build Output */}
-          {showDrawer && (
-            <>
-              <ResizableHandle withHandle orientation="horizontal" />
-              <ResizablePanel id="bottom-panel" defaultSize="28%" minSize="12%" maxSize="65%">
-                <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
-                  <Tabs
-                    value={bottomTab}
-                    onValueChange={(val) => setBottomTab(val as any)}
-                    className="flex-1 flex flex-col h-full"
-                  >
-                    {/* Tabs Bar */}
-                    <div className="h-7 px-2 border-b border-[#222226] flex items-center justify-between bg-[#121215] shrink-0">
-                      <TabsList variant="line" className="h-7 gap-2 bg-transparent p-0">
-                        <TabsTrigger value="serial" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
-                          <GoTerminal className="text-xs" /> Serial Monitor
-                        </TabsTrigger>
-                        <TabsTrigger value="waveform" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
-                          <GoGraph className="text-xs" /> Logic Waveform
-                        </TabsTrigger>
-                        <TabsTrigger value="build" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
-                          <GoGear className="text-xs" /> Build Output
-                        </TabsTrigger>
-                      </TabsList>
-
-                      {/* Tab Specific Action Controls */}
-                      <div className="flex items-center gap-1.5">
-                        {bottomTab === 'serial' && (
-                          <>
-                            <select
-                              value={baudRate}
-                              onChange={(e) => setBaudRate(Number(e.target.value))}
-                              className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
-                            >
-                              <option value={9600}>9600 baud</option>
-                              <option value={115200}>115200 baud</option>
-                            </select>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => setSerialLogs('')}
-                              title="Clear Serial Console"
-                              className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                            >
-                              <GoTrash />
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => setShowDrawer(false)}
-                          title="Collapse Panel"
-                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                        >
-                          <GoSidebarCollapse className="-rotate-90" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Tab Content: Serial Monitor */}
-                    <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0 flex flex-col">
-                      <div
-                        ref={serialContainerRef}
-                        className="flex-1 min-h-0 overflow-y-auto pr-2 select-text font-mono text-xs text-zinc-300"
-                      >
-                        <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0">
-                          {serialLogs}
-                        </pre>
-                      </div>
-                        <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
-                          <Input
-                            type="text"
-                            placeholder="Send command to Arduino UART..."
-                            value={serialInput}
-                            onChange={(e) => setSerialInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && serialInput) {
-                                tauriInvoke('write_serial', { input: serialInput });
-                                setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
-                                setSerialInput('');
-                              }
-                            }}
-                            className="flex-1 h-6 text-xs bg-[#18181b] border-zinc-800 text-zinc-200"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (serialInput) {
-                                tauriInvoke('write_serial', { input: serialInput });
-                                setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
-                                setSerialInput('');
-                              }
-                            }}
-                            className="h-6 px-2.5 text-xs bg-zinc-200 text-zinc-900 hover:bg-zinc-100 font-medium"
-                          >
-                            Send
-                          </Button>
-                        </div>
-                      </TabsContent>
-
-                    {/* Tab Content: High-DPI Crisp Waveform */}
-                    <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
-                      <LogicWaveform history={logicHistory} />
-                    </TabsContent>
-
-                    {/* Tab Content: Build Output */}
-                    <TabsContent value="build" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
-                      <ScrollArea className="h-full">
-                        <div className="whitespace-pre-wrap leading-relaxed">{buildLogs}</div>
-                      </ScrollArea>
-                    </TabsContent>
-                  </Tabs>
-                </footer>
+                    </ResizablePanel>
+                  )}
+                  {showPalette && showInspector && <ResizableHandle withHandle orientation="horizontal" />}
+                  {showInspector && (
+                    <ResizablePanel id="inspector-panel" defaultSize={showPalette ? "55%" : "100%"} minSize="20%">
+                      <PropertyInspector
+                        selectedCompId={selectedCompId}
+                        selectedWireId={selectedWireId}
+                        components={components}
+                        wires={wires}
+                        onUpdateComponent={handleUpdateComponent}
+                        onUpdateWire={handleUpdateWire}
+                        onDeleteComponent={handleDeleteComponent}
+                        onDeleteWire={handleDeleteWire}
+                        onClose={() => setShowInspector(false)}
+                      />
+                    </ResizablePanel>
+                  )}
+                </ResizablePanelGroup>
               </ResizablePanel>
             </>
           )}
+
         </ResizablePanelGroup>
 
         {/* 3. Status Bar */}
         <div className="h-5 bg-[#121215] border-t border-[#222226] px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0">
-          <span>{statusMessage}</span>
+          <span className="flex items-center gap-2">
+            <span>{statusMessage}</span>
+            {projectPath && (
+              <span className="text-zinc-600 font-mono text-[9px]">• {projectPath}</span>
+            )}
+          </span>
           <span>ATmega328P @ 16 MHz • Pure Rust + Tauri v2</span>
         </div>
+
+        {/* Modal Dialog: Create New Project */}
+        <Dialog open={showNewProjectModal} onOpenChange={setShowNewProjectModal}>
+          <DialogContent className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base text-zinc-100 flex items-center gap-2">
+                <GoPlus className="text-emerald-400" /> Create New Project
+              </DialogTitle>
+              <DialogDescription className="text-xs text-zinc-400">
+                Creates an on-disk project directory with sketch.ino, diagram.json, and project.json.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div>
+                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                  Project Name
+                </label>
+                <Input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  placeholder="e.g. Traffic_Light_Lab"
+                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                  Parent Directory Path
+                </label>
+                <Input
+                  value={newProjectParentPath}
+                  onChange={(e) => setNewProjectParentPath(e.target.value)}
+                  placeholder="e.g. C:/MicroRustSim/Projects"
+                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
+                />
+                <span className="text-[10px] text-zinc-500 mt-1 block">
+                  Leave blank to create in current working directory.
+                </span>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNewProjectModal(false)}
+                className="border-zinc-800 text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (newProjectName.trim()) {
+                    handleCreateProject(newProjectParentPath.trim() || '.', newProjectName.trim());
+                  }
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+              >
+                Create Project
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Dialog: Open Project Directory */}
+        <Dialog open={showOpenProjectModal} onOpenChange={setShowOpenProjectModal}>
+          <DialogContent className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base text-zinc-100 flex items-center gap-2">
+                <FolderOpen className="text-blue-400" /> Open Project Folder
+              </DialogTitle>
+              <DialogDescription className="text-xs text-zinc-400">
+                Enter the absolute or relative path to a MicroRustSim project directory.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div>
+                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                  Project Directory Path
+                </label>
+                <Input
+                  value={openProjectPathInput}
+                  onChange={(e) => setOpenProjectPathInput(e.target.value)}
+                  placeholder="e.g. C:/MicroRustSim/Projects/Traffic_Light_Lab"
+                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
+                />
+              </div>
+
+              {recentProjects.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                    Or select from recent:
+                  </label>
+                  <div className="bg-[#121215] border border-zinc-800/80 rounded max-h-36 overflow-y-auto divide-y divide-zinc-800/50">
+                    {recentProjects.map((rec) => (
+                      <div
+                        key={rec.path}
+                        onClick={() => {
+                          setOpenProjectPathInput(rec.path);
+                          handleOpenProject(rec.path);
+                        }}
+                        className="px-2.5 py-1.5 hover:bg-zinc-800/60 cursor-pointer flex items-center justify-between transition-colors"
+                      >
+                        <span className="font-medium text-zinc-200">{rec.name}</span>
+                        <span className="font-mono text-[10px] text-zinc-500 truncate max-w-[200px]">
+                          {rec.path}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowOpenProjectModal(false)}
+                className="border-zinc-800 text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (openProjectPathInput.trim()) {
+                    handleOpenProject(openProjectPathInput.trim());
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-medium"
+              >
+                Open Project
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </TooltipProvider>
