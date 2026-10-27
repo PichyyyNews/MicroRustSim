@@ -28,11 +28,11 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* 4 Corner Pins */}
+      {/* 4 Corner Pins with prominent highlight */}
       {/* 1a (Top-Left) */}
       <div
-        title="1a"
-        className="absolute -top-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
+        title="Pin 1a"
+        className="absolute -top-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1a', e);
@@ -40,8 +40,8 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       />
       {/* 1b (Top-Right) */}
       <div
-        title="1b"
-        className="absolute -top-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
+        title="Pin 1b"
+        className="absolute -top-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1b', e);
@@ -49,8 +49,8 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       />
       {/* 2a (Bottom-Left) */}
       <div
-        title="2a"
-        className="absolute -bottom-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
+        title="Pin 2a"
+        className="absolute -bottom-1.5 -left-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2a', e);
@@ -58,8 +58,8 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
       />
       {/* 2b (Bottom-Right) */}
       <div
-        title="2b"
-        className="absolute -bottom-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
+        title="Pin 2b"
+        className="absolute -bottom-1.5 -right-1 w-2.5 h-2.5 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-white hover:scale-150 hover:shadow-[0_0_10px_rgba(255,255,255,0.95)] hover:ring-2 hover:ring-white transition-all cursor-crosshair z-20"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2b', e);
@@ -72,12 +72,12 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, on
         <div
           className={`w-6 h-6 rounded-full cursor-pointer transition-transform duration-75 flex items-center justify-center ${
             isPressed
-              ? 'scale-90 bg-blue-700 shadow-inner'
-              : 'scale-100 bg-blue-500 shadow-md hover:brightness-110'
+              ? 'scale-90 bg-zinc-900 shadow-inner'
+              : 'bg-zinc-700 hover:bg-zinc-650 shadow'
           }`}
           onMouseDown={handleMouseDown}
         >
-          <div className="w-2 h-2 rounded-full bg-blue-300/40" />
+          <div className="w-2 h-2 rounded-full bg-zinc-500/50" />
         </div>
       </div>
     </div>

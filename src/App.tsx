@@ -727,6 +727,10 @@ export default function App() {
         setStatusMessage(`Project created: ${res.name}`);
         setShowNewProjectModal(false);
         loadRecentProjects();
+        tauriInvoke('save_user_setting', {
+          key: 'last_opened_project_path',
+          value: res.path,
+        }).catch((err) => console.warn('Failed to remember last project:', err));
       }
     },
     [components, wires, sketchCode, exportWokwiDiagram, importWokwiDiagram, loadRecentProjects]
@@ -744,42 +748,71 @@ export default function App() {
 
   const handleOpenProject = useCallback(
     async (dirPath: string) => {
-      const res = await tauriInvoke<ProjectData>('open_project_dir', { path: dirPath });
-      if (res) {
-        setProjectName(res.name);
-        setProjectPath(res.path);
-        setSketchCode(res.sketch_code);
-        if (res.diagram_json) {
-          importWokwiDiagram(res.diagram_json);
+      try {
+        const res = await tauriInvoke<ProjectData>('open_project_dir', { path: dirPath });
+        if (res) {
+          setProjectName(res.name);
+          setProjectPath(res.path);
+          setSketchCode(res.sketch_code);
+          if (res.diagram_json) {
+            importWokwiDiagram(res.diagram_json);
+          }
+          setProjectFiles(res.files);
+
+          const initialTabs: OpenTab[] = [
+            { path: 'sketch.ino', name: 'sketch.ino' },
+          ];
+          const newContents: Record<string, string> = {
+            'sketch.ino': res.sketch_code,
+            'diagram.json': res.diagram_json,
+            'project.json': res.metadata_json,
+          };
+
+          const configEntry = res.files.find((f) => f.name === 'config.h');
+          if (configEntry) {
+            initialTabs.push({ path: configEntry.relative_path, name: configEntry.name });
+          }
+
+          setOpenTabs(initialTabs);
+          setActiveTabPath('sketch.ino');
+          setActiveFile('sketch.ino');
+          setFileContents(newContents);
+          setIsDirty(false);
+          setStatusMessage(`Opened: ${res.name}`);
+          setShowOpenProjectModal(false);
+          loadRecentProjects();
+
+          tauriInvoke('save_user_setting', {
+            key: 'last_opened_project_path',
+            value: res.path,
+          }).catch((err) => console.warn('Failed to remember last project:', err));
         }
-        setProjectFiles(res.files);
-
-        const initialTabs: OpenTab[] = [
-          { path: 'sketch.ino', name: 'sketch.ino' },
-        ];
-        const newContents: Record<string, string> = {
-          'sketch.ino': res.sketch_code,
-          'diagram.json': res.diagram_json,
-          'project.json': res.metadata_json,
-        };
-
-        const configEntry = res.files.find((f) => f.name === 'config.h');
-        if (configEntry) {
-          initialTabs.push({ path: configEntry.relative_path, name: configEntry.name });
-        }
-
-        setOpenTabs(initialTabs);
-        setActiveTabPath('sketch.ino');
-        setActiveFile('sketch.ino');
-        setFileContents(newContents);
-        setIsDirty(false);
-        setStatusMessage(`Opened: ${res.name}`);
-        setShowOpenProjectModal(false);
-        loadRecentProjects();
+      } catch (err) {
+        console.warn('Failed to open project at path:', dirPath, err);
       }
     },
     [importWokwiDiagram, loadRecentProjects]
   );
+
+  // --- Auto-Restore Last Opened Project on Startup ---
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const lastPath = await tauriInvoke<string | null>('get_user_setting', {
+          key: 'last_opened_project_path',
+        });
+        if (lastPath && mounted) {
+          await handleOpenProject(lastPath);
+        }
+      } catch (err) {
+        console.warn('Failed to auto-restore last opened project:', err);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [handleOpenProject]);
 
   const handleOpenNativeFolder = useCallback(async () => {
     try {
@@ -1220,14 +1253,23 @@ export default function App() {
 
       // 3. Circuit Component Dragging
       if (draggedCompRef.current) {
-        const dx = (e.clientX - draggedCompRef.current.startMouseX) / zoom;
-        const dy = (e.clientY - draggedCompRef.current.startMouseY) / zoom;
+        const rawDx = e.clientX - draggedCompRef.current.startMouseX;
+        const rawDy = e.clientY - draggedCompRef.current.startMouseY;
+
+        // Auto-switch from 'select' to 'move' if user drags more than 3px
+        if (Math.hypot(rawDx, rawDy) > 3) {
+          setActiveTool((current) => (current === 'select' ? 'move' : current));
+        }
+
+        const dx = rawDx / zoom;
+        const dy = rawDy / zoom;
         const compId = draggedCompRef.current.id;
         const newX = Math.round(draggedCompRef.current.startCompX + dx);
         const newY = Math.round(draggedCompRef.current.startCompY + dy);
         setComponents((prev) =>
           prev.map((item) => (item.id === compId ? { ...item, x: newX, y: newY } : item))
         );
+        setIsDirty(true);
       }
     };
 
@@ -1470,7 +1512,7 @@ export default function App() {
 
     setSelectedCompId(compId);
 
-    if (activeTool === 'move') {
+    if (activeTool === 'move' || activeTool === 'select') {
       const comp = components.find((c) => c.id === compId);
       if (comp) {
         draggedCompRef.current = {

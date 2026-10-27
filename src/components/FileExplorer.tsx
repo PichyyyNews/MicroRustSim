@@ -46,6 +46,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
   onOpenFolder,
 }) => {
   const [createType, setCreateType] = useState<'file' | 'folder' | null>(null);
+  const [targetFolder, setTargetFolder] = useState<string | null>(null);
   const [newEntryName, setNewEntryName] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
 
@@ -122,9 +123,11 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
     e.preventDefault();
     const trimmed = newEntryName.trim();
     if (trimmed) {
-      onCreateFile(trimmed, createType === 'folder');
+      const fullPath = targetFolder ? `${targetFolder}/${trimmed}` : trimmed;
+      onCreateFile(fullPath, createType === 'folder');
       setNewEntryName('');
       setCreateType(null);
+      setTargetFolder(null);
     }
   };
 
@@ -153,7 +156,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
 
   const renderTreeNode = (node: FileTreeNode, depth = 0) => {
     const isFolder = node.isDir;
-    const isExpanded = expandedFolders.has(node.relativePath);
+    const hasChildren = isFolder && node.children.length > 0;
+    const isExpanded = hasChildren && expandedFolders.has(node.relativePath);
     const isSelected = activeFile === node.path || activeFile === node.relativePath || activeFile === node.name;
     const isProtected = node.name === 'sketch.ino' || node.name === 'diagram.json' || node.name === 'project.json';
 
@@ -162,7 +166,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
         <div
           onClick={() => {
             if (isFolder) {
-              toggleFolder(node.relativePath);
+              if (hasChildren) toggleFolder(node.relativePath);
             } else {
               onSelectFile(node.relativePath);
             }
@@ -175,7 +179,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
           }`}
         >
           <div className="flex items-center gap-1.5 truncate">
-            {isFolder ? (
+            {hasChildren ? (
               <span
                 onClick={(e) => toggleFolder(node.relativePath, e)}
                 className="w-3.5 h-3.5 flex items-center justify-center text-zinc-500 hover:text-zinc-300"
@@ -195,6 +199,23 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
           </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {isFolder && (
+              <button
+                type="button"
+                title={`New File in ${node.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTargetFolder(node.relativePath);
+                  setCreateType('file');
+                  setNewEntryName('');
+                  setExpandedFolders((prev) => new Set(prev).add(node.relativePath));
+                }}
+                className="p-0.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+              >
+                <GoPlus className="w-3 h-3" />
+              </button>
+            )}
+
             {!isProtected && !isFolder && (
               <button
                 type="button"
@@ -264,6 +285,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             type="button"
             title="New File"
             onClick={() => {
+              setTargetFolder(null);
               setCreateType('file');
               setNewEntryName('');
             }}
@@ -275,6 +297,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             type="button"
             title="New Folder"
             onClick={() => {
+              setTargetFolder(null);
               setCreateType('folder');
               setNewEntryName('');
             }}
@@ -325,16 +348,32 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             ) : (
               <GoFile className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             )}
+            {targetFolder && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px] border border-zinc-700 shrink-0">
+                <span className="truncate max-w-[80px]">{targetFolder}/</span>
+                <button
+                  type="button"
+                  title="Remove target folder"
+                  onClick={() => setTargetFolder(null)}
+                  className="text-zinc-400 hover:text-white"
+                >
+                  <GoX className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            )}
             <input
               autoFocus
               type="text"
-              placeholder={createType === 'folder' ? 'folder name (e.g. src)' : 'file name (e.g. config.h)'}
+              placeholder={createType === 'folder' ? 'folder name (e.g. lib)' : 'file name (e.g. utils.h)'}
               value={newEntryName}
               onChange={(e) => setNewEntryName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') setCreateType(null);
+                if (e.key === 'Escape') {
+                  setCreateType(null);
+                  setTargetFolder(null);
+                }
               }}
-              className="flex-1 bg-transparent text-xs text-zinc-200 outline-none font-mono placeholder:text-zinc-600"
+              className="flex-1 min-w-0 bg-transparent text-xs text-zinc-200 outline-none font-mono placeholder:text-zinc-600"
             />
             <button
               type="submit"
@@ -344,7 +383,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setCreateType(null)}
+              onClick={() => {
+                setCreateType(null);
+                setTargetFolder(null);
+              }}
               className="p-0.5 text-zinc-500 hover:text-zinc-300 rounded"
             >
               <GoX className="w-3.5 h-3.5" />

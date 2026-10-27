@@ -80,7 +80,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
               fill="#1e293b"
               stroke="#64748b"
               strokeWidth="0.75"
-              className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(pinName, e);
@@ -104,7 +104,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
               fill="#1e293b"
               stroke="#64748b"
               strokeWidth="0.75"
-              className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(pinName, e);
@@ -165,7 +165,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
                     fill="#1e293b"
                     stroke="#475569"
                     strokeWidth="0.75"
-                    className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+                    className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onPinMouseDown?.(pinName, e);
@@ -221,7 +221,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
                     fill="#1e293b"
                     stroke="#475569"
                     strokeWidth="0.75"
-                    className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+                    className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onPinMouseDown?.(pinName, e);
@@ -264,7 +264,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
               fill="#1e293b"
               stroke="#64748b"
               strokeWidth="0.75"
-              className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(pinName, e);
@@ -294,7 +294,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
               fill="#1e293b"
               stroke="#64748b"
               strokeWidth="0.75"
-              className="cursor-crosshair transition-colors hover:fill-[#10b981] hover:stroke-[#34d399]"
+              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.95)]"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(pinName, e);
