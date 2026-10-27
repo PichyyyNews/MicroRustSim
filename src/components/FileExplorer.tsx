@@ -49,31 +49,43 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
   const [newEntryName, setNewEntryName] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
 
-  // Build hierarchical tree from flat relative paths
+  const RECOMMENDED_FILES = [
+    'config.h',
+    'constants.h',
+    'sensors.h',
+    'display.cpp',
+    'diagram.json',
+    'README.md',
+  ];
+
+  // Build hierarchical tree from flat relative paths (normalizing Windows \ to /)
   const fileTree = useMemo(() => {
     const rootNodes: FileTreeNode[] = [];
     const map: Record<string, FileTreeNode> = {};
 
     const sorted = [...files].sort((a, b) => {
+      const aNorm = a.relative_path.replace(/\\/g, '/');
+      const bNorm = b.relative_path.replace(/\\/g, '/');
       if (a.is_dir === b.is_dir) {
-        return a.relative_path.localeCompare(b.relative_path);
+        return aNorm.localeCompare(bNorm);
       }
       return a.is_dir ? -1 : 1;
     });
 
     for (const f of sorted) {
-      const parts = f.relative_path.split('/');
+      const normPath = f.relative_path.replace(/\\/g, '/');
+      const parts = normPath.split('/').filter(Boolean);
       const node: FileTreeNode = {
         name: f.name,
         path: f.path,
-        relativePath: f.relative_path,
+        relativePath: normPath,
         isDir: f.is_dir,
         size: f.size,
         children: [],
       };
-      map[f.relative_path] = node;
+      map[normPath] = node;
 
-      if (parts.length === 1) {
+      if (parts.length <= 1) {
         rootNodes.push(node);
       } else {
         const parentPath = parts.slice(0, -1).join('/');
@@ -90,12 +102,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
 
   const toggleFolder = (folderPath: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const norm = folderPath.replace(/\\/g, '/');
     setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(folderPath)) {
-        next.delete(folderPath);
+      if (next.has(norm)) {
+        next.delete(norm);
       } else {
-        next.add(folderPath);
+        next.add(norm);
       }
       return next;
     });
@@ -302,40 +315,59 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
 
       {/* New File / Folder Inline Form */}
       {createType && (
-        <form
-          onSubmit={handleCreateSubmit}
-          className="px-2 py-1.5 bg-[#18181b] border-b border-zinc-800 flex items-center gap-1.5 animate-in fade-in duration-75"
-        >
-          {createType === 'folder' ? (
-            <FolderPlus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-          ) : (
-            <GoFile className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+        <div className="bg-[#18181b] border-b border-zinc-800 animate-in fade-in duration-75">
+          <form
+            onSubmit={handleCreateSubmit}
+            className="px-2 py-1.5 flex items-center gap-1.5"
+          >
+            {createType === 'folder' ? (
+              <FolderPlus className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            ) : (
+              <GoFile className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            )}
+            <input
+              autoFocus
+              type="text"
+              placeholder={createType === 'folder' ? 'folder name (e.g. src)' : 'file name (e.g. config.h)'}
+              value={newEntryName}
+              onChange={(e) => setNewEntryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setCreateType(null);
+              }}
+              className="flex-1 bg-transparent text-xs text-zinc-200 outline-none font-mono placeholder:text-zinc-600"
+            />
+            <button
+              type="submit"
+              className="p-0.5 text-zinc-200 hover:text-white rounded"
+            >
+              <GoCheck className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateType(null)}
+              className="p-0.5 text-zinc-500 hover:text-zinc-300 rounded"
+            >
+              <GoX className="w-3.5 h-3.5" />
+            </button>
+          </form>
+
+          {/* Quick Recommendation Chips */}
+          {createType === 'file' && (
+            <div className="px-2 pb-1.5 pt-0.5 flex flex-wrap items-center gap-1 text-[10px]">
+              <span className="text-zinc-500 select-none">Rec:</span>
+              {RECOMMENDED_FILES.map((fileName) => (
+                <button
+                  key={fileName}
+                  type="button"
+                  onClick={() => setNewEntryName(fileName)}
+                  className="px-1.5 py-0.5 rounded bg-[#222226] hover:bg-[#2e2e34] hover:text-white text-zinc-400 font-mono transition-colors border border-[#2a2a30]"
+                >
+                  {fileName}
+                </button>
+              ))}
+            </div>
           )}
-          <input
-            autoFocus
-            type="text"
-            placeholder={createType === 'folder' ? 'folder name (e.g. src)' : 'file name (e.g. config.h)'}
-            value={newEntryName}
-            onChange={(e) => setNewEntryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setCreateType(null);
-            }}
-            className="flex-1 bg-transparent text-xs text-zinc-200 outline-none font-mono placeholder:text-zinc-600"
-          />
-          <button
-            type="submit"
-            className="p-0.5 text-zinc-200 hover:text-white rounded"
-          >
-            <GoCheck className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setCreateType(null)}
-            className="p-0.5 text-zinc-500 hover:text-zinc-300 rounded"
-          >
-            <GoX className="w-3.5 h-3.5" />
-          </button>
-        </form>
+        </div>
       )}
 
       {/* Hierarchical Tree List */}

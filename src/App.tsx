@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Editor from '@monaco-editor/react';
 import {
   GoPlay,
@@ -72,7 +72,7 @@ import { Resistor } from './components/Resistor';
 import { Pushbutton } from './components/Pushbutton';
 import { Potentiometer } from './components/Potentiometer';
 import { WireLayer, getOrthoVertices, updateOrthoSegment } from './components/WireLayer';
-import { LogicWaveform } from './components/LogicWaveform';
+import { LogicWaveform, WaveformChannel } from './components/LogicWaveform';
 import { FileExplorer } from './components/FileExplorer';
 import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
@@ -174,8 +174,10 @@ const setupMonacoTheme = (monaco: any) => {
 };
 
 export default function App() {
-  // --- Menubar Active Menu (File, View, Window) ---
-  const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'window' | null>(null);
+  // --- Menubar Active Menu (File, Edit, View & Window, Settings, About) ---
+  const [activeMenu, setActiveMenu] = useState<'file' | 'edit' | 'view' | 'settings' | 'about' | null>(null);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [canvasHoverInfo, setCanvasHoverInfo] = useState<string>('');
   const menubarRef = useRef<HTMLDivElement>(null);
 
   // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
@@ -427,6 +429,41 @@ export default function App() {
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [wireDraftStart, setWireDraftStart] = useState<{ compId: string; pinName: string } | null>(null);
   const [mouseCanvasPos, setMouseCanvasPos] = useState({ x: 0, y: 0 });
+
+  const potComp = components.find((c) => c.kind === 'potentiometer');
+  const btnComp = components.find((c) => c.kind === 'pushbutton');
+  const potVoltage = (potComp?.props?.value ?? 0.5) * 5.0;
+  const btnVoltage = btnComp?.props?.pressed ? 0.0 : 5.0;
+
+  const waveformChannels = useMemo<WaveformChannel[]>(() => [
+    {
+      id: 'ch_pin13',
+      label: 'Pin 13 (LED)',
+      color: '#10b981', // Emerald
+      unit: 'V',
+      maxVal: 5.0,
+      history: logicHistory,
+      isDigital: true,
+    },
+    {
+      id: 'ch_pin2',
+      label: 'Pin 2 (Button)',
+      color: '#f59e0b', // Amber
+      unit: 'V',
+      maxVal: 5.0,
+      history: logicHistory.map(([t]) => [t, btnVoltage]),
+      isDigital: true,
+    },
+    {
+      id: 'ch_pina0',
+      label: 'Pin A0 (Pot Wiper)',
+      color: '#3b82f6', // Blue
+      unit: 'V',
+      maxVal: 5.0,
+      history: logicHistory.map(([t]) => [t, potVoltage]),
+      isDigital: false,
+    },
+  ], [logicHistory, btnVoltage, potVoltage]);
 
   // --- Synchronize Wire to Rust Core ---
   const syncWireToRust = useCallback(async (wire: CircuitWire) => {
@@ -1508,6 +1545,41 @@ export default function App() {
     }
   };
 
+  const getComponentHoverInfo = (c: CircuitComponent): string => {
+    switch (c.kind) {
+      case 'arduino_uno':
+        return `Arduino Uno R3 • ATmega328P @ 16 MHz • 5.0V Logic`;
+      case 'breadboard':
+        return `Half Breadboard • 30 Terminal Rows (A-J) • Dual Power Rails`;
+      case 'potentiometer': {
+        const val = c.props.value ?? 0.5;
+        const v = (val * 5.0).toFixed(2);
+        const adc = Math.round(val * 1023);
+        return `Potentiometer (${c.id}) • Wiper: ${v}V (${adc} ADC / ${Math.round(val * 100)}%) • 10 kΩ`;
+      }
+      case 'pushbutton': {
+        const state = c.props.pressed ? 'CLOSED (0.0V GND Active)' : 'OPEN (5.0V Pull-up)';
+        return `Pushbutton (${c.id}) • State: ${state}`;
+      }
+      case 'resistor': {
+        const ohms = c.props.ohms || 220;
+        const str = ohms >= 1000 ? `${ohms / 1000} kΩ` : `${ohms} Ω`;
+        return `Resistor (${c.id}) • Resistance: ${str} • 0.25W 5%`;
+      }
+      case 'led': {
+        const color = c.props.color || 'red';
+        const vf = c.props.vf || 2.0;
+        return `LED (${c.id}) • Color: ${color} • Forward Drop: ${vf}V`;
+      }
+      default:
+        return `${c.kind} (${c.id})`;
+    }
+  };
+
+  const getWireHoverInfo = (w: CircuitWire): string => {
+    return `Wire [${w.fromComp}:${w.fromPin} → ${w.toComp}:${w.toPin}] • Color: ${w.color || '#22c55e'} • Mode: ${w.routingMode || 'ortho'}`;
+  };
+
   return (
     <TooltipProvider delay={150}>
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
@@ -1645,7 +1717,81 @@ export default function App() {
               )}
             </div>
 
-            {/* Menubar: View */}
+            {/* Menubar: Edit */}
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => setActiveMenu(activeMenu === 'edit' ? null : 'edit')}
+                onMouseEnter={() => {
+                  if (activeMenu) setActiveMenu('edit');
+                }}
+                className={`text-xs h-5 px-2 rounded transition-colors ${
+                  activeMenu === 'edit'
+                    ? 'bg-[#1f1f23] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
+                }`}
+              >
+                Edit
+              </button>
+
+              {activeMenu === 'edit' && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-52 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(sketchCode);
+                      setStatusMessage('Sketch code copied');
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span>Copy Sketch Code</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+C</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedCompId) {
+                        handleDeleteComponent(selectedCompId);
+                      } else if (selectedWireId) {
+                        handleDeleteWire(selectedWireId);
+                      }
+                      setActiveMenu(null);
+                    }}
+                    disabled={!selectedCompId && !selectedWireId}
+                    className={`w-full px-3 py-1.5 flex items-center justify-between text-left transition-colors ${
+                      selectedCompId || selectedWireId
+                        ? 'text-zinc-200 hover:bg-zinc-800'
+                        : 'text-zinc-600 cursor-not-allowed'
+                    }`}
+                  >
+                    <span>Delete Selected Element</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Del</span>
+                  </button>
+
+                  <div className="h-px bg-[#27272a] my-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (components.length > 0) setSelectedCompId(components[0].id);
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span>Select First Component</span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Tab</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Menubar: View & Window (Consolidated) */}
             <div className="relative">
               <button
                 type="button"
@@ -1660,16 +1806,16 @@ export default function App() {
                     : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
                 }`}
               >
-                View
+                View & Window
               </button>
 
               {activeMenu === 'view' && (
                 <div
-                  className="absolute top-full left-0 mt-1 w-60 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  className="absolute top-full left-0 mt-1 w-64 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                    Left Column
+                    Panels & Drawers
                   </div>
 
                   <button
@@ -1700,11 +1846,6 @@ export default function App() {
                     {showExplorer && <GoCheck className="text-zinc-200" />}
                   </button>
 
-                  <div className="h-px bg-[#27272a] my-1" />
-                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                    Center & Right Columns
-                  </div>
-
                   <button
                     type="button"
                     onClick={() => {
@@ -1714,7 +1855,7 @@ export default function App() {
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <GoTerminal className="text-zinc-400" /> Terminal & Logs (Center Bottom)
+                      <GoTerminal className="text-zinc-400" /> Terminal & Logs (Bottom)
                     </span>
                     {showTerminal && <GoCheck className="text-zinc-200" />}
                   </button>
@@ -1748,6 +1889,9 @@ export default function App() {
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Bottom Tabs & Oscilloscope
+                  </div>
 
                   <button
                     type="button"
@@ -1784,6 +1928,9 @@ export default function App() {
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Canvas & Zoom
+                  </div>
 
                   <button
                     type="button"
@@ -1826,33 +1973,12 @@ export default function App() {
                   >
                     <GoZoomOut className="text-zinc-400" /> Zoom Out
                   </button>
-                </div>
-              )}
-            </div>
 
-            {/* Menubar: Window */}
-            <div className="relative">
-              <button
-                type="button"
-                data-tauri-drag-region="false"
-                onClick={() => setActiveMenu(activeMenu === 'window' ? null : 'window')}
-                onMouseEnter={() => {
-                  if (activeMenu) setActiveMenu('window');
-                }}
-                className={`text-xs h-5 px-2 rounded transition-colors ${
-                  activeMenu === 'window'
-                    ? 'bg-[#1f1f23] text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
-                }`}
-              >
-                Window
-              </button>
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Window Controls
+                  </div>
 
-              {activeMenu === 'window' && (
-                <div
-                  className="absolute top-full left-0 mt-1 w-52 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
                   <button
                     type="button"
                     onClick={() => {
@@ -1873,7 +1999,6 @@ export default function App() {
                   >
                     Maximize / Restore
                   </button>
-                  <div className="h-px bg-[#27272a] my-1" />
                   <button
                     type="button"
                     onClick={() => {
@@ -1887,6 +2012,87 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Menubar: Settings */}
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => setActiveMenu(activeMenu === 'settings' ? null : 'settings')}
+                onMouseEnter={() => {
+                  if (activeMenu) setActiveMenu('settings');
+                }}
+                className={`text-xs h-5 px-2 rounded transition-colors ${
+                  activeMenu === 'settings'
+                    ? 'bg-[#1f1f23] text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
+                }`}
+              >
+                Settings
+              </button>
+
+              {activeMenu === 'settings' && (
+                <div
+                  className="absolute top-full left-0 mt-1 w-60 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Hardware Configuration
+                  </div>
+                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
+                    <span>MCU Frequency</span>
+                    <span className="font-mono text-zinc-400">16.0 MHz</span>
+                  </div>
+                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
+                    <span>Core Engine</span>
+                    <span className="font-mono text-zinc-400">ATmega328P</span>
+                  </div>
+
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    UART Baud Rate
+                  </div>
+                  {[9600, 115200].map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => {
+                        setBaudRate(b);
+                        setActiveMenu(null);
+                      }}
+                      className="w-full px-3 py-1 flex items-center justify-between text-zinc-300 hover:bg-zinc-800 text-left transition-colors"
+                    >
+                      <span>{b} baud</span>
+                      {baudRate === b && <GoCheck className="text-zinc-200" />}
+                    </button>
+                  ))}
+
+                  <div className="h-px bg-[#27272a] my-1" />
+                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
+                    Theme
+                  </div>
+                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
+                    <span>Monochrome Zinc</span>
+                    <span className="text-[10px] text-zinc-400 font-mono">Active</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Menubar: About */}
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => {
+                  setShowAboutModal(true);
+                  setActiveMenu(null);
+                }}
+                className="text-xs h-5 px-2 rounded transition-colors text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+              >
+                About
+              </button>
+            </div>
           </div>
 
           {/* Center Drag Region (Allows moving window effortlessly in normal/minimal mode) */}
@@ -1896,9 +2102,11 @@ export default function App() {
               if (e.buttons === 1) tauriInvoke('start_drag_window');
             }}
             onDoubleClick={() => tauriInvoke('toggle_maximize_window')}
-            className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-500 cursor-default select-none"
+            className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-400 cursor-default select-none"
           >
-            {projectName} — MicroRustSim
+            <span className="truncate max-w-[400px]">
+              {projectName}{isDirty ? ' *' : ''} — MicroRustSim
+            </span>
           </div>
 
           {/* Right Window Controls (—, □, ✕) */}
@@ -2344,43 +2552,6 @@ export default function App() {
               </TooltipContent>
             </Tooltip>
           </div>
-
-          {/* Right Status & Save */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSaveProject}
-              title={isDirty ? 'Unsaved changes • Click to save (Ctrl+S)' : 'All changes saved (Ctrl+S)'}
-              className={`h-6 px-2 flex items-center gap-1.5 rounded text-[11px] font-mono border transition-colors ${
-                isDirty
-                  ? 'border-amber-700/60 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40'
-                  : 'border-zinc-800 bg-[#18181b] text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${isDirty ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
-              <span>{isDirty ? 'Unsaved' : 'Saved'}</span>
-            </button>
-
-            <span className="text-xs text-zinc-400 font-mono truncate max-w-[140px]" title={projectPath || projectName}>
-              {projectName}
-            </span>
-
-            <Badge
-              variant="outline"
-              className={`font-mono text-xs gap-1.5 h-6 px-2.5 border-zinc-800 ${
-                isRunning
-                  ? 'border-emerald-600/50 text-emerald-400 bg-emerald-950/30'
-                  : 'text-zinc-500 bg-[#18181b]'
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
-                }`}
-              />
-              {isRunning ? '16 MHz' : 'PAUSED'}
-            </Badge>
-          </div>
         </div>
 
         {/* 2. Main 3-Column Resizable Workspace (Left: Editor & Explorer, Center: Canvas & Terminal, Right: Palette & Property) */}
@@ -2621,6 +2792,8 @@ export default function App() {
                           transform: `rotate(${c.rotation || 0}deg) scaleX(${c.flipped ? -1 : 1})`,
                           transformOrigin: 'center center',
                         },
+                        onMouseEnter: () => setCanvasHoverInfo(getComponentHoverInfo(c)),
+                        onMouseLeave: () => setCanvasHoverInfo(''),
                         onMouseDown: (e: React.MouseEvent) => handleComponentMouseDown(c.id, e),
                         onClick: (e: React.MouseEvent) => {
                           e.stopPropagation();
@@ -2753,6 +2926,14 @@ export default function App() {
                       activeTool={activeTool}
                       globalRoutingMode={wireRoutingMode}
                       selectedWireId={selectedWireId}
+                      onWireHover={(wireId) => {
+                        if (!wireId) {
+                          setCanvasHoverInfo('');
+                        } else {
+                          const w = wires.find((x) => x.id === wireId);
+                          if (w) setCanvasHoverInfo(getWireHoverInfo(w));
+                        }
+                      }}
                       onWireClick={(wireId) => {
                         if (activeTool === 'eraser') {
                           handleDeleteWire(wireId);
@@ -2777,6 +2958,11 @@ export default function App() {
 
                   {/* Canvas Shortcut Help Badge (? in top-right) */}
                   <CanvasShortcutsHelp />
+
+                  {/* Bottom-Left Canvas Debug Hover HUD (Single-line subtle readout) */}
+                  <div className="absolute bottom-3 left-3 z-30 pointer-events-none select-none px-2.5 py-1 rounded bg-[#0c0d10]/85 border border-[#222226]/60 backdrop-blur-sm text-[11px] font-mono text-zinc-500 tracking-wide transition-opacity">
+                    {canvasHoverInfo || `Canvas • (${Math.round(mouseCanvasPos.x)}, ${Math.round(mouseCanvasPos.y)}) • ${Math.round(zoom * 100)}%`}
+                  </div>
                 </main>
               </ResizablePanel>
 
@@ -2919,7 +3105,7 @@ export default function App() {
 
                             {/* Tab Content: High-DPI Crisp Waveform */}
                             <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
-                              <LogicWaveform history={logicHistory} />
+                              <LogicWaveform history={logicHistory} channels={waveformChannels} />
                             </TabsContent>
 
                             {/* Tab Content: Build Output */}
@@ -2985,71 +3171,70 @@ export default function App() {
                       </div>
 
                       <ScrollArea className="flex-1 p-2 text-xs">
-                        <div className="space-y-3">
-                          {/* Core Processing (No Emoji) */}
-                          <Collapsible defaultOpen>
-                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
-                              <span className="flex items-center gap-1.5">
-                                <GoCpu className="text-zinc-400" /> Core Processing
-                              </span>
-                              <span className="text-zinc-500 text-[10px]">▼</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const id = `uno_${components.length + 1}`;
-                                  setComponents((prev) => [
-                                    ...prev,
-                                    { id, kind: 'arduino_uno', x: 100, y: 100, props: {} },
-                                  ]);
-                                }}
-                                className="w-full justify-start text-xs h-7 gap-1.5 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-200"
-                              >
-                                <GoPlus className="text-zinc-400" />
-                                <span>Arduino Uno R3</span>
-                              </Button>
-                            </CollapsibleContent>
-                          </Collapsible>
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* 1. Arduino Uno R3 */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `uno_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'arduino_uno', x: 100, y: 100, props: {} },
+                              ]);
+                            }}
+                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                          >
+                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="12" y="8" width="40" height="48" rx="4" strokeWidth="2" fill="#1b2028" />
+                              <rect x="8" y="14" width="8" height="12" rx="1" fill="#71717a" strokeWidth="1.5" />
+                              <rect x="8" y="38" width="10" height="10" rx="1" fill="#27272a" strokeWidth="1.5" />
+                              <rect x="22" y="24" width="20" height="12" rx="2" fill="#09090b" strokeWidth="1.5" />
+                              <line x1="48" y1="12" x2="48" y2="28" strokeWidth="3" strokeLinecap="round" stroke="#3f3f46" />
+                              <line x1="48" y1="36" x2="48" y2="52" strokeWidth="3" strokeLinecap="round" stroke="#3f3f46" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Arduino Uno</span>
+                            <span className="text-[9px] text-zinc-500 font-mono">16 MHz MCU</span>
+                          </button>
 
-                          {/* Prototyping (No Emoji) */}
-                          <Collapsible defaultOpen>
-                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
-                              <span>Prototyping</span>
-                              <span className="text-zinc-500 text-[10px]">▼</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const id = `bb_${components.length + 1}`;
-                                  setComponents((prev) => [
-                                    ...prev,
-                                    { id, kind: 'breadboard', x: 300, y: 100, props: {} },
-                                  ]);
-                                }}
-                                className="w-full justify-start text-xs h-7 gap-1.5 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-200"
-                              >
-                                <GoPlus className="text-zinc-400" />
-                                <span>Half Breadboard</span>
-                              </Button>
-                            </CollapsibleContent>
-                          </Collapsible>
+                          {/* 2. Half Breadboard */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `bb_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'breadboard', x: 300, y: 100, props: {} },
+                              ]);
+                            }}
+                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                          >
+                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="6" y="14" width="52" height="36" rx="3" strokeWidth="2" fill="#222228" />
+                              <line x1="12" y1="20" x2="52" y2="20" stroke="#ef4444" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="24" x2="52" y2="24" stroke="#3b82f6" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="32" x2="52" y2="32" stroke="#52525b" strokeWidth="1.5" strokeDasharray="1 3" />
+                              <line x1="12" y1="40" x2="52" y2="40" stroke="#3b82f6" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="44" x2="52" y2="44" stroke="#ef4444" strokeWidth="1" strokeDasharray="2 2" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Breadboard</span>
+                            <span className="text-[9px] text-zinc-500 font-mono">30 Rows (Half)</span>
+                          </button>
 
-                          {/* Outputs (No Emoji) */}
-                          <Collapsible defaultOpen>
-                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
-                              <span>Outputs</span>
-                              <span className="text-zinc-500 text-[10px]">▼</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 pl-1 grid grid-cols-3 gap-1">
+                          {/* 3. LED */}
+                          <div className="bg-[#151519] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all">
+                            <svg className="w-10 h-10 my-1 text-red-500" viewBox="0 0 64 64" fill="none">
+                              <path d="M22 28 C22 18, 42 18, 42 28 L44 38 L20 38 Z" fill="currentColor" fillOpacity="0.4" stroke="currentColor" strokeWidth="2" />
+                              <ellipse cx="32" cy="28" rx="8" ry="7" fill="currentColor" fillOpacity="0.7" />
+                              <line x1="26" y1="38" x2="26" y2="52" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="38" y1="38" x2="38" y2="52" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200">LED Light</span>
+                            <div className="flex items-center gap-1 mt-1">
                               {(['red', 'green', 'blue'] as const).map((col) => (
-                                <Button
+                                <button
                                   key={col}
-                                  variant="outline"
-                                  size="xs"
+                                  type="button"
+                                  title={`Spawn ${col} LED`}
                                   onClick={() => {
                                     const id = `led_${components.length + 1}`;
                                     setComponents((prev) => [
@@ -3058,26 +3243,34 @@ export default function App() {
                                     ]);
                                     tauriInvoke('add_led', { id, color: col });
                                   }}
-                                  className="capitalize text-[11px] h-6 px-1 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
-                                >
-                                  {col}
-                                </Button>
+                                  className="w-4 h-4 rounded-full border border-zinc-700 hover:scale-125 transition-transform cursor-pointer"
+                                  style={{
+                                    backgroundColor:
+                                      col === 'red' ? '#ef4444' : col === 'green' ? '#22c55e' : '#3b82f6',
+                                  }}
+                                />
                               ))}
-                            </CollapsibleContent>
-                          </Collapsible>
+                            </div>
+                          </div>
 
-                          {/* Passives (No Emoji) */}
-                          <Collapsible defaultOpen>
-                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
-                              <span>Passives</span>
-                              <span className="text-zinc-500 text-[10px]">▼</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
+                          {/* 4. Resistor */}
+                          <div className="bg-[#151519] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all">
+                            <svg className="w-10 h-10 my-1 text-zinc-400" viewBox="0 0 64 64" fill="none">
+                              <line x1="8" y1="32" x2="20" y2="32" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="44" y1="32" x2="56" y2="32" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
+                              <rect x="20" y="24" width="24" height="16" rx="4" fill="#d4b996" stroke="#a38258" strokeWidth="1.5" />
+                              <line x1="25" y1="24" x2="25" y2="40" stroke="#ef4444" strokeWidth="2" />
+                              <line x1="29" y1="24" x2="29" y2="40" stroke="#ef4444" strokeWidth="2" />
+                              <line x1="33" y1="24" x2="33" y2="40" stroke="#8b4513" strokeWidth="2" />
+                              <line x1="39" y1="24" x2="39" y2="40" stroke="#d97706" strokeWidth="2" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200">Resistor</span>
+                            <div className="flex items-center gap-1 mt-1">
                               {[220, 1000, 10000].map((ohms) => (
-                                <Button
+                                <button
                                   key={ohms}
-                                  variant="outline"
-                                  size="sm"
+                                  type="button"
+                                  title={`Spawn ${ohms >= 1000 ? `${ohms / 1000}k` : `${ohms}`}Ω Resistor`}
                                   onClick={() => {
                                     const id = `r_${components.length + 1}`;
                                     setComponents((prev) => [
@@ -3086,62 +3279,63 @@ export default function App() {
                                     ]);
                                     tauriInvoke('add_resistor', { id, ohms });
                                   }}
-                                  className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
+                                  className="px-1 py-0.5 rounded text-[9px] font-mono bg-[#18181b] hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 cursor-pointer"
                                 >
-                                  Resistor ({ohms >= 1000 ? `${ohms / 1000}kΩ` : `${ohms}Ω`})
-                                </Button>
+                                  {ohms >= 1000 ? `${ohms / 1000}k` : `${ohms}Ω`}
+                                </button>
                               ))}
-                            </CollapsibleContent>
-                          </Collapsible>
-
-                          {/* Interactive Inputs (No Emoji) */}
-                          <Collapsible defaultOpen>
-                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
-                              <span>Inputs</span>
-                              <span className="text-zinc-500 text-[10px]">▼</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const id = `btn_${components.length + 1}`;
-                                  setComponents((prev) => [
-                                    ...prev,
-                                    { id, kind: 'pushbutton', x: 680, y: 80, props: {} },
-                                  ]);
-                                  tauriInvoke('add_button', { id });
-                                }}
-                                className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
-                              >
-                                Pushbutton
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const id = `pot_${components.length + 1}`;
-                                  setComponents((prev) => [
-                                    ...prev,
-                                    { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } },
-                                  ]);
-                                  tauriInvoke('add_potentiometer', { id });
-                                }}
-                                className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
-                              >
-                                Potentiometer (ADC)
-                              </Button>
-                            </CollapsibleContent>
-                          </Collapsible>
-
-                          {/* Component Inspector */}
-                          {selectedCompId && (
-                            <div className="pt-2 border-t border-[#222226]">
-                              <span className="text-[10px] font-mono text-zinc-400 block mb-1">
-                                Selected: {selectedCompId}
-                              </span>
                             </div>
-                          )}
+                          </div>
+
+                          {/* 5. Pushbutton */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `btn_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'pushbutton', x: 680, y: 80, props: {} },
+                              ]);
+                              tauriInvoke('add_button', { id });
+                            }}
+                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                          >
+                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="18" y="18" width="28" height="28" rx="4" fill="#27272a" strokeWidth="2" />
+                              <circle cx="32" cy="32" r="8" fill="#18181b" strokeWidth="1.5" />
+                              <line x1="12" y1="22" x2="18" y2="22" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="12" y1="42" x2="18" y2="42" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="46" y1="22" x2="52" y2="22" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="46" y1="42" x2="52" y2="42" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Pushbutton</span>
+                            <span className="text-[9px] text-zinc-500 font-mono">Tactile SPST</span>
+                          </button>
+
+                          {/* 6. Potentiometer */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `pot_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } },
+                              ]);
+                              tauriInvoke('add_potentiometer', { id });
+                            }}
+                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                          >
+                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <circle cx="32" cy="28" r="16" fill="#1e1e24" strokeWidth="2" />
+                              <circle cx="32" cy="28" r="8" fill="#2d2d38" strokeWidth="1.5" />
+                              <line x1="32" y1="20" x2="32" y2="28" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="24" y1="44" x2="24" y2="52" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="32" y1="44" x2="32" y2="52" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="40" y1="44" x2="40" y2="52" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Potentiometer</span>
+                            <span className="text-[9px] text-zinc-500 font-mono">10 kΩ Rotary</span>
+                          </button>
                         </div>
                       </ScrollArea>
                     </aside>
@@ -3163,6 +3357,9 @@ export default function App() {
                         onUpdateWire={handleUpdateWire}
                         onDeleteComponent={handleDeleteComponent}
                         onDeleteWire={handleDeleteWire}
+                        onButtonPress={(id, pressed) => {
+                          tauriInvoke('press_button', { id, pressed });
+                        }}
                         onClose={() => toggleInspector()}
                       />
                     </ResizablePanel>
@@ -3201,6 +3398,66 @@ export default function App() {
           onBrowseFolder={handleBrowseNativeFolder}
           recentProjects={recentProjects}
         />
+
+        {/* Modal Dialog: About MicroRustSim */}
+        {showAboutModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs animate-in fade-in duration-100">
+            <div className="w-[360px] bg-[#121215] border border-[#27272a] rounded-lg shadow-2xl p-5 select-none text-zinc-300">
+              <div className="flex items-center justify-between pb-3 border-b border-[#222226]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded bg-[#1e1e24] border border-zinc-700 flex items-center justify-center text-white font-mono font-bold text-xs">
+                    μR
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.0 • Cycle-Accurate Simulator</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAboutModal(false)}
+                  className="text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-[#1a1a1e] transition-colors"
+                >
+                  <GoX className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="py-3.5 space-y-2.5 text-xs">
+                <div className="flex justify-between py-1 border-b border-[#1f1f23]">
+                  <span className="text-zinc-500">Core Engine:</span>
+                  <span className="font-mono text-zinc-200">ATmega328P @ 16.0 MHz</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#1f1f23]">
+                  <span className="text-zinc-500">Architecture:</span>
+                  <span className="font-mono text-zinc-200">Rust (Native) + Tauri v2</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#1f1f23]">
+                  <span className="text-zinc-500">Frontend:</span>
+                  <span className="font-mono text-zinc-200">React 19 + Tailwind v4</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#1f1f23]">
+                  <span className="text-zinc-500">Compiler:</span>
+                  <span className="font-mono text-zinc-200">Arduino-CLI (Genuine GCC)</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-zinc-500">Theme:</span>
+                  <span className="font-mono text-zinc-200">Flat Monochrome Zinc Dark</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between border-t border-[#222226]">
+                <span className="text-[10px] text-zinc-600 font-mono">MIT License</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAboutModal(false)}
+                  className="px-3 py-1 rounded bg-[#1e1e24] hover:bg-[#27272e] text-xs text-zinc-200 hover:text-white border border-zinc-700 font-medium transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </TooltipProvider>

@@ -18,6 +18,7 @@ export interface WireLayerProps {
   globalRoutingMode?: 'curve' | 'ortho';
   selectedWireId?: string | null;
   onWireClick?: (wireId: string) => void;
+  onWireHover?: (wireId: string | null) => void;
   onStartDragSegment?: (
     wireId: string,
     segIndex: number,
@@ -268,6 +269,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
   globalRoutingMode = 'curve',
   selectedWireId,
   onWireClick,
+  onWireHover,
   onStartDragSegment,
   onStartDragWaypoint,
   onAddAndDragWaypoint,
@@ -296,8 +298,14 @@ export const WireLayer: React.FC<WireLayerProps> = ({
           <g
             key={wire.id}
             className="pointer-events-auto group"
-            onMouseEnter={() => setHoveredWireId(wire.id)}
-            onMouseLeave={() => setHoveredWireId((curr) => (curr === wire.id ? null : curr))}
+            onMouseEnter={() => {
+              setHoveredWireId(wire.id);
+              onWireHover?.(wire.id);
+            }}
+            onMouseLeave={() => {
+              setHoveredWireId((curr) => (curr === wire.id ? null : curr));
+              onWireHover?.(null);
+            }}
           >
             {/* 1. Selection Outline: Clean White outline per user request */}
             {isSelected && (
