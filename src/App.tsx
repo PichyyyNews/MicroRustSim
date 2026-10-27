@@ -387,6 +387,7 @@ export default function App() {
   const [lastCompiledCode, setLastCompiledCode] = useState<string | null>(null);
   const [pin13State, setPin13State] = useState(false);
   const [litLeds, setLitLeds] = useState<Set<string>>(new Set());
+  const [ledBrightness, setLedBrightness] = useState<Record<string, number>>({});
   const [serialLogs, setSerialLogs] = useState<string>(
     '[System] MicroRustSim Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n'
   );
@@ -1144,6 +1145,7 @@ export default function App() {
           const res = await tauriInvoke<{
             pin13: boolean;
             lit_leds: string[];
+            led_brightness?: Record<string, number>;
             serial_output: string | null;
             millis: number;
           }>('step_simulation', { cycles: 266666 });
@@ -1151,6 +1153,7 @@ export default function App() {
           if (!cancelled && res) {
             setPin13State(res.pin13);
             setLitLeds(new Set(res.lit_leds));
+            setLedBrightness(res.led_brightness || {});
             if (res.serial_output) {
               setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
             }
@@ -2340,6 +2343,8 @@ export default function App() {
                       onClick={() => {
                         setIsRunning(false);
                         tauriInvoke('reset_simulation');
+                        setLitLeds(new Set());
+                        setLedBrightness({});
                         setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
                         setStatusMessage('MCU Reset');
                       }}
@@ -2953,6 +2958,7 @@ export default function App() {
                               id={c.id}
                               color={(c.props.color as any) || 'red'}
                               isLit={litLeds.has(c.id)}
+                              brightness={ledBrightness[c.id]}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
@@ -3465,6 +3471,8 @@ export default function App() {
                         selectedWireId={selectedWireId}
                         components={components}
                         wires={wires}
+                        litLeds={litLeds}
+                        ledBrightness={ledBrightness}
                         onUpdateComponent={handleUpdateComponent}
                         onUpdateWire={handleUpdateWire}
                         onDeleteComponent={handleDeleteComponent}

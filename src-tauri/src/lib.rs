@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender};
 use std::thread;
 use parking_lot::Mutex;
@@ -29,6 +30,7 @@ pub struct CompileResult {
 pub struct StepResult {
     pub pin13: bool,
     pub lit_leds: Vec<String>,
+    pub led_brightness: HashMap<String, f32>,
     pub serial_output: Option<String>,
     pub millis: f64,
 }
@@ -446,6 +448,13 @@ pub fn run() {
                         .map(|l| l.id.clone())
                         .collect();
 
+                    let mut led_brightness = HashMap::new();
+                    for (id, l) in &engine.leds {
+                        if l.is_lit {
+                            led_brightness.insert(id.clone(), l.brightness);
+                        }
+                    }
+
                     let raw_bytes = engine.mcu.read_serial_output();
                     let serial_output = if !raw_bytes.is_empty() {
                         Some(String::from_utf8_lossy(&raw_bytes).to_string())
@@ -457,6 +466,7 @@ pub fn run() {
                     let _ = reply.send(StepResult {
                         pin13,
                         lit_leds,
+                        led_brightness,
                         serial_output,
                         millis,
                     });
@@ -516,9 +526,17 @@ pub fn run() {
                                 engine.leds.insert(c.id.clone(), components::LedComponent::new(c.id, color));
                             }
                             "resistor" => {
-                                let ohms = c.props.get("value")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| s.parse::<f32>().ok())
+                                let ohms = c.props.get("ohms")
+                                    .or_else(|| c.props.get("value"))
+                                    .and_then(|v| {
+                                        if let Some(f) = v.as_f64() {
+                                            Some(f as f32)
+                                        } else if let Some(s) = v.as_str() {
+                                            s.parse::<f32>().ok()
+                                        } else {
+                                            None
+                                        }
+                                    })
                                     .unwrap_or(220.0);
                                 engine.resistors.insert(c.id.clone(), components::ResistorComponent::new(c.id, ohms));
                             }

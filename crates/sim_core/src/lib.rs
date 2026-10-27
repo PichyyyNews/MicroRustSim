@@ -372,13 +372,15 @@ pub mod components {
         }
 
         pub fn forward_voltage(&self) -> f32 {
-            match self.color.to_lowercase().as_str() {
-                "red" => 1.8,
-                "yellow" => 2.0,
-                "green" => 2.2,
-                "blue" => 3.0,
-                "white" => 3.0,
-                _ => 1.8,
+            let c = self.color.to_lowercase();
+            match c.as_str() {
+                "red" | "#ef4444" => 1.8,
+                "yellow" | "#eab308" => 2.0,
+                "orange" | "#f97316" => 2.0,
+                "green" | "#22c55e" => 2.2,
+                "blue" | "#3b82f6" => 3.2,
+                "white" | "#f8fafc" => 3.2,
+                _ => 2.0,
             }
         }
     }
@@ -809,9 +811,9 @@ impl SimulationEngine {
         // 4. Update LED states: lit only when forward current flows through closed circuit
         for (led_id, led) in self.leds.iter_mut() {
             if let Some(&current) = led_currents.get(led_id) {
-                if current > 0.0005 {
+                if current > 0.00005 {
                     led.is_lit = true;
-                    led.brightness = (current / 0.015).clamp(0.2, 1.0);
+                    led.brightness = (current / 0.015).clamp(0.02, 1.0);
                 } else {
                     led.is_lit = false;
                     led.brightness = 0.0;
@@ -1134,5 +1136,36 @@ mod tests {
         engine.resolve_electrical_nets();
         let zero_v = *engine.pin_voltages.get(&PinId::new("uno1", "A0")).unwrap_or(&0.0);
         assert!(zero_v < 0.05, "A0 at 0% wiper must receive 0.0V, got {}", zero_v);
+    }
+
+    #[test]
+    fn test_led_brightness_scales_with_resistance() {
+        let mut engine = SimulationEngine::new_with_uno();
+        engine.leds.insert("led1".into(), components::LedComponent::new("led1", "red"));
+        engine.resistors.insert("r1".into(), components::ResistorComponent::new("r1", 220.0));
+
+        // Connect 5V -> led1:anode -> led1:cathode -> r1:1 -> r1:2 -> GND
+        engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("led1", "anode"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w2".into(), from: PinId::new("led1", "cathode"), to: PinId::new("r1", "1"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w3".into(), from: PinId::new("r1", "2"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+        // 1. With 220 ohm resistor, LED should be bright (~0.90)
+        engine.resolve_electrical_nets();
+        assert!(engine.leds["led1"].is_lit);
+        let bright_220 = engine.leds["led1"].brightness;
+        assert!(bright_220 > 0.8, "At 220 ohms, LED brightness should be > 0.8, got {}", bright_220);
+
+        // 2. With 1000 ohm (1k) resistor, LED should be noticeably dimmer
+        engine.resistors.get_mut("r1").unwrap().resistance_ohms = 1000.0;
+        engine.resolve_electrical_nets();
+        assert!(engine.leds["led1"].is_lit);
+        let bright_1k = engine.leds["led1"].brightness;
+        assert!(bright_1k < bright_220 * 0.4, "At 1k ohms, LED brightness should be < 40% of 220 ohms, got {}", bright_1k);
+
+        // 3. With 100k ohm resistor, current is tiny (< 0.05mA) so LED turns off
+        engine.resistors.get_mut("r1").unwrap().resistance_ohms = 100_000.0;
+        engine.resolve_electrical_nets();
+        assert!(!engine.leds["led1"].is_lit, "At 100k ohms, LED should not be lit");
+        assert_eq!(engine.leds["led1"].brightness, 0.0);
     }
 }

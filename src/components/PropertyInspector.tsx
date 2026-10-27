@@ -23,6 +23,8 @@ export interface PropertyInspectorProps {
   selectedWireId: string | null;
   components: CircuitComponent[];
   wires: CircuitWire[];
+  litLeds?: Set<string>;
+  ledBrightness?: Record<string, number>;
   onUpdateComponent: (id: string, updates: Partial<CircuitComponent>) => void;
   onUpdateWire: (id: string, updates: Partial<CircuitWire>) => void;
   onDeleteComponent: (id: string) => void;
@@ -72,6 +74,8 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   selectedWireId,
   components,
   wires,
+  litLeds,
+  ledBrightness,
   onUpdateComponent,
   onUpdateWire,
   onDeleteComponent,
@@ -632,18 +636,33 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     </>
                   )}
 
-                  {selectedComp.kind === 'led' && (
-                    <>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Anode (+):</span>
-                        <span className="font-mono text-zinc-300">Logic Drive</span>
-                      </div>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Cathode (–):</span>
-                        <span className="font-mono text-zinc-300">GND Return</span>
-                      </div>
-                    </>
-                  )}
+                  {selectedComp.kind === 'led' && (() => {
+                    const isLit = litLeds?.has(selectedComp.id);
+                    const b = isLit ? (ledBrightness?.[selectedComp.id] ?? 1.0) : 0;
+                    const estCurrentMa = isLit ? (b * 15).toFixed(1) : '0.0';
+                    return (
+                      <>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Emission:</span>
+                          <span className={`font-mono font-semibold ${isLit ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                            {isLit ? `ON (${Math.round(b * 100)}%)` : 'OFF'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Current (est.):</span>
+                          <span className="font-mono text-zinc-300">{estCurrentMa} mA</span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Anode (+):</span>
+                          <span className="font-mono text-zinc-300">Logic Drive</span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Cathode (–):</span>
+                          <span className="font-mono text-zinc-300">GND Return</span>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {selectedComp.kind === 'resistor' && (
                     <div className="flex justify-between py-0.5">
