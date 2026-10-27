@@ -330,37 +330,60 @@ export default function App() {
     [components]
   );
 
-  // --- Simulation Cycle Loop (60 FPS) ---
+  // --- Simulation Cycle Loop (60 FPS, Strict Single-Flight Concurrency) ---
+  const isRunningRef = useRef(isRunning);
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+  }, [isRunning]);
+
+  const isSteppingRef = useRef(false);
+
   useEffect(() => {
     let animId: number;
+    let cancelled = false;
 
     const loop = async () => {
-      if (isRunning) {
-        const res = await tauriInvoke<{
-          pin13: boolean;
-          lit_leds: string[];
-          serial_output: string | null;
-          millis: number;
-        }>('step_simulation', { cycles: 266666 });
+      if (cancelled) return;
 
-        if (res) {
-          setPin13State(res.pin13);
-          setLitLeds(new Set(res.lit_leds));
-          if (res.serial_output) {
-            setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
+      if (isRunningRef.current && !isSteppingRef.current) {
+        isSteppingRef.current = true;
+        try {
+          const res = await tauriInvoke<{
+            pin13: boolean;
+            lit_leds: string[];
+            serial_output: string | null;
+            millis: number;
+          }>('step_simulation', { cycles: 266666 });
+
+          if (!cancelled && res) {
+            setPin13State(res.pin13);
+            setLitLeds(new Set(res.lit_leds));
+            if (res.serial_output) {
+              setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
+            }
+            setLogicHistory((prev) => {
+              const next = [...prev, [res.millis, res.pin13 ? 5.0 : 0.0] as [number, number]];
+              return next.slice(-250);
+            });
           }
-          setLogicHistory((prev) => {
-            const next = [...prev, [res.millis, res.pin13 ? 5.0 : 0.0] as [number, number]];
-            return next.slice(-250);
-          });
+        } catch (err) {
+          console.error('step_simulation error:', err);
+        } finally {
+          isSteppingRef.current = false;
         }
       }
-      animId = requestAnimationFrame(loop);
+
+      if (!cancelled) {
+        animId = requestAnimationFrame(loop);
+      }
     };
 
     animId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animId);
-  }, [isRunning]);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+    };
+  }, []);
 
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
@@ -388,6 +411,7 @@ export default function App() {
         if (res.success) {
           setLastCompiledCode(sketchCode);
           setStatusMessage('Build Succeeded. Running @ 16 MHz.');
+          setSerialLogs((prev) => `${prev.trimEnd()}\n--- Upload Succeeded & Running ---\n`);
           setBottomTab('serial');
           setIsRunning(true);
           await tauriInvoke('start_simulation');
