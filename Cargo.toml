@@ -6,4 +6,5 @@ members = [
     "crates/sim_storage",
     "crates/sim_canvas",
     "crates/app",
+    "src-tauri",
 ]

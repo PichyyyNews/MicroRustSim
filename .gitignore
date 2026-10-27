@@ -18,6 +18,11 @@ Desktop.ini
 *.log
 *.tmp
 
+# Node / Web build artifacts
+node_modules/
+dist/
+package-lock.json
+
 # AppData / runtime local data
 data/
 *.db-journal
