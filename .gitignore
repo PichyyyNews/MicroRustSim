@@ -1,0 +1,24 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# IDE and Editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Windows & OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs & temp files
+*.log
+*.tmp
+
+# AppData / runtime local data
+data/
+*.db-journal
+*.db-wal

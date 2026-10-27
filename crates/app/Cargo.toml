@@ -1,0 +1,16 @@
+[package]
+name = "microrustsim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sim_core = { path = "../sim_core" }
+sim_compiler = { path = "../sim_compiler" }
+sim_storage = { path = "../sim_storage" }
+sim_canvas = { path = "../sim_canvas" }
+eframe = { version = "0.36.2", default-features = true }
+egui = { version = "0.36.2", features = ["serde"] }
+egui_plot = "0.37.0"
+crossbeam-channel = "0.5.17"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
