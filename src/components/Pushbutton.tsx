@@ -30,7 +30,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ onPressChange, onPinMous
       {/* 1a (Top-Left) */}
       <div
         title="1a"
-        className="absolute -top-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-[#8b5cf6] cursor-crosshair"
+        className="absolute -top-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1a', e);
@@ -39,7 +39,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ onPressChange, onPinMous
       {/* 1b (Top-Right) */}
       <div
         title="1b"
-        className="absolute -top-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-[#8b5cf6] cursor-crosshair"
+        className="absolute -top-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('1b', e);
@@ -48,7 +48,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ onPressChange, onPinMous
       {/* 2a (Bottom-Left) */}
       <div
         title="2a"
-        className="absolute -bottom-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-[#8b5cf6] cursor-crosshair"
+        className="absolute -bottom-1.5 -left-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2a', e);
@@ -57,7 +57,7 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({ onPressChange, onPinMous
       {/* 2b (Bottom-Right) */}
       <div
         title="2b"
-        className="absolute -bottom-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-[#8b5cf6] cursor-crosshair"
+        className="absolute -bottom-1.5 -right-1 w-2 h-2 rounded-full bg-zinc-400 border border-zinc-600 hover:bg-emerald-500 cursor-crosshair"
         onMouseDown={(e) => {
           e.stopPropagation();
           onPinMouseDown?.('2b', e);

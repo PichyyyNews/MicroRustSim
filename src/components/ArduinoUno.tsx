@@ -146,7 +146,7 @@ export const ArduinoUno: React.FC<ArduinoUnoProps> = ({ pin13Lit, onPinMouseDown
         <div
           key={name}
           title={`Pin: ${name}`}
-          className="absolute w-3.5 h-3.5 -ml-[7px] -mt-[7px] rounded-full border border-[#475569] bg-[#020617] hover:bg-[#8b5cf6] hover:scale-125 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow"
+          className="absolute w-3.5 h-3.5 -ml-[7px] -mt-[7px] rounded-full border border-[#475569] bg-[#020617] hover:bg-emerald-500 hover:scale-125 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow"
           style={{ left: pos.x, top: pos.y }}
           onMouseDown={(e) => {
             e.stopPropagation();

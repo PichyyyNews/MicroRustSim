@@ -13,6 +13,10 @@ import {
   GoGear,
   GoFile,
   GoSidebarCollapse,
+  GoCheck,
+  GoZoomIn,
+  GoZoomOut,
+  GoCpu,
 } from 'react-icons/go';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -36,6 +40,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable';
 
 import { ArduinoUno, ARDUINO_PINS } from './components/ArduinoUno';
 import { Breadboard } from './components/Breadboard';
@@ -89,9 +98,9 @@ const WIRE_COLORS = [
   { hex: '#ef4444', name: 'Red' },
   { hex: '#3b82f6', name: 'Blue' },
   { hex: '#eab308', name: 'Yellow' },
-  { hex: '#000000', name: 'Black' },
+  { hex: '#18181b', name: 'Black' },
   { hex: '#f97316', name: 'Orange' },
-  { hex: '#8b5cf6', name: 'Purple' },
+  { hex: '#71717a', name: 'Gray' },
   { hex: '#ffffff', name: 'White' },
 ];
 
@@ -107,8 +116,8 @@ export default function App() {
   const [pin13State, setPin13State] = useState(false);
   const [litLeds, setLitLeds] = useState<Set<string>>(new Set());
   const [serialLogs, setSerialLogs] = useState<string[]>([
-    '[System] MicroRustSim Online with shadcn/ui Design System.\n',
-    '[System] ATmega328P Cycle-Accurate Core Ready.\n',
+    '[System] MicroRustSim Core Online.\n',
+    '[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n',
   ]);
   const [buildLogs, setBuildLogs] = useState<string>('Ready to compile sketches with avr-gcc.\n');
   const [serialInput, setSerialInput] = useState('');
@@ -141,7 +150,7 @@ export default function App() {
   const [wires, setWires] = useState<CircuitWire[]>([
     { id: 'w1', fromComp: 'uno1', fromPin: '13', toComp: 'led1', toPin: 'anode', color: '#22c55e' },
     { id: 'w2', fromComp: 'led1', fromPin: 'cathode', toComp: 'r1', toPin: '1', color: '#eab308' },
-    { id: 'w3', fromComp: 'r1', fromPin: '2', toComp: 'uno1', toPin: 'GND', color: '#000000' },
+    { id: 'w3', fromComp: 'r1', fromPin: '2', toComp: 'uno1', toPin: 'GND', color: '#18181b' },
   ]);
 
   // --- Selected Component / Active Wire Creation ---
@@ -254,7 +263,7 @@ export default function App() {
         setStatusMessage('Compilation Failed. Check build output.');
       }
     } else {
-      setBuildLogs('[Web Preview] Compiled Arduino Uno sketch successfully.\n');
+      setBuildLogs('[Preview] Compiled Arduino Uno sketch successfully.\n');
       setIsRunning(true);
     }
   };
@@ -311,167 +320,306 @@ export default function App() {
   };
 
   return (
-    <TooltipProvider delay={100}>
+    <TooltipProvider delay={150}>
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
         
-        {/* 1. Header Toolbar (Low-Text, Icon-First with shadcn/ui Components) */}
-        <header className="h-11 bg-card border-b border-border px-3 flex items-center justify-between select-none z-30">
-          <div className="flex items-center gap-2">
-            {/* Logo Badge */}
-            <div className="flex items-center gap-2 mr-1">
-              <span className="w-6 h-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shadow-md shadow-primary/30">
-                µR
-              </span>
-              <span className="font-bold text-xs tracking-tight text-foreground">MicroRustSim</span>
-            </div>
+        {/* 1. Top IDE Toolbar (Flat, Minimal, Program Name in front of File, No Logo/Text clutter, Only Icons) */}
+        <header className="h-9 bg-[#121215] border-b border-[#222226] px-2 flex items-center justify-between select-none z-30 shrink-0">
+          <div className="flex items-center gap-1">
+            
+            {/* Program Name in front of File (Clean, Sharp, No Purple Logo Box) */}
+            <span className="font-semibold text-xs text-zinc-200 tracking-tight pl-1 pr-2 select-none">
+              MicroRustSim
+            </span>
 
-            {/* Dropdown Menu for File actions (Progressive Disclosure) */}
+            {/* Menubar: File */}
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="text-xs h-6 px-2 text-muted-foreground hover:text-foreground">File</Button>} />
-              <DropdownMenuContent align="start" className="w-48 bg-card border border-border">
-                <DropdownMenuItem className="text-xs flex items-center gap-2" onClick={() => {
-                  setSketchCode(DEFAULT_BLINK_CODE);
-                  setStatusMessage('New Project Created');
-                }}>
-                  <GoPlus className="text-primary" /> New Project
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                  >
+                    File
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-48 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => {
+                    setSketchCode(DEFAULT_BLINK_CODE);
+                    setStatusMessage('New Project Created');
+                  }}
+                >
+                  <GoPlus className="text-zinc-400" /> New Project
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-xs flex items-center gap-2" onClick={() => setStatusMessage('Project Saved')}>
-                  <GoFile className="text-primary" /> Save Project
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setStatusMessage('Project Saved to SQLite')}
+                >
+                  <GoFile className="text-zinc-400" /> Save Project
                 </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-border" />
-                <DropdownMenuItem className="text-xs text-muted-foreground" onClick={() => {
-                  navigator.clipboard.writeText(sketchCode);
-                  setStatusMessage('Code copied to clipboard');
-                }}>
-                  Copy Code
+                <DropdownMenuSeparator className="bg-[#27272a]" />
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-400 focus:bg-zinc-800"
+                  onClick={() => {
+                    navigator.clipboard.writeText(sketchCode);
+                    setStatusMessage('Code copied to clipboard');
+                  }}
+                >
+                  Copy Sketch Code
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Separator orientation="vertical" className="h-4 mx-0.5" />
+            {/* Menubar: View (Centralized View Controls) */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                  >
+                    View
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-56 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
+                <DropdownMenuItem
+                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setShowEditor(!showEditor)}
+                >
+                  <span className="flex items-center gap-2">
+                    <GoCode className="text-zinc-400" /> Code Editor
+                  </span>
+                  {showEditor && <GoCheck className="text-emerald-400" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setShowPalette(!showPalette)}
+                >
+                  <span className="flex items-center gap-2">
+                    <GoPackage className="text-zinc-400" /> Component Palette
+                  </span>
+                  {showPalette && <GoCheck className="text-emerald-400" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center justify-between cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setShowDrawer(!showDrawer)}
+                >
+                  <span className="flex items-center gap-2">
+                    <GoTerminal className="text-zinc-400" /> Bottom Console
+                  </span>
+                  {showDrawer && <GoCheck className="text-emerald-400" />}
+                </DropdownMenuItem>
 
-            {/* Primary Action Button (Single Primary Button per View rule) */}
+                <DropdownMenuSeparator className="bg-[#27272a]" />
+
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => {
+                    setShowDrawer(true);
+                    setBottomTab('waveform');
+                  }}
+                >
+                  <GoGraph className="text-zinc-400" /> Switch to Logic Waveform
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => {
+                    setShowDrawer(true);
+                    setBottomTab('serial');
+                  }}
+                >
+                  <GoTerminal className="text-zinc-400" /> Switch to Serial Monitor
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator className="bg-[#27272a]" />
+
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => {
+                    setZoom(1.0);
+                    setPan({ x: 80, y: 50 });
+                  }}
+                >
+                  Reset Zoom & Center (100%)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setZoom((z) => Math.min(3.0, z * 1.15))}
+                >
+                  <GoZoomIn className="text-zinc-400" /> Zoom In
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => setZoom((z) => Math.max(0.3, z * 0.85))}
+                >
+                  <GoZoomOut className="text-zinc-400" /> Zoom Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
+
+            {/* Quick Action: Run / Pause (Only Icon) */}
             {isRunning ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsRunning(false);
-                  tauriInvoke('pause_simulation');
-                }}
-                className="bg-warning text-warning-foreground hover:bg-warning/90 border-transparent text-xs h-7 px-2.5 font-semibold gap-1.5 shadow"
-              >
-                <PauseIcon className="text-sm" />
-                <span>Pause</span>
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => {
+                        setIsRunning(false);
+                        tauriInvoke('pause_simulation');
+                      }}
+                      className="h-6 w-6 text-amber-400 hover:text-amber-300 hover:bg-amber-950/40"
+                    >
+                      <PauseIcon className="text-xs" />
+                    </Button>
+                  }
+                />
+                <TooltipContent className="text-xs">Pause Simulation</TooltipContent>
+              </Tooltip>
             ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => {
-                  setIsRunning(true);
-                  tauriInvoke('start_simulation');
-                }}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7 px-3 font-semibold gap-1.5 shadow-md shadow-primary/20"
-              >
-                <GoPlay className="text-sm" />
-                <span>Run</span>
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => {
+                        setIsRunning(true);
+                        tauriInvoke('start_simulation');
+                      }}
+                      className="h-6 w-6 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40"
+                    >
+                      <GoPlay className="text-xs" />
+                    </Button>
+                  }
+                />
+                <TooltipContent className="text-xs">Run Simulation (16 MHz)</TooltipContent>
+              </Tooltip>
             )}
 
-            {/* Secondary Action: Compile & Upload */}
+            {/* Quick Action: Upload (Only Icon) */}
             <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCompile}
-                  className="text-xs h-7 px-2.5 gap-1 text-foreground"
-                >
-                  <GoZap className="text-primary" />
-                  <span>Upload</span>
-                </Button>
-              } />
-              <TooltipContent>Compile & Flash to ATmega328P</TooltipContent>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={handleCompile}
+                    className="h-6 w-6 text-zinc-300 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                  >
+                    <GoZap className="text-xs" />
+                  </Button>
+                }
+              />
+              <TooltipContent className="text-xs">Compile & Flash to ATmega328P</TooltipContent>
             </Tooltip>
 
-            {/* Secondary Action: Reset */}
+            {/* Quick Action: Reset (Only Icon) */}
             <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => {
-                    setIsRunning(false);
-                    tauriInvoke('reset_simulation');
-                    setSerialLogs([]);
-                  }}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                >
-                  <GoSync />
-                </Button>
-              } />
-              <TooltipContent>Reset MCU Cycle Clock</TooltipContent>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => {
+                      setIsRunning(false);
+                      tauriInvoke('reset_simulation');
+                      setSerialLogs([]);
+                    }}
+                    className="h-6 w-6 text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]"
+                  >
+                    <GoSync className="text-xs" />
+                  </Button>
+                }
+              />
+              <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-4 mx-0.5" />
+            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
 
-            {/* 1-Click Collapsible Drawer Toggles (Using Tooltips + Button variant="ghost") */}
+            {/* Drawer Quick Toggles (Icon Only, Flat Zinc Active, No Purple) */}
             <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant={showEditor ? 'secondary' : 'ghost'}
-                  size="icon-sm"
-                  onClick={() => setShowEditor(!showEditor)}
-                  className={`h-7 w-7 ${showEditor ? 'text-primary' : 'text-muted-foreground'}`}
-                >
-                  <GoCode />
-                </Button>
-              } />
-              <TooltipContent>Toggle C++ Code Editor</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant={showPalette ? 'secondary' : 'ghost'}
-                  size="icon-sm"
-                  onClick={() => setShowPalette(!showPalette)}
-                  className={`h-7 w-7 ${showPalette ? 'text-primary' : 'text-muted-foreground'}`}
-                >
-                  <GoPackage />
-                </Button>
-              } />
-              <TooltipContent>Toggle Component Library</TooltipContent>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowEditor(!showEditor)}
+                    className={`h-6 w-6 ${
+                      showEditor
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                    }`}
+                  >
+                    <GoCode className="text-xs" />
+                  </Button>
+                }
+              />
+              <TooltipContent className="text-xs">Toggle Code Editor</TooltipContent>
             </Tooltip>
 
             <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant={showDrawer ? 'secondary' : 'ghost'}
-                  size="icon-sm"
-                  onClick={() => setShowDrawer(!showDrawer)}
-                  className={`h-7 w-7 ${showDrawer ? 'text-primary' : 'text-muted-foreground'}`}
-                >
-                  <GoTerminal />
-                </Button>
-              } />
-              <TooltipContent>Toggle Output Console</TooltipContent>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowPalette(!showPalette)}
+                    className={`h-6 w-6 ${
+                      showPalette
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                    }`}
+                  >
+                    <GoPackage className="text-xs" />
+                  </Button>
+                }
+              />
+              <TooltipContent className="text-xs">Toggle Component Palette</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-4 mx-0.5" />
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowDrawer(!showDrawer)}
+                    className={`h-6 w-6 ${
+                      showDrawer
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                    }`}
+                  >
+                    <GoTerminal className="text-xs" />
+                  </Button>
+                }
+              />
+              <TooltipContent className="text-xs">Toggle Bottom Console</TooltipContent>
+            </Tooltip>
 
-            {/* Wire Color Palette Dots */}
-            <div className="flex items-center gap-1.5 ml-1">
+            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
+
+            {/* Wire Color Palette Dots (Clean, Flat, No Purple Halo) */}
+            <div className="flex items-center gap-1 ml-1">
               {WIRE_COLORS.map((c) => (
                 <button
                   key={c.hex}
                   title={`Wire Color: ${c.name}`}
                   onClick={() => setCurrentWireColor(c.hex)}
-                  className={`w-3.5 h-3.5 rounded-sm transition-transform ${
+                  className={`w-3 h-3 rounded-full transition-all ${
                     currentWireColor === c.hex
-                      ? 'ring-2 ring-primary scale-110'
-                      : 'border border-border hover:scale-105'
+                      ? 'ring-2 ring-zinc-300 scale-110'
+                      : 'border border-zinc-700 hover:scale-105 opacity-80 hover:opacity-100'
                   }`}
                   style={{ backgroundColor: c.hex }}
                 />
@@ -480,471 +628,589 @@ export default function App() {
           </div>
 
           {/* Right Status Badges */}
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs text-muted-foreground font-mono">{projectName}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-zinc-500 font-mono">{projectName}</span>
             <Badge
               variant="outline"
-              className={`font-mono text-[11px] gap-1.5 h-6 px-2.5 ${
+              className={`font-mono text-[10px] gap-1.5 h-5 px-2 border-zinc-800 ${
                 isRunning
-                  ? 'border-emerald-500/40 text-emerald-400 bg-emerald-950/20'
-                  : 'border-border text-muted-foreground bg-muted'
+                  ? 'border-emerald-600/40 text-emerald-400 bg-emerald-950/20'
+                  : 'text-zinc-500 bg-[#18181b]'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-muted-foreground'}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
+                }`}
+              />
               {isRunning ? '16 MHz' : 'PAUSED'}
             </Badge>
           </div>
         </header>
 
-        {/* 2. Main Workspace */}
-        <div className="flex-1 flex overflow-hidden relative">
+        {/* 2. Main Resizable Workspace (Left Editor, Center Canvas, Right Palette, Bottom Terminal) */}
+        <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">
           
-          {/* Left Drawer: Monaco Code Editor */}
-          {showEditor && (
-            <aside className="w-80 lg:w-96 bg-card border-r border-border flex flex-col z-20 shadow-xl transition-all">
-              <div className="h-8 px-3 border-b border-border flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <GoFile className="text-primary" /> sketch.ino
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setShowEditor(false)}
-                  title="Collapse Editor"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                >
-                  <GoSidebarCollapse />
-                </Button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <Editor
-                  height="100%"
-                  defaultLanguage="cpp"
-                  theme="vs-dark"
-                  value={sketchCode}
-                  onChange={(val) => setSketchCode(val || '')}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    padding: { top: 8 },
-                  }}
-                />
-              </div>
-            </aside>
-          )}
+          {/* Top Resizable Section: Editor + Canvas + Component Palette */}
+          <ResizablePanel defaultSize={showDrawer ? 72 : 100} minSize={30}>
+            <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+              
+              {/* Left Sidebar: Monaco Code Editor */}
+              {showEditor && (
+                <>
+                  <ResizablePanel defaultSize={28} minSize={15} maxSize={50}>
+                    <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
+                      <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
+                        <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
+                          <GoFile className="text-zinc-500" /> sketch.ino
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setShowEditor(false)}
+                          title="Collapse Editor"
+                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                        >
+                          <GoSidebarCollapse />
+                        </Button>
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <Editor
+                          height="100%"
+                          defaultLanguage="cpp"
+                          theme="vs-dark"
+                          value={sketchCode}
+                          onChange={(val) => setSketchCode(val || '')}
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                            lineNumbers: 'on',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            padding: { top: 8 },
+                          }}
+                        />
+                      </div>
+                    </aside>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+                </>
+              )}
 
-          {/* Center Canvas: Interactive Breadboard & Circuit Simulator */}
-          <main
-            className="flex-1 relative overflow-hidden canvas-grid bg-background cursor-default"
-            onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseUp={handleCanvasMouseUp}
-            onWheel={handleCanvasWheel}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            {/* Viewport Container */}
-            <div
-              className="absolute origin-top-left transition-transform duration-75"
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              }}
-            >
-              {/* Circuit Components */}
-              {components.map((comp) => (
-                <div
-                  key={comp.id}
-                  className="absolute"
-                  style={{ left: comp.x, top: comp.y }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedCompId(comp.id);
-                  }}
+              {/* Center Canvas: Interactive Breadboard & Circuit Simulator */}
+              <ResizablePanel
+                defaultSize={showEditor && showPalette ? 50 : showEditor || showPalette ? 72 : 100}
+                minSize={30}
+              >
+                <main
+                  className="h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] cursor-default"
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onWheel={handleCanvasWheel}
+                  onContextMenu={(e) => e.preventDefault()}
                 >
-                  {comp.kind === 'arduino_uno' && (
-                    <ArduinoUno
-                      pin13Lit={pin13State}
-                      onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)}
-                    />
-                  )}
-                  {comp.kind === 'breadboard' && (
-                    <Breadboard onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)} />
-                  )}
-                  {comp.kind === 'led' && (
-                    <Led
-                      id={comp.id}
-                      color={comp.props.color || 'red'}
-                      isLit={litLeds.has(comp.id) || (comp.id === 'led1' && pin13State)}
-                      onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)}
-                    />
-                  )}
-                  {comp.kind === 'resistor' && (
-                    <Resistor
-                      ohms={comp.props.ohms || 220}
-                      onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)}
-                    />
-                  )}
-                  {comp.kind === 'pushbutton' && (
-                    <Pushbutton
-                      id={comp.id}
-                      onPressChange={(pressed) => tauriInvoke('press_button', { id: comp.id, pressed })}
-                      onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)}
-                    />
-                  )}
-                  {comp.kind === 'potentiometer' && (
-                    <Potentiometer
-                      id={comp.id}
-                      value={comp.props.value || 0.5}
-                      onValueChange={(val) => tauriInvoke('set_potentiometer', { id: comp.id, value: val })}
-                      onPinMouseDown={(pin) => handlePinMouseDown(comp.id, pin)}
-                    />
-                  )}
-                </div>
-              ))}
-
-              {/* Bezier Wires */}
-              <WireLayer
-                wires={wires}
-                getPinWorldPos={getPinWorldPos}
-                draggingWire={
-                  wireDraftStart
-                    ? {
-                        fromX: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.x || 0,
-                        fromY: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.y || 0,
-                        toX: mouseCanvasPos.x,
-                        toY: mouseCanvasPos.y,
-                        color: currentWireColor,
+                  {/* Viewport Transform Container */}
+                  <div
+                    className="absolute inset-0 pointer-events-none origin-top-left"
+                    style={{
+                      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    }}
+                  >
+                    {/* Wires Layer */}
+                    <WireLayer
+                      wires={wires}
+                      getPinWorldPos={getPinWorldPos}
+                      draggingWire={
+                        wireDraftStart
+                          ? {
+                              fromX: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.x || 0,
+                              fromY: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.y || 0,
+                              toX: mouseCanvasPos.x,
+                              toY: mouseCanvasPos.y,
+                              color: currentWireColor,
+                            }
+                          : null
                       }
-                    : null
-                }
-                onWireClick={(wireId) => {
-                  setWires((prev) => prev.filter((w) => w.id !== wireId));
-                  tauriInvoke('remove_wire', { id: wireId });
-                }}
-              />
-            </div>
-
-            {/* Floating Navigation Hint */}
-            <div className="absolute bottom-3 left-3 bg-card/90 backdrop-blur border border-border rounded-md px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-3 shadow-lg pointer-events-none">
-              <span>🖱 Click Pin to Wire</span>
-              <span>•</span>
-              <span>Right-click / Middle-drag: Pan</span>
-              <span>•</span>
-              <span>Scroll: Zoom {(zoom * 100).toFixed(0)}%</span>
-            </div>
-          </main>
-
-          {/* Right Drawer: Component Palette (Using shadcn Collapsible + Outline Buttons) */}
-          {showPalette && (
-            <aside className="w-64 bg-card border-l border-border flex flex-col z-20 shadow-xl transition-all">
-              <div className="h-8 px-3 border-b border-border flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground flex items-center gap-1.5">
-                  <GoPackage className="text-primary" /> Components
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setShowPalette(false)}
-                  title="Collapse Palette"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                >
-                  <GoSidebarCollapse className="rotate-180" />
-                </Button>
-              </div>
-
-              <ScrollArea className="flex-1 p-3">
-                <div className="space-y-3 text-xs">
-                  {/* Core Processing */}
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-2 rounded-md hover:bg-muted font-semibold text-foreground">
-                      <span>🖳 Processing</span>
-                      <span className="text-muted-foreground text-[10px]">▼</span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-1.5 pl-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const id = `uno_${components.length + 1}`;
-                          setComponents((prev) => [
-                            ...prev,
-                            { id, kind: 'arduino_uno', x: 100, y: 150, props: {} },
-                          ]);
-                        }}
-                        className="w-full justify-start text-xs h-7 gap-1.5"
-                      >
-                        <GoPlus className="text-primary" />
-                        <span>Arduino Uno R3</span>
-                      </Button>
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Prototyping */}
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-2 rounded-md hover:bg-muted font-semibold text-foreground">
-                      <span>▤ Prototyping</span>
-                      <span className="text-muted-foreground text-[10px]">▼</span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-1.5 pl-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const id = `bb_${components.length + 1}`;
-                          setComponents((prev) => [
-                            ...prev,
-                            { id, kind: 'breadboard', x: 380, y: 150, props: {} },
-                          ]);
-                        }}
-                        className="w-full justify-start text-xs h-7 gap-1.5"
-                      >
-                        <GoPlus className="text-primary" />
-                        <span>Half Breadboard</span>
-                      </Button>
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Outputs */}
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-2 rounded-md hover:bg-muted font-semibold text-foreground">
-                      <span>💡 Outputs</span>
-                      <span className="text-muted-foreground text-[10px]">▼</span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-1.5 pl-2 grid grid-cols-3 gap-1.5">
-                      {(['red', 'green', 'blue'] as const).map((col) => (
-                        <Button
-                          key={col}
-                          variant="outline"
-                          size="xs"
-                          onClick={() => {
-                            const id = `led_${components.length + 1}`;
-                            setComponents((prev) => [
-                              ...prev,
-                              { id, kind: 'led', x: 500, y: 80, props: { color: col } },
-                            ]);
-                            tauriInvoke('add_led', { id, color: col });
-                          }}
-                          className="capitalize text-[11px] h-6 px-1"
-                        >
-                          {col}
-                        </Button>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Passives */}
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-2 rounded-md hover:bg-muted font-semibold text-foreground">
-                      <span>⚡ Passives</span>
-                      <span className="text-muted-foreground text-[10px]">▼</span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-1.5 pl-2 space-y-1.5">
-                      {[220, 1000, 10000].map((ohms) => (
-                        <Button
-                          key={ohms}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const id = `r_${components.length + 1}`;
-                            setComponents((prev) => [
-                              ...prev,
-                              { id, kind: 'resistor', x: 580, y: 80, props: { ohms } },
-                            ]);
-                            tauriInvoke('add_resistor', { id, ohms });
-                          }}
-                          className="w-full justify-start text-xs h-7"
-                        >
-                          Resistor ({ohms >= 1000 ? `${ohms / 1000}kΩ` : `${ohms}Ω`})
-                        </Button>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Interactive Inputs */}
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-2 rounded-md hover:bg-muted font-semibold text-foreground">
-                      <span>🔘 Inputs</span>
-                      <span className="text-muted-foreground text-[10px]">▼</span>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-1.5 pl-2 space-y-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const id = `btn_${components.length + 1}`;
-                          setComponents((prev) => [
-                            ...prev,
-                            { id, kind: 'pushbutton', x: 680, y: 80, props: {} },
-                          ]);
-                          tauriInvoke('add_button', { id });
-                        }}
-                        className="w-full justify-start text-xs h-7"
-                      >
-                        Tactile Pushbutton
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const id = `pot_${components.length + 1}`;
-                          setComponents((prev) => [
-                            ...prev,
-                            { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } },
-                          ]);
-                          tauriInvoke('add_potentiometer', { id });
-                        }}
-                        className="w-full justify-start text-xs h-7"
-                      >
-                        Potentiometer (ADC)
-                      </Button>
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Component Inspector & Deletion */}
-                  {selectedCompId && (
-                    <div className="pt-3 border-t border-border">
-                      <span className="text-[11px] font-bold text-foreground block mb-1.5">
-                        Selected: {selectedCompId}
-                      </span>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => {
-                          setComponents((prev) => prev.filter((c) => c.id !== selectedCompId));
-                          setWires((prev) =>
-                            prev.filter(
-                              (w) => w.fromComp !== selectedCompId && w.toComp !== selectedCompId
-                            )
-                          );
-                          setSelectedCompId(null);
-                        }}
-                        className="w-full h-7 text-xs gap-1.5"
-                      >
-                        <GoTrash /> Delete Component
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </aside>
-          )}
-
-        </div>
-
-        {/* 3. Bottom Drawer: Serial Monitor, Waveform & Build (Official shadcn Tabs) */}
-        {showDrawer && (
-          <footer className="h-44 bg-card border-t border-border flex flex-col z-20 shadow-2xl">
-            <Tabs
-              value={bottomTab}
-              onValueChange={(val) => setBottomTab(val as any)}
-              className="flex-1 flex flex-col h-full"
-            >
-              {/* Tabs Bar */}
-              <div className="h-8 px-3 border-b border-border flex items-center justify-between">
-                <TabsList variant="line" className="h-8 gap-3 bg-transparent p-0">
-                  <TabsTrigger value="serial" className="text-xs h-8 gap-1.5">
-                    <GoTerminal /> Serial Monitor
-                  </TabsTrigger>
-                  <TabsTrigger value="waveform" className="text-xs h-8 gap-1.5">
-                    <GoGraph /> Logic Waveform
-                  </TabsTrigger>
-                  <TabsTrigger value="build" className="text-xs h-8 gap-1.5">
-                    <GoGear /> Build Output
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* Tab Specific Action Controls */}
-                <div className="flex items-center gap-2">
-                  {bottomTab === 'serial' && (
-                    <>
-                      <select
-                        value={baudRate}
-                        onChange={(e) => setBaudRate(Number(e.target.value))}
-                        className="bg-muted border border-border text-[11px] text-foreground rounded px-2 py-0.5"
-                      >
-                        <option value={9600}>9600 baud</option>
-                        <option value={115200}>115200 baud</option>
-                      </select>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => setSerialLogs([])}
-                        title="Clear Serial Console"
-                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                      >
-                        <GoTrash />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Tab Content: Serial Monitor */}
-              <TabsContent value="serial" className="flex-1 overflow-hidden p-2.5 font-mono text-xs text-muted-foreground m-0">
-                <div className="h-full flex flex-col justify-between">
-                  <ScrollArea className="flex-1 pr-2">
-                    <div className="space-y-0.5">
-                      {serialLogs.map((log, idx) => (
-                        <div key={idx} className="leading-relaxed">
-                          {log}
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                  <div className="flex items-center gap-2 pt-2 border-t border-border mt-1">
-                    <Input
-                      type="text"
-                      placeholder="Send command to Arduino UART..."
-                      value={serialInput}
-                      onChange={(e) => setSerialInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && serialInput) {
-                          tauriInvoke('write_serial', { input: serialInput });
-                          setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
-                          setSerialInput('');
-                        }
+                      onWireClick={(wireId) => {
+                        setWires((prev) => prev.filter((w) => w.id !== wireId));
+                        tauriInvoke('remove_wire', { id: wireId });
                       }}
-                      className="flex-1 h-7 text-xs bg-muted/50 border-input"
                     />
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        if (serialInput) {
-                          tauriInvoke('write_serial', { input: serialInput });
-                          setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
-                          setSerialInput('');
-                        }
-                      }}
-                      className="h-7 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                    >
-                      Send
-                    </Button>
+
+                    {/* Circuit Components */}
+                    {components.map((c) => {
+                      if (c.kind === 'arduino_uno') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <ArduinoUno
+                              pin13Lit={pin13State}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'breadboard') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <Breadboard
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'led') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <Led
+                              id={c.id}
+                              color={(c.props.color as any) || 'red'}
+                              isLit={litLeds.has(c.id) || (c.id === 'led1' && pin13State)}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'resistor') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <Resistor
+                              ohms={c.props.ohms || 220}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'pushbutton') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <Pushbutton
+                              id={c.id}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                              onPressChange={(pressed: boolean) => {
+                                tauriInvoke('press_button', { id: c.id, pressed });
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'potentiometer') {
+                        return (
+                          <div
+                            key={c.id}
+                            className="pointer-events-auto"
+                            style={{ position: 'absolute', left: c.x, top: c.y }}
+                            onClick={() => setSelectedCompId(c.id)}
+                          >
+                            <Potentiometer
+                              id={c.id}
+                              value={c.props.value ?? 0.5}
+                              onValueChange={(val: number) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...item.props, value: val } } : item
+                                  )
+                                );
+                                tauriInvoke('set_potentiometer', { id: c.id, value: val });
+                              }}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })}
                   </div>
-                </div>
-              </TabsContent>
 
-              {/* Tab Content: Waveform */}
-              <TabsContent value="waveform" className="flex-1 overflow-hidden p-2 m-0">
-                <LogicWaveform history={logicHistory} />
-              </TabsContent>
+                  {/* Wire Dragging Floating Hint */}
+                  {wireDraftStart && (
+                    <div className="absolute top-3 left-3 bg-[#18181b]/90 border border-zinc-700 px-2.5 py-1 rounded text-[11px] text-zinc-300 shadow-md">
+                      Routing wire from <span className="font-mono text-emerald-400">{wireDraftStart.pinName}</span>. Click target pin to connect.
+                    </div>
+                  )}
+                </main>
+              </ResizablePanel>
 
-              {/* Tab Content: Build Output */}
-              <TabsContent value="build" className="flex-1 overflow-hidden p-2.5 font-mono text-xs text-muted-foreground m-0">
-                <ScrollArea className="h-full">
-                  <div className="whitespace-pre-wrap leading-relaxed">{buildLogs}</div>
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
-          </footer>
-        )}
+              {/* Right Sidebar: Component Library Palette */}
+              {showPalette && (
+                <>
+                  <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+                  <ResizablePanel defaultSize={22} minSize={15} maxSize={40}>
+                    <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
+                      <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
+                        <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
+                          <GoPackage className="text-zinc-500" /> Components
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setShowPalette(false)}
+                          title="Collapse Palette"
+                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                        >
+                          <GoSidebarCollapse className="rotate-180" />
+                        </Button>
+                      </div>
 
-        {/* 4. Minimalist Status Bar */}
-        <div className="h-5 bg-card border-t border-border px-3 flex items-center justify-between text-[10px] text-muted-foreground">
+                      <ScrollArea className="flex-1 p-2 text-xs">
+                        <div className="space-y-3">
+                          {/* Core Processing (No Emoji) */}
+                          <Collapsible defaultOpen>
+                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <GoCpu className="text-zinc-400" /> Core Processing
+                              </span>
+                              <span className="text-zinc-500 text-[10px]">▼</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const id = `uno_${components.length + 1}`;
+                                  setComponents((prev) => [
+                                    ...prev,
+                                    { id, kind: 'arduino_uno', x: 100, y: 100, props: {} },
+                                  ]);
+                                }}
+                                className="w-full justify-start text-xs h-7 gap-1.5 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-200"
+                              >
+                                <GoPlus className="text-zinc-400" />
+                                <span>Arduino Uno R3</span>
+                              </Button>
+                            </CollapsibleContent>
+                          </Collapsible>
+
+                          {/* Prototyping (No Emoji) */}
+                          <Collapsible defaultOpen>
+                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
+                              <span>Prototyping</span>
+                              <span className="text-zinc-500 text-[10px]">▼</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const id = `bb_${components.length + 1}`;
+                                  setComponents((prev) => [
+                                    ...prev,
+                                    { id, kind: 'breadboard', x: 300, y: 100, props: {} },
+                                  ]);
+                                }}
+                                className="w-full justify-start text-xs h-7 gap-1.5 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-200"
+                              >
+                                <GoPlus className="text-zinc-400" />
+                                <span>Half Breadboard</span>
+                              </Button>
+                            </CollapsibleContent>
+                          </Collapsible>
+
+                          {/* Outputs (No Emoji) */}
+                          <Collapsible defaultOpen>
+                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
+                              <span>Outputs</span>
+                              <span className="text-zinc-500 text-[10px]">▼</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 pl-1 grid grid-cols-3 gap-1">
+                              {(['red', 'green', 'blue'] as const).map((col) => (
+                                <Button
+                                  key={col}
+                                  variant="outline"
+                                  size="xs"
+                                  onClick={() => {
+                                    const id = `led_${components.length + 1}`;
+                                    setComponents((prev) => [
+                                      ...prev,
+                                      { id, kind: 'led', x: 500, y: 80, props: { color: col } },
+                                    ]);
+                                    tauriInvoke('add_led', { id, color: col });
+                                  }}
+                                  className="capitalize text-[11px] h-6 px-1 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
+                                >
+                                  {col}
+                                </Button>
+                              ))}
+                            </CollapsibleContent>
+                          </Collapsible>
+
+                          {/* Passives (No Emoji) */}
+                          <Collapsible defaultOpen>
+                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
+                              <span>Passives</span>
+                              <span className="text-zinc-500 text-[10px]">▼</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
+                              {[220, 1000, 10000].map((ohms) => (
+                                <Button
+                                  key={ohms}
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const id = `r_${components.length + 1}`;
+                                    setComponents((prev) => [
+                                      ...prev,
+                                      { id, kind: 'resistor', x: 580, y: 80, props: { ohms } },
+                                    ]);
+                                    tauriInvoke('add_resistor', { id, ohms });
+                                  }}
+                                  className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
+                                >
+                                  Resistor ({ohms >= 1000 ? `${ohms / 1000}kΩ` : `${ohms}Ω`})
+                                </Button>
+                              ))}
+                            </CollapsibleContent>
+                          </Collapsible>
+
+                          {/* Interactive Inputs (No Emoji) */}
+                          <Collapsible defaultOpen>
+                            <CollapsibleTrigger className="flex items-center justify-between w-full py-1 px-1.5 rounded hover:bg-[#1a1a1e] font-medium text-zinc-200 text-xs">
+                              <span>Inputs</span>
+                              <span className="text-zinc-500 text-[10px]">▼</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="pt-1 pl-1 space-y-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const id = `btn_${components.length + 1}`;
+                                  setComponents((prev) => [
+                                    ...prev,
+                                    { id, kind: 'pushbutton', x: 680, y: 80, props: {} },
+                                  ]);
+                                  tauriInvoke('add_button', { id });
+                                }}
+                                className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
+                              >
+                                Pushbutton
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const id = `pot_${components.length + 1}`;
+                                  setComponents((prev) => [
+                                    ...prev,
+                                    { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } },
+                                  ]);
+                                  tauriInvoke('add_potentiometer', { id });
+                                }}
+                                className="w-full justify-start text-xs h-7 border-zinc-800 bg-[#18181b] hover:bg-[#222226] text-zinc-300"
+                              >
+                                Potentiometer (ADC)
+                              </Button>
+                            </CollapsibleContent>
+                          </Collapsible>
+
+                          {/* Component Inspector & Deletion */}
+                          {selectedCompId && (
+                            <div className="pt-2 border-t border-[#222226]">
+                              <span className="text-[10px] font-mono text-zinc-400 block mb-1">
+                                Selected: {selectedCompId}
+                              </span>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  setComponents((prev) => prev.filter((c) => c.id !== selectedCompId));
+                                  setWires((prev) =>
+                                    prev.filter(
+                                      (w) => w.fromComp !== selectedCompId && w.toComp !== selectedCompId
+                                    )
+                                  );
+                                  setSelectedCompId(null);
+                                }}
+                                className="w-full h-7 text-xs gap-1.5"
+                              >
+                                <GoTrash /> Delete Component
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </aside>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          {/* Bottom Resizable Section: Serial Monitor, Logic Waveform & Build Output */}
+          {showDrawer && (
+            <>
+              <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+              <ResizablePanel defaultSize={28} minSize={15} maxSize={65}>
+                <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
+                  <Tabs
+                    value={bottomTab}
+                    onValueChange={(val) => setBottomTab(val as any)}
+                    className="flex-1 flex flex-col h-full"
+                  >
+                    {/* Tabs Bar */}
+                    <div className="h-7 px-2 border-b border-[#222226] flex items-center justify-between bg-[#121215] shrink-0">
+                      <TabsList variant="line" className="h-7 gap-2 bg-transparent p-0">
+                        <TabsTrigger value="serial" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                          <GoTerminal className="text-xs" /> Serial Monitor
+                        </TabsTrigger>
+                        <TabsTrigger value="waveform" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                          <GoGraph className="text-xs" /> Logic Waveform
+                        </TabsTrigger>
+                        <TabsTrigger value="build" className="text-xs h-7 gap-1.5 text-zinc-400 data-[state=active]:text-zinc-100">
+                          <GoGear className="text-xs" /> Build Output
+                        </TabsTrigger>
+                      </TabsList>
+
+                      {/* Tab Specific Action Controls */}
+                      <div className="flex items-center gap-1.5">
+                        {bottomTab === 'serial' && (
+                          <>
+                            <select
+                              value={baudRate}
+                              onChange={(e) => setBaudRate(Number(e.target.value))}
+                              className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
+                            >
+                              <option value={9600}>9600 baud</option>
+                              <option value={115200}>115200 baud</option>
+                            </select>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => setSerialLogs([])}
+                              title="Clear Serial Console"
+                              className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                            >
+                              <GoTrash />
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setShowDrawer(false)}
+                          title="Collapse Panel"
+                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                        >
+                          <GoSidebarCollapse className="-rotate-90" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Tab Content: Serial Monitor */}
+                    <TabsContent value="serial" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
+                      <div className="h-full flex flex-col justify-between">
+                        <ScrollArea className="flex-1 pr-2">
+                          <div className="space-y-0.5">
+                            {serialLogs.map((log, idx) => (
+                              <div key={idx} className="leading-relaxed">
+                                {log}
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                        <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
+                          <Input
+                            type="text"
+                            placeholder="Send command to Arduino UART..."
+                            value={serialInput}
+                            onChange={(e) => setSerialInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && serialInput) {
+                                tauriInvoke('write_serial', { input: serialInput });
+                                setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
+                                setSerialInput('');
+                              }
+                            }}
+                            className="flex-1 h-6 text-xs bg-[#18181b] border-zinc-800 text-zinc-200"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (serialInput) {
+                                tauriInvoke('write_serial', { input: serialInput });
+                                setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
+                                setSerialInput('');
+                              }
+                            }}
+                            className="h-6 px-2.5 text-xs bg-zinc-200 text-zinc-900 hover:bg-zinc-100 font-medium"
+                          >
+                            Send
+                          </Button>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* Tab Content: High-DPI Crisp Waveform */}
+                    <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
+                      <LogicWaveform history={logicHistory} />
+                    </TabsContent>
+
+                    {/* Tab Content: Build Output */}
+                    <TabsContent value="build" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
+                      <ScrollArea className="h-full">
+                        <div className="whitespace-pre-wrap leading-relaxed">{buildLogs}</div>
+                      </ScrollArea>
+                    </TabsContent>
+                  </Tabs>
+                </footer>
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+
+        {/* 3. Status Bar */}
+        <div className="h-5 bg-[#121215] border-t border-[#222226] px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0">
           <span>{statusMessage}</span>
-          <span>ATmega328P @ 16 MHz | shadcn/ui + Tauri v2</span>
+          <span>ATmega328P @ 16 MHz • Pure Rust + Tauri v2</span>
         </div>
 
       </div>

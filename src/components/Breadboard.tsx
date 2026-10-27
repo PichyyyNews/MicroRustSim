@@ -20,7 +20,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
             <div
               key={`top_plus_${col}`}
               title={`Power + (Col ${col})`}
-              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair"
+              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-emerald-500 cursor-crosshair"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(`top_plus_${col}`, e);
@@ -38,7 +38,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
             <div
               key={`top_minus_${col}`}
               title={`Power - (Col ${col})`}
-              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair"
+              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-emerald-500 cursor-crosshair"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(`top_minus_${col}`, e);
@@ -59,7 +59,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
                 <div
                   key={`${row}_${col}`}
                   title={`${row}${col}`}
-                  className="w-2 h-2 rounded-[2px] bg-zinc-800 hover:bg-[#8b5cf6] cursor-crosshair"
+                  className="w-2 h-2 rounded-[2px] bg-zinc-800 hover:bg-emerald-500 cursor-crosshair"
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     onPinMouseDown?.(`${row}_${col}`, e);
@@ -85,7 +85,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
                 <div
                   key={`${row}_${col}`}
                   title={`${row}${col}`}
-                  className="w-2 h-2 rounded-[2px] bg-zinc-800 hover:bg-[#8b5cf6] cursor-crosshair"
+                  className="w-2 h-2 rounded-[2px] bg-zinc-800 hover:bg-emerald-500 cursor-crosshair"
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     onPinMouseDown?.(`${row}_${col}`, e);
@@ -105,7 +105,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
             <div
               key={`bot_plus_${col}`}
               title={`Power + (Col ${col})`}
-              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair"
+              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-emerald-500 cursor-crosshair"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(`bot_plus_${col}`, e);
@@ -123,7 +123,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
             <div
               key={`bot_minus_${col}`}
               title={`Power - (Col ${col})`}
-              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair"
+              className="w-2.5 h-2.5 rounded-full bg-zinc-800 border border-zinc-400 hover:bg-emerald-500 cursor-crosshair"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onPinMouseDown?.(`bot_minus_${col}`, e);

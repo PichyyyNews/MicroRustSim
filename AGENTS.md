@@ -14,9 +14,10 @@ This document establishes the official design system, visual hierarchy, token de
    - Provide **1-click toggle buttons** to collapse the Left Code Editor, the Right Component Palette, or the Bottom Drawer.
    - When collapsed, the central canvas expands into a distraction-free, 100% full-screen interactive breadboard.
    - Collapsible groups in the right panel keep inactive categories neatly tucked away.
-3. **Refined Dark Palette with Balanced Medium Purple Accent**:
-   - Avoid washed-out blacks or harsh contrasts. Use zinc/slate dark surfaces (`#0f1117`, `#181b26`).
-   - Accent color is a **medium vibrant purple** (`#8b5cf6` / Violet 500) — pleasant, modern, not overly dark, not piercing.
+3. **Flat Dark & Zinc Monochrome Palette (Internal IDE Tool Aesthetic)**:
+   - Deep dark surfaces (`#09090b`, `#121215`, `#18181b`).
+   - Clean zinc dividers (`#222226`, `#27272a`).
+   - Pure, distraction-free monochrome styling with emerald (`#10b981`) for running simulation and amber (`oklch(0.41 0.11 46)`) for warnings. All purple accents eliminated.
 
 ---
 
@@ -40,21 +41,20 @@ Following the proportional formula based on `--radius: 8px`:
 ```css
 :root, .dark {
   /* Surfaces */
-  --bg-canvas: #0f1117;       /* Infinite grid background */
-  --bg-app: #13161f;          /* Window base background */
-  --bg-surface: #181b26;      /* Panels, drawers, editor gutter */
-  --bg-elevated: #202533;     /* Cards, unpressed buttons, headers */
-  --bg-hover: #2a3042;        /* Hover state for buttons and list items */
+  --bg-canvas: #09090b;       /* Infinite grid background */
+  --bg-app: #0e0e11;          /* Window base background */
+  --bg-surface: #121215;      /* Panels, drawers, editor gutter */
+  --bg-elevated: #18181b;     /* Cards, unpressed buttons, headers */
+  --bg-hover: #27272a;        /* Hover state for buttons and list items */
 
   /* Borders & Dividers */
-  --border-subtle: #262b3c;   /* Thin 1px clean dividers */
-  --border-focus: #8b5cf6;    /* Focused inputs and active component selection */
+  --border-subtle: #222226;   /* Thin 1px clean dividers */
+  --border-focus: #52525b;    /* Focused inputs and active component selection */
 
-  /* Accent (Balanced Medium Purple) */
-  --accent: #8b5cf6;          /* Primary actions, active tabs, pulse */
-  --accent-light: #a78bfa;    /* Hover accent */
-  --accent-muted: #3c2d69;    /* Translucent tint backgrounds */
-  --accent-glow: rgba(139, 92, 246, 0.25);
+  /* Accent (Clean Flat Monochrome Zinc) */
+  --accent: #27272a;          /* Flat neutral active states */
+  --accent-light: #3f3f46;    /* Hover accent */
+  --accent-muted: #18181b;    /* Translucent tint backgrounds */
 
   /* Semantic Status Tokens */
   --warning: oklch(0.41 0.11 46);             /* Dark amber surface #b45309 */
@@ -63,9 +63,9 @@ Following the proportional formula based on `--radius: 8px`:
   --danger: #ef4444;                          /* Error / compile failure */
 
   /* Typography */
-  --text-primary: #f8fafc;    /* Headings, main code, active labels */
-  --text-secondary: #94a3b8;  /* Subtitles, pin labels, inactive tabs */
-  --text-muted: #64748b;      /* Disabled text, hints, line numbers */
+  --text-primary: #f4f4f5;    /* Headings, main code, active labels */
+  --text-secondary: #a1a1aa;  /* Subtitles, pin labels, inactive tabs */
+  --text-muted: #71717a;      /* Disabled text, hints, line numbers */
 }
 ```
 

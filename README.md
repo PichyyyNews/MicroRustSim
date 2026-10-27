@@ -150,12 +150,12 @@ Strictly enforced through [`AGENTS.md`](AGENTS.md) and [`crates/app/src/theme.rs
 
 | Token | Value | Visual Purpose |
 | :--- | :--- | :--- |
-| `BG_CANVAS` | `#0f1117` | Infinite circuit grid canvas |
-| `BG_APP` | `#13161f` | Base window background |
-| `BG_SURFACE` | `#181b26` | Side panels, drawers, toolbars |
-| `BG_ELEVATED` | `#202533` | Component cards, active items |
-| `ACCENT` | `#8b5cf6` | Balanced medium purple (Violet 500) |
-| `ACCENT_LIGHT` | `#a78bfa` | Hover accent glow |
+| `BG_CANVAS` | `#09090b` | Infinite circuit grid canvas |
+| `BG_APP` | `#0e0e11` | Base window background |
+| `BG_SURFACE` | `#121215` | Side panels, drawers, toolbars |
+| `BG_ELEVATED` | `#18181b` | Component cards, active items |
+| `BORDER` | `#222226` / `#27272a` | Clean 1px dividers |
+| `ACCENT` | `#27272a` | Clean flat monochrome zinc active state |
 | `WARNING_BG` | `oklch(0.41 0.11 46)` | Amber surface (`#b45309`) |
 | `WARNING_FG` | `oklch(0.99 0.02 95)` | Warm amber text (`#fef3c7`) |
 | `SUCCESS` | `#10b981` | Running simulation emerald |

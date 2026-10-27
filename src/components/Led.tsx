@@ -43,7 +43,7 @@ export const Led: React.FC<LedProps> = ({ color, isLit, onPinMouseDown }) => {
         {/* Anode (Longer lead, curved) */}
         <div
           title="Anode (+)"
-          className="w-1.5 h-6 bg-zinc-300 hover:bg-[#8b5cf6] cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
+          className="w-1.5 h-6 bg-zinc-300 hover:bg-emerald-500 cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('anode', e);
@@ -55,7 +55,7 @@ export const Led: React.FC<LedProps> = ({ color, isLit, onPinMouseDown }) => {
         {/* Cathode (Shorter lead) */}
         <div
           title="Cathode (-)"
-          className="w-1.5 h-5 bg-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
+          className="w-1.5 h-5 bg-zinc-400 hover:bg-emerald-500 cursor-crosshair rounded-b-sm flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('cathode', e);

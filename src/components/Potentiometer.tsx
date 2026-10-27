@@ -43,7 +43,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value, onValueChan
     <div className="relative w-16 h-20 flex flex-col items-center select-none cursor-move">
       {/* Knob Dial */}
       <div
-        className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-600 shadow-xl flex items-center justify-center cursor-ns-resize hover:border-[#8b5cf6] transition-colors"
+        className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-600 shadow-xl flex items-center justify-center cursor-ns-resize hover:border-zinc-400 transition-colors"
         onMouseDown={handleMouseDown}
         title={`Rotate Wiper: ${voltage}V (Drag Up/Down)`}
       >
@@ -63,7 +63,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value, onValueChan
         {/* GND */}
         <div
           title="GND (Pin 1)"
-          className="w-2 h-3 bg-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3 bg-zinc-400 hover:bg-emerald-500 cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('1', e);
@@ -75,7 +75,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value, onValueChan
         {/* WIPER */}
         <div
           title="Wiper ADC (Pin 2)"
-          className="w-2 h-3 bg-amber-400 hover:bg-[#8b5cf6] cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3 bg-amber-400 hover:bg-emerald-500 cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('2', e);
@@ -87,7 +87,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value, onValueChan
         {/* VCC */}
         <div
           title="5V VCC (Pin 3)"
-          className="w-2 h-3 bg-zinc-400 hover:bg-[#8b5cf6] cursor-crosshair rounded-b flex items-end justify-center shadow"
+          className="w-2 h-3 bg-zinc-400 hover:bg-emerald-500 cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
             onPinMouseDown?.('3', e);

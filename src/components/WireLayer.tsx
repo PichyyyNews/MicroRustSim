@@ -54,7 +54,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
               stroke={wire.color}
               strokeWidth="3.2"
               strokeLinecap="round"
-              className="group-hover:stroke-[#8b5cf6] transition-colors"
+              className="group-hover:stroke-white transition-colors"
             />
             {/* Terminal End Caps */}
             <circle cx={p1.x} cy={p1.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
