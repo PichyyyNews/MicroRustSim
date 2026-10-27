@@ -245,14 +245,15 @@ pub fn run() {
                 SimCommand::CompileAndUpload { sketch, reply } => {
                     let res = compiler.compile(&sketch, "arduino:avr:uno");
                     match res {
-                        Ok(hex) => {
-                            let _ = engine.mcu.load_hex(&hex);
+                        Ok(comp_out) => {
+                            let _ = engine.mcu.load_hex(&comp_out.hex);
                             engine.reset();
                             engine.resolve_electrical_nets();
+                            is_running = true;
                             let _ = reply.send(CompileResult {
                                 success: true,
-                                output: "Compilation successful! Flashed 32KB HEX to ATmega328P.\n".to_string(),
-                                hex: Some(hex),
+                                output: format!("Build Succeeded!\n\n{}", comp_out.stdout),
+                                hex: Some(comp_out.hex),
                             });
                         }
                         Err(err) => {
@@ -273,6 +274,7 @@ pub fn run() {
                 SimCommand::Reset => {
                     engine.reset();
                     engine.resolve_electrical_nets();
+                    is_running = false;
                 }
                 SimCommand::Step { cycles, reply } => {
                     if is_running {

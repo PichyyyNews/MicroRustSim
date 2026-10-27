@@ -156,17 +156,19 @@ export default function App() {
 
   // --- Simulation & MCU State ---
   const [isRunning, setIsRunning] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [lastCompiledCode, setLastCompiledCode] = useState<string | null>(null);
   const [pin13State, setPin13State] = useState(false);
   const [litLeds, setLitLeds] = useState<Set<string>>(new Set());
-  const [serialLogs, setSerialLogs] = useState<string[]>([
-    '[System] MicroRustSim Core Online.\n',
-    '[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n',
-  ]);
+  const [serialLogs, setSerialLogs] = useState<string>(
+    '[System] MicroRustSim Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n'
+  );
   const [buildLogs, setBuildLogs] = useState<string>('Ready to compile sketches with avr-gcc.\n');
   const [serialInput, setSerialInput] = useState('');
   const [baudRate, setBaudRate] = useState(9600);
   const [logicHistory, setLogicHistory] = useState<[number, number][]>([]);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
+  const serialEndRef = useRef<HTMLDivElement>(null);
 
   // --- Sketch Code & Project ---
   const [sketchCode, setSketchCode] = useState(DEFAULT_BLINK_CODE);
@@ -271,7 +273,7 @@ export default function App() {
           setPin13State(res.pin13);
           setLitLeds(new Set(res.lit_leds));
           if (res.serial_output) {
-            setSerialLogs((prev) => [...prev, res.serial_output!]);
+            setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
           }
           setLogicHistory((prev) => {
             const next = [...prev, [res.millis, res.pin13 ? 5.0 : 0.0] as [number, number]];
@@ -286,28 +288,76 @@ export default function App() {
     return () => cancelAnimationFrame(animId);
   }, [isRunning]);
 
+  // --- Auto-scroll Serial Monitor on New Output ---
+  useEffect(() => {
+    if (bottomTab === 'serial' && showDrawer) {
+      serialEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [serialLogs, bottomTab, showDrawer]);
+
   // --- Compile & Upload ---
-  const handleCompile = async () => {
-    setStatusMessage('Compiling sketch with avr-gcc...');
+  const handleCompile = async (): Promise<boolean> => {
+    setIsCompiling(true);
+    setStatusMessage('Compiling sketch with arduino-cli...');
     setBottomTab('build');
     setShowDrawer(true);
 
-    const res = await tauriInvoke<{ success: boolean; output: string; hex: string | null }>(
-      'compile_and_upload',
-      { sketch: sketchCode }
-    );
+    try {
+      const res = await tauriInvoke<{ success: boolean; output: string; hex: string | null }>(
+        'compile_and_upload',
+        { sketch: sketchCode }
+      );
 
-    if (res) {
-      setBuildLogs(res.output);
-      if (res.success) {
-        setStatusMessage('Build Succeeded. Flashed to ATmega328P.');
-        setIsRunning(true);
+      if (res) {
+        setBuildLogs(res.output);
+        if (res.success) {
+          setLastCompiledCode(sketchCode);
+          setStatusMessage('Build Succeeded. Running @ 16 MHz.');
+          setBottomTab('serial');
+          setIsRunning(true);
+          await tauriInvoke('start_simulation');
+          return true;
+        } else {
+          setStatusMessage('Compilation Failed. Check build output.');
+          setBottomTab('build');
+          setIsRunning(false);
+          return false;
+        }
       } else {
-        setStatusMessage('Compilation Failed. Check build output.');
+        setBuildLogs('[Preview] Compiled Arduino Uno sketch successfully.\n');
+        setLastCompiledCode(sketchCode);
+        setStatusMessage('Running in preview mode.');
+        setBottomTab('serial');
+        setIsRunning(true);
+        return true;
       }
+    } catch (err: any) {
+      setBuildLogs(`Error invoking compiler: ${err?.message || err}\n`);
+      setStatusMessage('Compilation Error');
+      setBottomTab('build');
+      setIsRunning(false);
+      return false;
+    } finally {
+      setIsCompiling(false);
+    }
+  };
+
+  // --- Run / Pause Toggle ---
+  const handleRunToggle = async () => {
+    if (isRunning) {
+      setIsRunning(false);
+      await tauriInvoke('pause_simulation');
+      setStatusMessage('Simulation Paused');
     } else {
-      setBuildLogs('[Preview] Compiled Arduino Uno sketch successfully.\n');
-      setIsRunning(true);
+      if (sketchCode !== lastCompiledCode) {
+        await handleCompile();
+      } else {
+        setIsRunning(true);
+        await tauriInvoke('start_simulation');
+        setBottomTab('serial');
+        setShowDrawer(true);
+        setStatusMessage('Simulation Running @ 16 MHz');
+      }
     }
   };
 
@@ -810,10 +860,7 @@ export default function App() {
                   render={
                     <Button
                       size="icon"
-                      onClick={() => {
-                        setIsRunning(false);
-                        tauriInvoke('pause_simulation');
-                      }}
+                      onClick={handleRunToggle}
                       className="h-8 w-8 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-md shadow-md border-0 flex items-center justify-center transition-colors"
                     >
                       <PauseIcon className="text-sm" />
@@ -828,17 +875,25 @@ export default function App() {
                   render={
                     <Button
                       size="icon"
-                      onClick={() => {
-                        setIsRunning(true);
-                        tauriInvoke('start_simulation');
-                      }}
-                      className="h-8 w-8 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md shadow-md shadow-emerald-950/40 border-0 flex items-center justify-center transition-colors"
+                      disabled={isCompiling}
+                      onClick={handleRunToggle}
+                      className="h-8 w-8 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md shadow-md shadow-emerald-950/40 border-0 flex items-center justify-center transition-colors disabled:opacity-60"
                     >
-                      <GoPlay className="text-base ml-0.5" />
+                      {isCompiling ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <GoPlay className="text-base ml-0.5" />
+                      )}
                     </Button>
                   }
                 />
-                <TooltipContent className="text-xs">Run Simulation (16 MHz)</TooltipContent>
+                <TooltipContent className="text-xs">
+                  {isCompiling
+                    ? 'Compiling sketch...'
+                    : sketchCode !== lastCompiledCode
+                    ? 'Compile & Run Simulation'
+                    : 'Run Simulation (16 MHz)'}
+                </TooltipContent>
               </Tooltip>
             )}
 
@@ -849,10 +904,15 @@ export default function App() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={handleCompile}
-                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center"
+                    disabled={isCompiling}
+                    onClick={() => handleCompile()}
+                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center disabled:opacity-60"
                   >
-                    <GoZap className="text-base text-zinc-300" />
+                    {isCompiling ? (
+                      <div className="w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
+                    ) : (
+                      <GoZap className="text-base text-zinc-300" />
+                    )}
                   </Button>
                 }
               />
@@ -869,7 +929,8 @@ export default function App() {
                     onClick={() => {
                       setIsRunning(false);
                       tauriInvoke('reset_simulation');
-                      setSerialLogs([]);
+                      setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
+                      setStatusMessage('MCU Reset');
                     }}
                     className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center"
                   >
@@ -1593,7 +1654,7 @@ export default function App() {
                             <Button
                               variant="ghost"
                               size="icon-xs"
-                              onClick={() => setSerialLogs([])}
+                              onClick={() => setSerialLogs('')}
                               title="Clear Serial Console"
                               className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
                             >
@@ -1617,13 +1678,10 @@ export default function App() {
                     <TabsContent value="serial" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
                       <div className="h-full flex flex-col justify-between">
                         <ScrollArea className="flex-1 pr-2">
-                          <div className="space-y-0.5">
-                            {serialLogs.map((log, idx) => (
-                              <div key={idx} className="leading-relaxed">
-                                {log}
-                              </div>
-                            ))}
-                          </div>
+                          <pre className="whitespace-pre-wrap leading-relaxed select-text font-mono text-xs text-zinc-300 m-0">
+                            {serialLogs}
+                            <div ref={serialEndRef} />
+                          </pre>
                         </ScrollArea>
                         <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
                           <Input
@@ -1634,7 +1692,7 @@ export default function App() {
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && serialInput) {
                                 tauriInvoke('write_serial', { input: serialInput });
-                                setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
+                                setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
                                 setSerialInput('');
                               }
                             }}
@@ -1645,7 +1703,7 @@ export default function App() {
                             onClick={() => {
                               if (serialInput) {
                                 tauriInvoke('write_serial', { input: serialInput });
-                                setSerialLogs((prev) => [...prev, `> ${serialInput}\n`]);
+                                setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
                                 setSerialInput('');
                               }
                             }}
