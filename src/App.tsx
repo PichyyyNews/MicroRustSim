@@ -42,11 +42,6 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover';
-import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
@@ -113,9 +108,10 @@ const WIRE_COLORS = [
 ];
 
 export default function App() {
-  // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popover ---
+  // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
   const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire'>('select');
-  const [wireColorPopoverOpen, setWireColorPopoverOpen] = useState(false);
+  const [showWireColorMenu, setShowWireColorMenu] = useState(false);
+  const wireMenuRef = useRef<HTMLDivElement>(null);
   const draggedCompRef = useRef<{
     id: string;
     startMouseX: number;
@@ -348,6 +344,19 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedCompId]);
+
+  // --- Close Wire Color Menu when Clicking Outside ---
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wireMenuRef.current && !wireMenuRef.current.contains(e.target as Node)) {
+        setShowWireColorMenu(false);
+      }
+    };
+    if (showWireColorMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showWireColorMenu]);
 
   // --- Component Click & Drag Handler ---
   const handleComponentMouseDown = (compId: string, e: React.MouseEvent) => {
@@ -756,25 +765,24 @@ export default function App() {
 
             <Separator orientation="vertical" className="h-5 mx-2 bg-[#27272a]" />
 
-            {/* Tool Selection Group: Select (V), Move (M), Wire (W) with Word-Style Color Popover */}
-            <div className="flex items-center bg-[#18181b] border border-zinc-800 rounded-md p-0.5 gap-0.5 shadow-inner">
+            {/* Tool Selection Group: Select (V), Move (M), Wire (W) - Borderless Flat Design */}
+            <div className="flex items-center gap-1">
               {/* 1. Select Tool */}
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button
-                      variant="ghost"
-                      size="xs"
+                    <button
+                      type="button"
                       onClick={() => setActiveTool('select')}
-                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-all ${
+                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-colors ${
                         activeTool === 'select'
-                          ? 'bg-zinc-700 text-white font-medium shadow-sm'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                          ? 'bg-[#27272a] text-zinc-100 font-medium'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
                       <MousePointer className="w-3.5 h-3.5" />
                       <span className="text-[11px]">Select</span>
-                    </Button>
+                    </button>
                   }
                 />
                 <TooltipContent className="text-xs">Select Tool (V) • Click component to select</TooltipContent>
@@ -784,77 +792,73 @@ export default function App() {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button
-                      variant="ghost"
-                      size="xs"
+                    <button
+                      type="button"
                       onClick={() => setActiveTool('move')}
-                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-all ${
+                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-colors ${
                         activeTool === 'move'
-                          ? 'bg-zinc-700 text-white font-medium shadow-sm'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                          ? 'bg-[#27272a] text-zinc-100 font-medium'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
                       <Move className="w-3.5 h-3.5" />
                       <span className="text-[11px]">Move</span>
-                    </Button>
+                    </button>
                   }
                 />
                 <TooltipContent className="text-xs">Move Tool (M) • Drag components to reposition</TooltipContent>
               </Tooltip>
 
-              <Separator orientation="vertical" className="h-4 bg-zinc-800 my-auto" />
-
-              {/* 3. Wire Tool Split Button + Word-Style Floating Color Popover */}
-              <div className="flex items-center">
+              {/* 3. Wire Tool Split Button + Word-Style Floating Color Popup (Zero Borders) */}
+              <div className="relative flex items-center" ref={wireMenuRef}>
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <Button
-                        variant="ghost"
-                        size="xs"
+                      <button
+                        type="button"
                         onClick={() => setActiveTool('wire')}
-                        className={`h-7 px-2 flex items-center gap-1.5 text-xs rounded-l transition-all ${
+                        className={`h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-xs rounded-l transition-colors ${
                           activeTool === 'wire'
-                            ? 'bg-zinc-700 text-white font-medium'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                            ? 'bg-[#27272a] text-zinc-100 font-medium'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                         }`}
                       >
                         <div className="flex flex-col items-center justify-center">
                           <Cable className="w-3.5 h-3.5" />
                           <span
-                            className="w-3.5 h-[2.5px] rounded-full mt-0.5 shadow-sm"
+                            className="w-3.5 h-[2px] rounded-full mt-0.5 shadow-sm"
                             style={{ backgroundColor: currentWireColor }}
                           />
                         </div>
                         <span className="text-[11px]">Wire</span>
-                      </Button>
+                      </button>
                     }
                   />
                   <TooltipContent className="text-xs">Wire Tool (W) • Connect pins with wires</TooltipContent>
                 </Tooltip>
 
-                {/* Dropdown Chevron for Word-style Floating Color Popup */}
-                <Popover open={wireColorPopoverOpen} onOpenChange={setWireColorPopoverOpen}>
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className={`h-7 w-5 px-0 flex items-center justify-center rounded-r border-l border-zinc-800 transition-colors ${
-                          activeTool === 'wire'
-                            ? 'bg-zinc-700 text-white'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-                        }`}
-                        title="Wire Color Options"
-                      >
-                        <ChevronDown className="w-3 h-3 text-zinc-400" />
-                      </Button>
-                    }
-                  />
-                  <PopoverContent
-                    align="start"
-                    sideOffset={6}
-                    className="w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50"
+                {/* Dropdown Chevron for Word-style Floating Color Popup (Zero Border) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowWireColorMenu((prev) => !prev);
+                  }}
+                  className={`h-7 px-1.5 flex items-center justify-center rounded-r transition-colors ${
+                    activeTool === 'wire' || showWireColorMenu
+                      ? 'bg-[#27272a] text-zinc-100 hover:bg-[#333338]'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
+                  }`}
+                  title="Choose Wire Color"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {/* Floating Word-Style Color Picker Popover */}
+                {showWireColorMenu && (
+                  <div
+                    className="absolute top-full left-0 mt-1 w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50 animate-in fade-in zoom-in-95 duration-100 select-none"
+                    onMouseDown={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-between pb-2 border-b border-[#27272a]">
                       <span className="font-semibold text-xs text-zinc-200">Wire Color</span>
@@ -877,7 +881,7 @@ export default function App() {
                             onClick={() => {
                               setCurrentWireColor(c.hex);
                               setActiveTool('wire');
-                              setWireColorPopoverOpen(false);
+                              setShowWireColorMenu(false);
                             }}
                             className={`relative w-10 h-8 rounded flex items-center justify-center transition-all ${
                               currentWireColor === c.hex
@@ -923,8 +927,8 @@ export default function App() {
                       </label>
                       <span className="font-mono text-[10px] text-zinc-500 uppercase">{currentWireColor}</span>
                     </div>
-                  </PopoverContent>
-                </Popover>
+                  </div>
+                )}
               </div>
             </div>
           </div>
