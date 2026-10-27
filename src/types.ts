@@ -87,3 +87,26 @@ export interface FileTreeNode {
   size: number;
   children: FileTreeNode[];
 }
+
+export type FaultType = 'ShortCircuit' | 'Overcurrent' | 'ReversePolarity';
+
+export interface CircuitFault {
+  fault_type: FaultType;
+  component_id: string;
+  pin_name: string;
+  description: string;
+  current_ma: number;
+  voltage: number;
+}
+
+export interface StepResult {
+  pin13: boolean;
+  lit_leds: string[];
+  led_brightness?: Record<string, number>;
+  serial_output: string | null;
+  millis: number;
+  pin_voltages?: Record<string, number>;
+  mcu_pin_voltages?: Record<string, number>;
+  faults?: CircuitFault[];
+}
+

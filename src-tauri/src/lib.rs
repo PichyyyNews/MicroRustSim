@@ -4,6 +4,7 @@ use std::thread;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sim_compiler::{ArduinoCliBackend, BuiltinSketches, CompilerBackend, MockCompilerBackend};
+pub use sim_core::{CircuitFault, FaultType};
 use sim_core::{components, LogicState, PinId, SimulationEngine, Wire};
 use sim_storage::{
     DirectoryProject, FileEntry, ProjectData, ProjectMetadata, ProjectStorage,
@@ -26,13 +27,16 @@ pub struct CompileResult {
     pub hex: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StepResult {
     pub pin13: bool,
     pub lit_leds: Vec<String>,
     pub led_brightness: HashMap<String, f32>,
     pub serial_output: Option<String>,
     pub millis: f64,
+    pub pin_voltages: HashMap<String, f32>,
+    pub mcu_pin_voltages: HashMap<String, f32>,
+    pub faults: Vec<CircuitFault>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -463,12 +467,19 @@ pub fn run() {
                     };
 
                     let millis = engine.mcu.millis();
+                    let pin_voltages = engine.pin_voltages_map();
+                    let mcu_pin_voltages = engine.mcu_pin_voltages_map();
+                    let faults = engine.faults.clone();
+
                     let _ = reply.send(StepResult {
                         pin13,
                         lit_leds,
                         led_brightness,
                         serial_output,
                         millis,
+                        pin_voltages,
+                        mcu_pin_voltages,
+                        faults,
                     });
                 }
                 SimCommand::PressButton { id, pressed } => {
@@ -625,4 +636,158 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_step_result_serialization_round_trip() {
+        let mut pin_voltages = HashMap::new();
+        pin_voltages.insert("uno1:13".to_string(), 4.88);
+        pin_voltages.insert("uno1:5V".to_string(), 5.0);
+        pin_voltages.insert("uno1:GND".to_string(), 0.0);
+        pin_voltages.insert("led1:anode".to_string(), 4.88);
+
+        let mut mcu_pin_voltages = HashMap::new();
+        mcu_pin_voltages.insert("13".to_string(), 4.88);
+        mcu_pin_voltages.insert("5V".to_string(), 5.0);
+        mcu_pin_voltages.insert("GND".to_string(), 0.0);
+        mcu_pin_voltages.insert("A0".to_string(), 2.5);
+
+        let faults = vec![
+            CircuitFault {
+                fault_type: FaultType::ShortCircuit,
+                component_id: "uno1".to_string(),
+                pin_name: "5V".to_string(),
+                description: "Short Circuit: 5V to GND direct connection".to_string(),
+                current_ma: 10000.0,
+                voltage: 0.0,
+            },
+            CircuitFault {
+                fault_type: FaultType::Overcurrent,
+                component_id: "uno1".to_string(),
+                pin_name: "13".to_string(),
+                description: "Overcurrent: Pin 13 sinking 180mA (max 40mA)".to_string(),
+                current_ma: 180.0,
+                voltage: 4.5,
+            },
+            CircuitFault {
+                fault_type: FaultType::ReversePolarity,
+                component_id: "led1".to_string(),
+                pin_name: "anode".to_string(),
+                description: "Reverse Polarity: Cathode > Anode".to_string(),
+                current_ma: 0.0,
+                voltage: 5.0,
+            },
+        ];
+
+        let mut led_brightness = HashMap::new();
+        led_brightness.insert("led1".to_string(), 0.85);
+
+        let original = StepResult {
+            pin13: true,
+            lit_leds: vec!["led1".to_string()],
+            led_brightness,
+            serial_output: Some("HELLO_TAURI\n".to_string()),
+            millis: 1234.5,
+            pin_voltages,
+            mcu_pin_voltages,
+            faults,
+        };
+
+        let json_str = serde_json::to_string_pretty(&original).expect("StepResult must serialize to JSON");
+        assert!(json_str.contains("\"pin_voltages\""));
+        assert!(json_str.contains("\"mcu_pin_voltages\""));
+        assert!(json_str.contains("\"faults\""));
+        assert!(json_str.contains("\"ShortCircuit\""));
+        assert!(json_str.contains("\"Overcurrent\""));
+        assert!(json_str.contains("\"ReversePolarity\""));
+
+        let deserialized: StepResult = serde_json::from_str(&json_str).expect("StepResult must deserialize from JSON");
+        assert_eq!(deserialized.pin13, original.pin13);
+        assert_eq!(deserialized.lit_leds, original.lit_leds);
+        assert_eq!(deserialized.millis, original.millis);
+        assert_eq!(deserialized.serial_output, original.serial_output);
+        assert_eq!(deserialized.pin_voltages["uno1:13"], 4.88);
+        assert_eq!(deserialized.mcu_pin_voltages["13"], 4.88);
+        assert_eq!(deserialized.mcu_pin_voltages["GND"], 0.0);
+        assert_eq!(deserialized.faults.len(), 3);
+        assert_eq!(deserialized.faults[0].fault_type, FaultType::ShortCircuit);
+        assert_eq!(deserialized.faults[1].fault_type, FaultType::Overcurrent);
+        assert_eq!(deserialized.faults[2].fault_type, FaultType::ReversePolarity);
+    }
+
+    #[test]
+    fn test_engine_voltages_and_faults_into_step_result() {
+        let mut engine = SimulationEngine::new_with_uno();
+        engine.leds.insert("led1".to_string(), components::LedComponent::new("led1", "red"));
+        engine.resistors.insert("r1".to_string(), components::ResistorComponent::new("r1", 220.0));
+
+        engine.add_wire(Wire {
+            id: "w1".to_string(),
+            from: PinId::new("uno1", "5V"),
+            to: PinId::new("led1", "anode"),
+            color: "#ff0000".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w2".to_string(),
+            from: PinId::new("led1", "cathode"),
+            to: PinId::new("r1", "1"),
+            color: "#eab308".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w3".to_string(),
+            from: PinId::new("r1", "2"),
+            to: PinId::new("uno1", "GND"),
+            color: "#000000".to_string(),
+        });
+
+        engine.resolve_electrical_nets();
+
+        let step_res = StepResult {
+            pin13: engine.mcu.get_pin_state("13") == LogicState::High,
+            lit_leds: engine.leds.values().filter(|l| l.is_lit).map(|l| l.id.clone()).collect(),
+            led_brightness: engine.leds.iter().filter(|(_, l)| l.is_lit).map(|(id, l)| (id.clone(), l.brightness)).collect(),
+            serial_output: None,
+            millis: engine.mcu.millis(),
+            pin_voltages: engine.pin_voltages_map(),
+            mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+            faults: engine.faults.clone(),
+        };
+
+        assert!(step_res.lit_leds.contains(&"led1".to_string()));
+        assert!(step_res.faults.is_empty(), "Properly current-limited circuit must have no faults");
+        assert!(step_res.mcu_pin_voltages.contains_key("5V"));
+        assert!(step_res.mcu_pin_voltages.contains_key("GND"));
+        let v5v = *step_res.mcu_pin_voltages.get("5V").unwrap();
+        assert!((v5v - 5.0).abs() < 0.05, "5V rail under load should be ~5.0V, got {}", v5v);
+        assert_eq!(*step_res.mcu_pin_voltages.get("GND").unwrap(), 0.0);
+        assert!(step_res.pin_voltages.contains_key("led1:anode"));
+        assert!(step_res.pin_voltages.contains_key("led1:cathode"));
+
+        // Now create a short circuit
+        engine.add_wire(Wire {
+            id: "w_short".to_string(),
+            from: PinId::new("uno1", "5V"),
+            to: PinId::new("uno1", "GND"),
+            color: "#ff0000".to_string(),
+        });
+        engine.resolve_electrical_nets();
+
+        let faulted_step_res = StepResult {
+            pin13: false,
+            lit_leds: vec![],
+            led_brightness: HashMap::new(),
+            serial_output: None,
+            millis: 0.0,
+            pin_voltages: engine.pin_voltages_map(),
+            mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+            faults: engine.faults.clone(),
+        };
+
+        assert!(!faulted_step_res.faults.is_empty(), "Short circuit must generate fault in StepResult");
+        assert_eq!(faulted_step_res.faults[0].fault_type, FaultType::ShortCircuit);
+    }
 }

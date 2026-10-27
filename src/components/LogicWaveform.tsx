@@ -40,7 +40,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({ history, channels 
       unit: 'V',
       maxVal: 5.0,
       history: history || [],
-      isDigital: true,
+      isDigital: false,
     },
     {
       id: 'ch_pin2',
@@ -48,8 +48,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({ history, channels 
       color: '#f59e0b', // Amber
       unit: 'V',
       maxVal: 5.0,
-      history: (history || []).map(([t, v]) => [t, v > 2.5 ? 0.0 : 5.0]), // Inverted button pull-up example
-      isDigital: true,
+      history: history || [],
+      isDigital: false,
     },
     {
       id: 'ch_pina0',
@@ -57,7 +57,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({ history, channels 
       color: '#3b82f6', // Blue
       unit: 'V',
       maxVal: 5.0,
-      history: (history || []).map(([t, v]) => [t, 2.5 + 1.5 * Math.sin(t / 800)]), // Analog trace
+      history: history || [],
       isDigital: false,
     },
   ];

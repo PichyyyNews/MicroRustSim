@@ -73,6 +73,7 @@ import { Pushbutton } from './components/Pushbutton';
 import { Potentiometer } from './components/Potentiometer';
 import { WireLayer, getOrthoVertices, updateOrthoSegment } from './components/WireLayer';
 import { LogicWaveform, WaveformChannel } from './components/LogicWaveform';
+import { FaultOverlay } from './components/FaultOverlay';
 import { FileExplorer } from './components/FileExplorer';
 import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
@@ -81,6 +82,8 @@ import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import {
   CircuitComponent,
   CircuitWire,
+  CircuitFault,
+  StepResult,
   ComponentKind,
   ProjectFileEntry,
   ProjectData,
@@ -396,6 +399,9 @@ export default function App() {
   const [baudRate, setBaudRate] = useState(9600);
   const [copiedTerminal, setCopiedTerminal] = useState(false);
   const [logicHistory, setLogicHistory] = useState<[number, number][]>([]);
+  const [pin2History, setPin2History] = useState<[number, number][]>([]);
+  const [pinA0History, setPinA0History] = useState<[number, number][]>([]);
+  const [circuitFaults, setCircuitFaults] = useState<CircuitFault[]>([]);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
   const serialContainerRef = useRef<HTMLDivElement>(null);
 
@@ -442,11 +448,6 @@ export default function App() {
   const [wireDraftStart, setWireDraftStart] = useState<{ compId: string; pinName: string } | null>(null);
   const [mouseCanvasPos, setMouseCanvasPos] = useState({ x: 0, y: 0 });
 
-  const potComp = components.find((c) => c.kind === 'potentiometer');
-  const btnComp = components.find((c) => c.kind === 'pushbutton');
-  const potVoltage = (potComp?.props?.value ?? 0.5) * 5.0;
-  const btnVoltage = btnComp?.props?.pressed ? 0.0 : 5.0;
-
   const waveformChannels = useMemo<WaveformChannel[]>(() => [
     {
       id: 'ch_pin13',
@@ -455,7 +456,7 @@ export default function App() {
       unit: 'V',
       maxVal: 5.0,
       history: logicHistory,
-      isDigital: true,
+      isDigital: false,
     },
     {
       id: 'ch_pin2',
@@ -463,8 +464,8 @@ export default function App() {
       color: '#f59e0b', // Amber
       unit: 'V',
       maxVal: 5.0,
-      history: logicHistory.map(([t]) => [t, btnVoltage]),
-      isDigital: true,
+      history: pin2History,
+      isDigital: false,
     },
     {
       id: 'ch_pina0',
@@ -472,10 +473,10 @@ export default function App() {
       color: '#3b82f6', // Blue
       unit: 'V',
       maxVal: 5.0,
-      history: logicHistory.map(([t]) => [t, potVoltage]),
+      history: pinA0History,
       isDigital: false,
     },
-  ], [logicHistory, btnVoltage, potVoltage]);
+  ], [logicHistory, pin2History, pinA0History]);
 
   // --- Synchronize Wire to Rust Core ---
   const syncWireToRust = useCallback(async (wire: CircuitWire) => {
@@ -1142,23 +1143,32 @@ export default function App() {
       if (isRunningRef.current && !isSteppingRef.current) {
         isSteppingRef.current = true;
         try {
-          const res = await tauriInvoke<{
-            pin13: boolean;
-            lit_leds: string[];
-            led_brightness?: Record<string, number>;
-            serial_output: string | null;
-            millis: number;
-          }>('step_simulation', { cycles: 266666 });
+          const res = await tauriInvoke<StepResult>('step_simulation', { cycles: 266666 });
 
           if (!cancelled && res) {
             setPin13State(res.pin13);
             setLitLeds(new Set(res.lit_leds));
             setLedBrightness(res.led_brightness || {});
+            setCircuitFaults(res.faults || []);
             if (res.serial_output) {
               setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
             }
+
+            const t = res.millis;
+            const v13 = res.mcu_pin_voltages?.['13'] ?? (res.pin13 ? 5.0 : 0.0);
+            const v2 = res.mcu_pin_voltages?.['2'] ?? 5.0;
+            const vA0 = res.mcu_pin_voltages?.['A0'] ?? 0.0;
+
             setLogicHistory((prev) => {
-              const next = [...prev, [res.millis, res.pin13 ? 5.0 : 0.0] as [number, number]];
+              const next = [...prev, [t, v13] as [number, number]];
+              return next.slice(-250);
+            });
+            setPin2History((prev) => {
+              const next = [...prev, [t, v2] as [number, number]];
+              return next.slice(-250);
+            });
+            setPinA0History((prev) => {
+              const next = [...prev, [t, vA0] as [number, number]];
               return next.slice(-250);
             });
           }
@@ -2345,6 +2355,10 @@ export default function App() {
                         tauriInvoke('reset_simulation');
                         setLitLeds(new Set());
                         setLedBrightness({});
+                        setCircuitFaults([]);
+                        setLogicHistory([]);
+                        setPin2History([]);
+                        setPinA0History([]);
                         setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
                         setStatusMessage('MCU Reset');
                       }}
@@ -3066,6 +3080,14 @@ export default function App() {
                       onAddAndDragWaypoint={handleAddAndDragWaypoint}
                       onDeleteWaypoint={handleDeleteWaypoint}
                     />
+
+                    {/* Discrete Hardware Circuit Fault Indicators Overlay */}
+                    <FaultOverlay
+                      faults={circuitFaults}
+                      getPinWorldPos={getPinWorldPos}
+                      components={components}
+                      onHoverFault={(desc) => setCanvasHoverInfo(desc)}
+                    />
                   </div>
 
                   {/* Wire Dragging Floating Hint */}
@@ -3537,7 +3559,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.0 • Cycle-Accurate Simulator</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.1 • Cycle-Accurate Simulator</p>
                   </div>
                 </div>
                 <button
