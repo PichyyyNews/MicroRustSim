@@ -46,7 +46,7 @@ import { Led } from './components/Led';
 import { Resistor } from './components/Resistor';
 import { Pushbutton } from './components/Pushbutton';
 import { Potentiometer } from './components/Potentiometer';
-import { WireLayer } from './components/WireLayer';
+import { WireLayer, getOrthoVertices, updateOrthoSegment } from './components/WireLayer';
 import { LogicWaveform } from './components/LogicWaveform';
 import { CircuitComponent, CircuitWire } from './types';
 
@@ -145,6 +145,14 @@ export default function App() {
     startMouseY: number;
     startWpX: number;
     startWpY: number;
+  } | null>(null);
+  const draggedSegmentRef = useRef<{
+    wireId: string;
+    segIndex: number;
+    orientation: 'horizontal' | 'vertical';
+    startMouseX: number;
+    startMouseY: number;
+    startVertices: { x: number; y: number }[];
   } | null>(null);
   const [showWireColorMenu, setShowWireColorMenu] = useState(false);
   const [customColorInput, setCustomColorInput] = useState('#22C55E');
@@ -510,9 +518,55 @@ export default function App() {
     }
   };
 
+  // Keep latest refs to prevent stale closures during mouse dragging
+  const getPinWorldPosRef = useRef(getPinWorldPos);
+  useEffect(() => {
+    getPinWorldPosRef.current = getPinWorldPos;
+  }, [getPinWorldPos]);
+
+  const wiresRef = useRef(wires);
+  useEffect(() => {
+    wiresRef.current = wires;
+  }, [wires]);
+
   // --- Window Dragging Listener for Smooth Component Movement ---
   useEffect(() => {
     const handleWindowMouseMove = (e: MouseEvent) => {
+      // 1. Canva-style Line Segment Dragging
+      if (draggedSegmentRef.current) {
+        const { wireId, segIndex, orientation, startMouseX, startMouseY, startVertices } =
+          draggedSegmentRef.current;
+        const dx = (e.clientX - startMouseX) / zoom;
+        const dy = (e.clientY - startMouseY) / zoom;
+
+        const currentWires = wiresRef.current;
+        const wire = currentWires.find((w) => w.id === wireId);
+        if (!wire) return;
+        const p1 = getPinWorldPosRef.current(wire.fromComp, wire.fromPin);
+        const p2 = getPinWorldPosRef.current(wire.toComp, wire.toPin);
+        if (!p1 || !p2) return;
+
+        const updated = updateOrthoSegment(
+          startVertices,
+          segIndex,
+          orientation,
+          dx,
+          dy,
+          p1,
+          p2
+        );
+
+        const newWaypoints = updated.slice(1, -1);
+        setWires((prev) =>
+          prev.map((w) => {
+            if (w.id !== wireId) return w;
+            return { ...w, waypoints: newWaypoints };
+          })
+        );
+        return;
+      }
+
+      // 2. Corner Vertex Dragging
       if (draggedWaypointRef.current) {
         const dx = (e.clientX - draggedWaypointRef.current.startMouseX) / zoom;
         const dy = (e.clientY - draggedWaypointRef.current.startMouseY) / zoom;
@@ -530,6 +584,7 @@ export default function App() {
         return;
       }
 
+      // 3. Circuit Component Dragging
       if (draggedCompRef.current) {
         const dx = (e.clientX - draggedCompRef.current.startMouseX) / zoom;
         const dy = (e.clientY - draggedCompRef.current.startMouseY) / zoom;
@@ -543,8 +598,21 @@ export default function App() {
     };
 
     const handleWindowMouseUp = () => {
+      if (draggedSegmentRef.current) {
+        const wireId = draggedSegmentRef.current.wireId;
+        draggedSegmentRef.current = null;
+        const wire = wiresRef.current.find((w) => w.id === wireId);
+        if (wire) {
+          syncWireToRust(wire);
+        }
+      }
       if (draggedWaypointRef.current) {
+        const wireId = draggedWaypointRef.current.wireId;
         draggedWaypointRef.current = null;
+        const wire = wiresRef.current.find((w) => w.id === wireId);
+        if (wire) {
+          syncWireToRust(wire);
+        }
       }
       if (draggedCompRef.current) {
         draggedCompRef.current = null;
@@ -557,7 +625,7 @@ export default function App() {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [zoom]);
+  }, [zoom, syncWireToRust]);
 
   // --- Component Management & Transform Handlers ---
   const handleDeleteComponent = useCallback((id: string) => {
@@ -593,7 +661,35 @@ export default function App() {
     );
   }, [selectedCompId]);
 
-  // --- Waypoint Drag Handlers ---
+  // --- Canva-Style Segment & Waypoint Drag Handlers ---
+  const handleStartDragSegment = useCallback(
+    (
+      wireId: string,
+      segIndex: number,
+      orientation: 'horizontal' | 'vertical',
+      e: React.MouseEvent
+    ) => {
+      e.stopPropagation();
+      const wire = wires.find((w) => w.id === wireId);
+      if (!wire) return;
+      const p1 = getPinWorldPos(wire.fromComp, wire.fromPin);
+      const p2 = getPinWorldPos(wire.toComp, wire.toPin);
+      if (!p1 || !p2) return;
+
+      const vertices = getOrthoVertices(p1, wire.waypoints, p2);
+
+      draggedSegmentRef.current = {
+        wireId,
+        segIndex,
+        orientation,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+        startVertices: vertices,
+      };
+    },
+    [wires, getPinWorldPos]
+  );
+
   const handleStartDragWaypoint = useCallback((wireId: string, index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const wire = wires.find((w) => w.id === wireId);
@@ -1803,6 +1899,7 @@ export default function App() {
                           setSelectedCompId(null);
                         }
                       }}
+                      onStartDragSegment={handleStartDragSegment}
                       onStartDragWaypoint={handleStartDragWaypoint}
                       onAddAndDragWaypoint={handleAddAndDragWaypoint}
                       onDeleteWaypoint={handleDeleteWaypoint}
