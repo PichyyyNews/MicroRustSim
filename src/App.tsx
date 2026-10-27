@@ -80,6 +80,7 @@ import {
   ProjectFileEntry,
   ProjectData,
   RecentProject,
+  WorkspaceLayout,
 } from './types';
 
 // Safely invoke Tauri IPC commands with web preview fallback
@@ -197,13 +198,102 @@ export default function App() {
     startCompY: number;
   } | null>(null);
 
-  // --- UI Layout & Drawers ---
+  // --- UI Layout & Drawers (Persisted to SQLite) ---
+  const [layoutLoaded, setLayoutLoaded] = useState(false);
+  const [layoutConfig, setLayoutConfig] = useState<WorkspaceLayout>({
+    leftColumnSize: 26,
+    centerColumnSize: 52,
+    rightColumnSize: 22,
+    leftEditorSplit: 55,
+    leftExplorerSplit: 45,
+    centerCanvasSplit: 70,
+    centerTerminalSplit: 30,
+    rightPaletteSplit: 45,
+    rightInspectorSplit: 55,
+  });
+
   const [showEditor, setShowEditor] = useState(true);
   const [showPalette, setShowPalette] = useState(true);
   const [showExplorer, setShowExplorer] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [showInspector, setShowInspector] = useState(true);
   const [bottomTab, setBottomTab] = useState<'serial' | 'waveform' | 'build'>('serial');
+
+  // Load layout preferences from SQLite on app startup
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const saved = await tauriInvoke<string | null>('get_user_setting', { key: 'workspace_layout' });
+        if (saved && mounted) {
+          const parsed = JSON.parse(saved) as WorkspaceLayout;
+          if (parsed) {
+            if (typeof parsed.showEditor === 'boolean') setShowEditor(parsed.showEditor);
+            if (typeof parsed.showExplorer === 'boolean') setShowExplorer(parsed.showExplorer);
+            if (typeof parsed.showTerminal === 'boolean') setShowTerminal(parsed.showTerminal);
+            if (typeof parsed.showPalette === 'boolean') setShowPalette(parsed.showPalette);
+            if (typeof parsed.showInspector === 'boolean') setShowInspector(parsed.showInspector);
+            setLayoutConfig((prev) => ({ ...prev, ...parsed }));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load layout from SQLite:', err);
+      } finally {
+        if (mounted) setLayoutLoaded(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Save layout preferences to SQLite (debounced 350ms to prevent SQLite locking on fast dragging)
+  const saveLayoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const persistLayout = useCallback((updates: Partial<WorkspaceLayout>) => {
+    setLayoutConfig((prev) => {
+      const next = { ...prev, ...updates };
+      if (saveLayoutTimerRef.current) {
+        clearTimeout(saveLayoutTimerRef.current);
+      }
+      saveLayoutTimerRef.current = setTimeout(async () => {
+        try {
+          await tauriInvoke('save_user_setting', {
+            key: 'workspace_layout',
+            value: JSON.stringify(next),
+          });
+        } catch (err) {
+          console.warn('Failed to save layout to SQLite:', err);
+        }
+      }, 350);
+      return next;
+    });
+  }, []);
+
+  const toggleEditor = () => {
+    const next = !showEditor;
+    setShowEditor(next);
+    persistLayout({ showEditor: next });
+  };
+  const togglePalette = () => {
+    const next = !showPalette;
+    setShowPalette(next);
+    persistLayout({ showPalette: next });
+  };
+  const toggleExplorer = () => {
+    const next = !showExplorer;
+    setShowExplorer(next);
+    persistLayout({ showExplorer: next });
+  };
+  const toggleTerminal = () => {
+    const next = !showTerminal;
+    setShowTerminal(next);
+    persistLayout({ showTerminal: next });
+  };
+  const toggleInspector = () => {
+    const next = !showInspector;
+    setShowInspector(next);
+    persistLayout({ showInspector: next });
+  };
 
   // --- Project Management & On-Disk Storage ---
   const [projectName, setProjectName] = useState('Blink_Lab_Uno');
@@ -1349,7 +1439,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowEditor(!showEditor);
+                      toggleEditor();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -1363,7 +1453,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowExplorer(!showExplorer);
+                      toggleExplorer();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -1382,7 +1472,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowTerminal(!showTerminal);
+                      toggleTerminal();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -1396,7 +1486,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowPalette(!showPalette);
+                      togglePalette();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -1410,7 +1500,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      setShowInspector(!showInspector);
+                      toggleInspector();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -2048,15 +2138,54 @@ export default function App() {
         </div>
 
         {/* 2. Main 3-Column Resizable Workspace (Left: Editor & Explorer, Center: Canvas & Terminal, Right: Palette & Property) */}
-        <ResizablePanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
+        <ResizablePanelGroup
+          key={layoutLoaded ? 'layout-loaded' : 'layout-init'}
+          orientation="horizontal"
+          className="flex-1 overflow-hidden"
+          onLayoutChanged={(layout) => {
+            const updates: Partial<WorkspaceLayout> = {};
+            if (layout['left-column-panel'] !== undefined) {
+              updates.leftColumnSize = Math.round(layout['left-column-panel']);
+            }
+            if (layout['center-column-panel'] !== undefined) {
+              updates.centerColumnSize = Math.round(layout['center-column-panel']);
+            }
+            if (layout['right-column-panel'] !== undefined) {
+              updates.rightColumnSize = Math.round(layout['right-column-panel']);
+            }
+            persistLayout(updates);
+          }}
+        >
           
           {/* Left Column: Monaco Code Editor (Top) & File Explorer (Bottom) */}
           {(showEditor || showExplorer) && (
             <>
-              <ResizablePanel id="left-column-panel" defaultSize="26%" minSize="16%" maxSize="45%">
-                <ResizablePanelGroup orientation="vertical" className="h-full w-full">
+              <ResizablePanel
+                id="left-column-panel"
+                defaultSize={layoutConfig.leftColumnSize ?? 26}
+                minSize="16%"
+                maxSize="45%"
+              >
+                <ResizablePanelGroup
+                  orientation="vertical"
+                  className="h-full w-full"
+                  onLayoutChanged={(layout) => {
+                    const updates: Partial<WorkspaceLayout> = {};
+                    if (layout['editor-panel'] !== undefined) {
+                      updates.leftEditorSplit = Math.round(layout['editor-panel']);
+                    }
+                    if (layout['explorer-panel'] !== undefined) {
+                      updates.leftExplorerSplit = Math.round(layout['explorer-panel']);
+                    }
+                    persistLayout(updates);
+                  }}
+                >
                   {showEditor && (
-                    <ResizablePanel id="editor-panel" defaultSize={showExplorer ? "55%" : "100%"} minSize="20%">
+                    <ResizablePanel
+                      id="editor-panel"
+                      defaultSize={showExplorer ? (layoutConfig.leftEditorSplit ?? 55) : 100}
+                      minSize="20%"
+                    >
                       <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
@@ -2065,7 +2194,7 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          onClick={() => setShowEditor(false)}
+                          onClick={() => toggleEditor()}
                           title="Collapse Editor"
                           className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
                         >
@@ -2107,7 +2236,11 @@ export default function App() {
                   )}
                   {showEditor && showExplorer && <ResizableHandle withHandle orientation="horizontal" />}
                   {showExplorer && (
-                    <ResizablePanel id="explorer-panel" defaultSize={showEditor ? "45%" : "100%"} minSize="20%">
+                    <ResizablePanel
+                      id="explorer-panel"
+                      defaultSize={showEditor ? (layoutConfig.leftExplorerSplit ?? 45) : 100}
+                      minSize="20%"
+                    >
                       <FileExplorer
                           projectName={projectName}
                           projectPath={projectPath}
@@ -2132,9 +2265,30 @@ export default function App() {
           )}
 
           {/* Center Column: Interactive Canvas (Top) & Terminal / Waveform (Bottom) */}
-          <ResizablePanel id="center-column-panel" minSize="30%">
-            <ResizablePanelGroup orientation="vertical" className="h-full w-full">
-              <ResizablePanel id="canvas-panel" defaultSize={showTerminal ? "70%" : "100%"} minSize="25%">
+          <ResizablePanel
+            id="center-column-panel"
+            defaultSize={layoutConfig.centerColumnSize ?? 52}
+            minSize="30%"
+          >
+            <ResizablePanelGroup
+              orientation="vertical"
+              className="h-full w-full"
+              onLayoutChanged={(layout) => {
+                const updates: Partial<WorkspaceLayout> = {};
+                if (layout['canvas-panel'] !== undefined) {
+                  updates.centerCanvasSplit = Math.round(layout['canvas-panel']);
+                }
+                if (layout['terminal-panel'] !== undefined) {
+                  updates.centerTerminalSplit = Math.round(layout['terminal-panel']);
+                }
+                persistLayout(updates);
+              }}
+            >
+              <ResizablePanel
+                id="canvas-panel"
+                defaultSize={showTerminal ? (layoutConfig.centerCanvasSplit ?? 70) : 100}
+                minSize="25%"
+              >
                 <main
                   className={`h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] ${
                     activeTool === 'wire' ? 'cursor-crosshair' : 'cursor-default'
@@ -2340,7 +2494,12 @@ export default function App() {
               {showTerminal && (
                 <>
                   <ResizableHandle withHandle orientation="horizontal" />
-                  <ResizablePanel id="terminal-panel" defaultSize="30%" minSize="15%" maxSize="65%">
+                  <ResizablePanel
+                    id="terminal-panel"
+                    defaultSize={layoutConfig.centerTerminalSplit ?? 30}
+                    minSize="15%"
+                    maxSize="65%"
+                  >
                     <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
                           <Tabs
                             value={bottomTab}
@@ -2387,7 +2546,7 @@ export default function App() {
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  onClick={() => setShowTerminal(false)}
+                                  onClick={() => toggleTerminal()}
                                   title="Collapse Terminal"
                                   className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
                                 >
@@ -2460,10 +2619,32 @@ export default function App() {
           {(showPalette || showInspector) && (
             <>
               <ResizableHandle withHandle />
-              <ResizablePanel id="right-column-panel" defaultSize="22%" minSize="15%" maxSize="45%">
-                <ResizablePanelGroup orientation="vertical" className="h-full w-full">
+              <ResizablePanel
+                id="right-column-panel"
+                defaultSize={layoutConfig.rightColumnSize ?? 22}
+                minSize="15%"
+                maxSize="45%"
+              >
+                <ResizablePanelGroup
+                  orientation="vertical"
+                  className="h-full w-full"
+                  onLayoutChanged={(layout) => {
+                    const updates: Partial<WorkspaceLayout> = {};
+                    if (layout['palette-panel'] !== undefined) {
+                      updates.rightPaletteSplit = Math.round(layout['palette-panel']);
+                    }
+                    if (layout['inspector-panel'] !== undefined) {
+                      updates.rightInspectorSplit = Math.round(layout['inspector-panel']);
+                    }
+                    persistLayout(updates);
+                  }}
+                >
                   {showPalette && (
-                    <ResizablePanel id="palette-panel" defaultSize={showInspector ? "45%" : "100%"} minSize="20%">
+                    <ResizablePanel
+                      id="palette-panel"
+                      defaultSize={showInspector ? (layoutConfig.rightPaletteSplit ?? 45) : 100}
+                      minSize="20%"
+                    >
                       <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
@@ -2472,7 +2653,7 @@ export default function App() {
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          onClick={() => setShowPalette(false)}
+                          onClick={() => togglePalette()}
                           title="Collapse Palette"
                           className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
                         >
@@ -2645,7 +2826,11 @@ export default function App() {
                   )}
                   {showPalette && showInspector && <ResizableHandle withHandle orientation="horizontal" />}
                   {showInspector && (
-                    <ResizablePanel id="inspector-panel" defaultSize={showPalette ? "55%" : "100%"} minSize="20%">
+                    <ResizablePanel
+                      id="inspector-panel"
+                      defaultSize={showPalette ? (layoutConfig.rightInspectorSplit ?? 55) : 100}
+                      minSize="20%"
+                    >
                       <PropertyInspector
                         selectedCompId={selectedCompId}
                         selectedWireId={selectedWireId}
@@ -2655,7 +2840,7 @@ export default function App() {
                         onUpdateWire={handleUpdateWire}
                         onDeleteComponent={handleDeleteComponent}
                         onDeleteWire={handleDeleteWire}
-                        onClose={() => setShowInspector(false)}
+                        onClose={() => toggleInspector()}
                       />
                     </ResizablePanel>
                   )}

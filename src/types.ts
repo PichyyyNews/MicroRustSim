@@ -55,3 +55,20 @@ export interface RecentProject {
   path: string;
   last_opened: string;
 }
+
+export interface WorkspaceLayout {
+  leftColumnSize?: number;
+  centerColumnSize?: number;
+  rightColumnSize?: number;
+  leftEditorSplit?: number;
+  leftExplorerSplit?: number;
+  centerCanvasSplit?: number;
+  centerTerminalSplit?: number;
+  rightPaletteSplit?: number;
+  rightInspectorSplit?: number;
+  showEditor?: boolean;
+  showExplorer?: boolean;
+  showTerminal?: boolean;
+  showPalette?: boolean;
+  showInspector?: boolean;
+}

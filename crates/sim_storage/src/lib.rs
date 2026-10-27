@@ -430,6 +430,15 @@ impl ProjectStorage {
             [],
         )?;
 
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS user_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -521,6 +530,26 @@ impl ProjectStorage {
         self.conn.execute("DELETE FROM recent_projects WHERE path = ?1", params![path])?;
         Ok(())
     }
+
+    pub fn get_setting(&self, key: &str) -> SqlResult<Option<String>> {
+        let mut stmt = self.conn.prepare("SELECT value FROM user_settings WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> SqlResult<()> {
+        self.conn.execute(
+            "INSERT INTO user_settings (key, value, updated_at) 
+             VALUES (?1, ?2, CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;",
+            params![key, value],
+        )?;
+        Ok(())
+    }
 }
 
 // Simple fallback for dirs crate if not imported
@@ -578,5 +607,27 @@ mod tests {
         assert_eq!(opened.name, "TrafficLight");
 
         let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_user_settings_persistence() {
+        let storage = ProjectStorage::open_in_memory().unwrap();
+        assert_eq!(storage.get_setting("workspace_layout").unwrap(), None);
+
+        let layout_json = r#"{"leftColumnSize":26,"centerColumnSize":52,"rightColumnSize":22}"#;
+        storage.set_setting("workspace_layout", layout_json).unwrap();
+
+        assert_eq!(
+            storage.get_setting("workspace_layout").unwrap(),
+            Some(layout_json.to_string())
+        );
+
+        // Update existing setting
+        let updated_json = r#"{"leftColumnSize":30,"centerColumnSize":48,"rightColumnSize":22}"#;
+        storage.set_setting("workspace_layout", updated_json).unwrap();
+        assert_eq!(
+            storage.get_setting("workspace_layout").unwrap(),
+            Some(updated_json.to_string())
+        );
     }
 }

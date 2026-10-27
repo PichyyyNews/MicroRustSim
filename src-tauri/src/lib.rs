@@ -269,6 +269,18 @@ fn remove_recent_project(path: String, state: State<'_, AppState>) -> Result<(),
     storage.remove_recent_project(&path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_user_setting(key: String, state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let storage = state.storage.lock();
+    storage.get_setting(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_user_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
+    let storage = state.storage.lock();
+    storage.set_setting(&key, &value).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     let (sim_tx, sim_rx) = channel::<SimCommand>();
 
@@ -472,6 +484,8 @@ pub fn run() {
             delete_project_file,
             list_recent_projects,
             remove_recent_project,
+            get_user_setting,
+            save_user_setting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
