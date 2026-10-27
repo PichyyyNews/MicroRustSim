@@ -96,21 +96,24 @@ void loop() {
 
 const WIRE_COLORS = [
   { hex: '#ef4444', name: 'Red', role: '5V / VCC' },
-  { hex: '#18181b', name: 'Black', role: 'GND' },
-  { hex: '#22c55e', name: 'Green', role: 'Signal' },
-  { hex: '#3b82f6', name: 'Blue', role: 'Analog / Clock' },
-  { hex: '#eab308', name: 'Yellow', role: 'Digital / I2C' },
   { hex: '#f97316', name: 'Orange', role: '3.3V / Reset' },
-  { hex: '#a855f7', name: 'Purple', role: 'SPI / Bus' },
+  { hex: '#eab308', name: 'Yellow', role: 'Digital / I2C' },
+  { hex: '#22c55e', name: 'Green', role: 'Signal' },
   { hex: '#06b6d4', name: 'Cyan', role: 'PWM' },
-  { hex: '#71717a', name: 'Gray', role: 'Shield' },
+  { hex: '#3b82f6', name: 'Blue', role: 'Analog / Clock' },
+  { hex: '#a855f7', name: 'Purple', role: 'SPI / Bus' },
+  { hex: '#ec4899', name: 'Pink', role: 'Aux / Alert' },
   { hex: '#ffffff', name: 'White', role: 'Misc' },
+  { hex: '#71717a', name: 'Gray', role: 'Shield' },
+  { hex: '#18181b', name: 'Black', role: 'GND' },
+  { hex: '#78350f', name: 'Brown', role: 'Reference' },
 ];
 
 export default function App() {
   // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
   const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire'>('select');
   const [showWireColorMenu, setShowWireColorMenu] = useState(false);
+  const [customColorInput, setCustomColorInput] = useState('#22C55E');
   const wireMenuRef = useRef<HTMLDivElement>(null);
   const draggedCompRef = useRef<{
     id: string;
@@ -683,7 +686,7 @@ export default function App() {
         </header>
 
         {/* 2. Secondary Action Toolbar (Dedicated Row, Larger Buttons, Premium Run Color) */}
-        <div className="h-10 bg-[#121215] border-b border-[#222226] px-3 flex items-center justify-between select-none z-20 shrink-0">
+        <div className="relative h-10 bg-[#121215] border-b border-[#222226] px-3 flex items-center justify-between select-none z-40 shrink-0">
           <div className="flex items-center gap-2">
             
             {/* Run / Pause (Solid, Vibrant Emerald / Amber - High Quality) */}
@@ -763,7 +766,8 @@ export default function App() {
               <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-5 mx-2 bg-[#27272a]" />
+            {/* Minimal Grey Separator between Run/Upload Controls and Mouse Tools */}
+            <div className="w-[1px] h-5 bg-zinc-600/70 mx-2.5 self-center shrink-0" />
 
             {/* Tool Selection Group: Select (V), Move (M), Wire (W) - Borderless Flat Design */}
             <div className="flex items-center gap-1">
@@ -872,7 +876,7 @@ export default function App() {
                       <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold block mb-2">
                         Electronic Color Codes
                       </span>
-                      <div className="grid grid-cols-5 gap-1.5">
+                      <div className="grid grid-cols-6 gap-1.5">
                         {WIRE_COLORS.map((c) => (
                           <button
                             key={c.hex}
@@ -880,10 +884,11 @@ export default function App() {
                             title={`${c.name} (${c.role})`}
                             onClick={() => {
                               setCurrentWireColor(c.hex);
+                              setCustomColorInput(c.hex);
                               setActiveTool('wire');
                               setShowWireColorMenu(false);
                             }}
-                            className={`relative w-10 h-8 rounded flex items-center justify-center transition-all ${
+                            className={`relative w-8 h-7 rounded flex items-center justify-center transition-all ${
                               currentWireColor === c.hex
                                 ? 'ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-105'
                                 : 'hover:scale-105 border border-zinc-700/60'
@@ -907,25 +912,54 @@ export default function App() {
                     <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between px-2 py-1 bg-[#121215] rounded border border-zinc-800 mb-2">
                       <span>Active:</span>
                       <span className="text-zinc-200 font-medium">
-                        {WIRE_COLORS.find((w) => w.hex === currentWireColor)?.name || 'Custom'} (
-                        {WIRE_COLORS.find((w) => w.hex === currentWireColor)?.role || 'Custom'})
+                        {WIRE_COLORS.find((w) => w.hex.toLowerCase() === currentWireColor.toLowerCase())?.name || 'Custom'} (
+                        {WIRE_COLORS.find((w) => w.hex.toLowerCase() === currentWireColor.toLowerCase())?.role || 'Custom'})
                       </span>
                     </div>
 
+                    {/* Dark-Themed Custom Hex Color Input (Never opens white native dialog) */}
                     <div className="pt-2 border-t border-[#27272a] flex items-center justify-between gap-2">
-                      <label className="text-[11px] text-zinc-400 flex items-center gap-1.5 cursor-pointer hover:text-zinc-200 transition-colors">
-                        <input
-                          type="color"
-                          value={currentWireColor}
-                          onChange={(e) => {
-                            setCurrentWireColor(e.target.value);
-                            setActiveTool('wire');
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-4 h-4 rounded border border-zinc-700 shrink-0 shadow-sm"
+                          style={{
+                            backgroundColor: /^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)
+                              ? customColorInput
+                              : currentWireColor,
                           }}
-                          className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0"
                         />
-                        <span>Custom Color...</span>
-                      </label>
-                      <span className="font-mono text-[10px] text-zinc-500 uppercase">{currentWireColor}</span>
+                        <input
+                          type="text"
+                          value={customColorInput}
+                          onChange={(e) => setCustomColorInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)) {
+                                setCurrentWireColor(customColorInput);
+                                setActiveTool('wire');
+                                setShowWireColorMenu(false);
+                              }
+                            }
+                          }}
+                          placeholder="#HEX"
+                          maxLength={7}
+                          className="h-6 w-20 px-1.5 bg-[#09090b] border border-zinc-800 focus:border-zinc-500 rounded text-zinc-200 font-mono text-[11px] focus:outline-none uppercase"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)) {
+                            setCurrentWireColor(customColorInput);
+                            setActiveTool('wire');
+                            setShowWireColorMenu(false);
+                          }
+                        }}
+                        className="h-6 px-2.5 bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                      >
+                        Set
+                      </button>
                     </div>
                   </div>
                 )}

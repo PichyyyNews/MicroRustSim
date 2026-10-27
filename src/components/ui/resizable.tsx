@@ -37,7 +37,7 @@ function ResizableHandle({
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
-        "relative flex items-center justify-center transition-colors select-none z-20 group",
+        "relative flex items-center justify-center transition-colors select-none z-10 group",
         "w-2 hover:bg-zinc-800/80 cursor-col-resize",
         "aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:h-2 aria-[orientation=horizontal]:cursor-row-resize",
         className
