@@ -1244,27 +1244,6 @@ export default function App() {
                       transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                     }}
                   >
-                    {/* Wires Layer */}
-                    <WireLayer
-                      wires={wires}
-                      getPinWorldPos={getPinWorldPos}
-                      draggingWire={
-                        wireDraftStart
-                          ? {
-                              fromX: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.x || 0,
-                              fromY: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.y || 0,
-                              toX: mouseCanvasPos.x,
-                              toY: mouseCanvasPos.y,
-                              color: currentWireColor,
-                            }
-                          : null
-                      }
-                      onWireClick={(wireId) => {
-                        setWires((prev) => prev.filter((w) => w.id !== wireId));
-                        tauriInvoke('remove_wire', { id: wireId });
-                      }}
-                    />
-
                     {/* Circuit Components */}
                     {components.map((c) => {
                       const isSelected = selectedCompId === c.id;
@@ -1331,7 +1310,7 @@ export default function App() {
                             <Led
                               id={c.id}
                               color={(c.props.color as any) || 'red'}
-                              isLit={litLeds.has(c.id) || (c.id === 'led1' && pin13State)}
+                              isLit={litLeds.has(c.id)}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
@@ -1399,6 +1378,27 @@ export default function App() {
 
                       return null;
                     })}
+
+                    {/* Wires Layer */}
+                    <WireLayer
+                      wires={wires}
+                      getPinWorldPos={getPinWorldPos}
+                      draggingWire={
+                        wireDraftStart
+                          ? {
+                              fromX: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.x || 0,
+                              fromY: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.y || 0,
+                              toX: mouseCanvasPos.x,
+                              toY: mouseCanvasPos.y,
+                              color: currentWireColor,
+                            }
+                          : null
+                      }
+                      onWireClick={(wireId) => {
+                        setWires((prev) => prev.filter((w) => w.id !== wireId));
+                        tauriInvoke('remove_wire', { id: wireId });
+                      }}
+                    />
                   </div>
 
                   {/* Wire Dragging Floating Hint */}

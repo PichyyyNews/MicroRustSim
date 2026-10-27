@@ -15,7 +15,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
   onWireClick,
 }) => {
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20">
       {/* Existing Wires */}
       {wires.map((wire) => {
         const p1 = getPinWorldPos(wire.fromComp, wire.fromPin);

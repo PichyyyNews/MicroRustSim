@@ -255,6 +255,8 @@ impl ArduinoCliBackend {
                 p.to_string_lossy().to_string()
             } else if std::path::Path::new("./tools/arduino-cli.exe").exists() {
                 "./tools/arduino-cli.exe".to_string()
+            } else if std::path::Path::new(r"C:\Program Files\Arduino CLI\arduino-cli.exe").exists() {
+                r"C:\Program Files\Arduino CLI\arduino-cli.exe".to_string()
             } else {
                 "arduino-cli".to_string()
             }
@@ -296,6 +298,9 @@ impl CompilerBackend for ArduinoCliBackend {
     }
 
     fn compile(&self, source_code: &str, fqbn: &str) -> Result<CompileOutput, String> {
+        static COMPILE_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = COMPILE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
         static COMPILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let count = COMPILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let temp_dir = std::env::temp_dir().join(format!(

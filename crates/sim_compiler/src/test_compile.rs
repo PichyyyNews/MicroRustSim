@@ -42,3 +42,23 @@ void loop() {
     let text = String::from_utf8_lossy(&output);
     println!(">>> Serial output captured: {:?}", text);
 }
+
+#[test]
+fn test_builtin_blink_hex_execution() {
+    use sim_core::{ArduinoUnoCore, McuCore};
+    use crate::BuiltinSketches;
+
+    let hex = BuiltinSketches::blink_hex();
+    let mut uno = ArduinoUnoCore::new();
+    uno.load_hex(&hex).expect("Failed to load hex");
+
+    println!("Stepping 35,000,000 cycles (approx 2.18s)...");
+    for i in 1..=10 {
+        uno.step_cycles(3_500_000);
+        let pin13 = uno.get_pin_state("13");
+        let output = uno.read_serial_output();
+        let text = String::from_utf8_lossy(&output);
+        let millis = uno.millis();
+        println!("Interval {}: pin13={:?}, millis={}, serial={:?}", i, pin13, millis, text);
+    }
+}

@@ -102,13 +102,13 @@ impl MicroRustSimApp {
         ));
 
         match self.compiler.compile(&self.sketch_code, "arduino:avr:uno") {
-            Ok(hex) => {
+            Ok(out) => {
                 self.build_output.push_str(&format!(
                     "{} Compilation successful! Generated Intel HEX ({:.1} KB)\n",
                     octicons::CHECK,
-                    hex.len() as f32 / 1024.0
+                    out.hex.len() as f32 / 1024.0
                 ));
-                match self.runner.load_hex(&hex) {
+                match self.runner.load_hex(&out.hex) {
                     Ok(()) => {
                         self.build_output.push_str(&format!(
                             "{} Upload complete. Flashed to simulated ATmega328P Flash.\n",
