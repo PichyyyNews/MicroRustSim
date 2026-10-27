@@ -168,7 +168,7 @@ export default function App() {
   const [baudRate, setBaudRate] = useState(9600);
   const [logicHistory, setLogicHistory] = useState<[number, number][]>([]);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
-  const serialEndRef = useRef<HTMLDivElement>(null);
+  const serialContainerRef = useRef<HTMLDivElement>(null);
 
   // --- Sketch Code & Project ---
   const [sketchCode, setSketchCode] = useState(DEFAULT_BLINK_CODE);
@@ -290,8 +290,9 @@ export default function App() {
 
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
-    if (bottomTab === 'serial' && showDrawer) {
-      serialEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = serialContainerRef.current;
+    if (bottomTab === 'serial' && showDrawer && el) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [serialLogs, bottomTab, showDrawer]);
 
@@ -1675,14 +1676,15 @@ export default function App() {
                     </div>
 
                     {/* Tab Content: Serial Monitor */}
-                    <TabsContent value="serial" className="flex-1 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0">
-                      <div className="h-full flex flex-col justify-between">
-                        <ScrollArea className="flex-1 pr-2">
-                          <pre className="whitespace-pre-wrap leading-relaxed select-text font-mono text-xs text-zinc-300 m-0">
-                            {serialLogs}
-                            <div ref={serialEndRef} />
-                          </pre>
-                        </ScrollArea>
+                    <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs text-zinc-400 m-0 flex flex-col">
+                      <div
+                        ref={serialContainerRef}
+                        className="flex-1 min-h-0 overflow-y-auto pr-2 select-text font-mono text-xs text-zinc-300"
+                      >
+                        <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0">
+                          {serialLogs}
+                        </pre>
+                      </div>
                         <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
                           <Input
                             type="text"
@@ -1712,8 +1714,7 @@ export default function App() {
                             Send
                           </Button>
                         </div>
-                      </div>
-                    </TabsContent>
+                      </TabsContent>
 
                     {/* Tab Content: High-DPI Crisp Waveform */}
                     <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
