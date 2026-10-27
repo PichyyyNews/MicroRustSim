@@ -203,6 +203,7 @@ fn create_project_dir(
     name: String,
     sketch: Option<String>,
     diagram: Option<String>,
+    config: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProjectData, String> {
     let proj = DirectoryProject::create_project_dir(
@@ -210,6 +211,7 @@ fn create_project_dir(
         &name,
         sketch.as_deref(),
         diagram.as_deref(),
+        config.as_deref(),
     )?;
     let storage = state.storage.lock();
     let _ = storage.add_recent_project(&proj.name, &proj.path);

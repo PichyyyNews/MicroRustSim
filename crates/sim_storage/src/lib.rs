@@ -193,6 +193,7 @@ impl DirectoryProject {
         name: &str,
         sketch_code: Option<&str>,
         diagram_json: Option<&str>,
+        config_h: Option<&str>,
     ) -> Result<ProjectData, String> {
         let sanitized_name = name.trim().replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], "_");
         let project_dir = parent_dir.join(&sanitized_name);
@@ -240,7 +241,8 @@ void loop() {
 // UART Baud Configuration
 #define SYSTEM_BAUD 9600
 "#;
-        let _ = std::fs::write(project_dir.join("config.h"), default_config);
+        let config_to_write = config_h.unwrap_or(default_config);
+        let _ = std::fs::write(project_dir.join("config.h"), config_to_write);
 
         let default_diagram = serde_json::to_string_pretty(&DiagramSchema::default())
             .unwrap_or_else(|_| "{}".to_string());
@@ -662,7 +664,7 @@ mod tests {
         let temp = std::env::temp_dir().join(format!("mrsim_test_{}", chrono_like_now()));
         let _ = std::fs::create_dir_all(&temp);
 
-        let proj = DirectoryProject::create_project_dir(&temp, "TrafficLight", None, None).unwrap();
+        let proj = DirectoryProject::create_project_dir(&temp, "TrafficLight", None, None, None).unwrap();
         assert_eq!(proj.name, "TrafficLight");
         assert!(proj.files.iter().any(|f| f.name == "sketch.ino"));
         assert!(proj.files.iter().any(|f| f.name == "diagram.json"));
