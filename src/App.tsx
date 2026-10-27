@@ -3172,7 +3172,7 @@ export default function App() {
 
                       <ScrollArea className="flex-1 p-2 text-xs">
                         <div className="grid grid-cols-2 gap-2">
-                          {/* 1. Arduino Uno R3 */}
+                          {/* 1. Arduino Uno */}
                           <button
                             type="button"
                             onClick={() => {
@@ -3181,22 +3181,25 @@ export default function App() {
                                 ...prev,
                                 { id, kind: 'arduino_uno', x: 100, y: 100, props: {} },
                               ]);
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
                             }}
-                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
-                              <rect x="12" y="8" width="40" height="48" rx="4" strokeWidth="2" fill="#1b2028" />
-                              <rect x="8" y="14" width="8" height="12" rx="1" fill="#71717a" strokeWidth="1.5" />
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="12" y="8" width="40" height="48" rx="4" strokeWidth="2" fill="#18181b" />
+                              <rect x="8" y="14" width="8" height="12" rx="1" fill="#27272a" strokeWidth="1.5" />
                               <rect x="8" y="38" width="10" height="10" rx="1" fill="#27272a" strokeWidth="1.5" />
                               <rect x="22" y="24" width="20" height="12" rx="2" fill="#09090b" strokeWidth="1.5" />
-                              <line x1="48" y1="12" x2="48" y2="28" strokeWidth="3" strokeLinecap="round" stroke="#3f3f46" />
-                              <line x1="48" y1="36" x2="48" y2="52" strokeWidth="3" strokeLinecap="round" stroke="#3f3f46" />
+                              <line x1="48" y1="12" x2="48" y2="28" strokeWidth="2.5" strokeLinecap="round" stroke="#52525b" />
+                              <line x1="48" y1="36" x2="48" y2="52" strokeWidth="2.5" strokeLinecap="round" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Arduino Uno</span>
-                            <span className="text-[9px] text-zinc-500 font-mono">16 MHz MCU</span>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Arduino Uno
+                            </span>
                           </button>
 
-                          {/* 2. Half Breadboard */}
+                          {/* 2. Breadboard */}
                           <button
                             type="button"
                             onClick={() => {
@@ -3205,87 +3208,77 @@ export default function App() {
                                 ...prev,
                                 { id, kind: 'breadboard', x: 300, y: 100, props: {} },
                               ]);
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
                             }}
-                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
-                              <rect x="6" y="14" width="52" height="36" rx="3" strokeWidth="2" fill="#222228" />
-                              <line x1="12" y1="20" x2="52" y2="20" stroke="#ef4444" strokeWidth="1" strokeDasharray="2 2" />
-                              <line x1="12" y1="24" x2="52" y2="24" stroke="#3b82f6" strokeWidth="1" strokeDasharray="2 2" />
-                              <line x1="12" y1="32" x2="52" y2="32" stroke="#52525b" strokeWidth="1.5" strokeDasharray="1 3" />
-                              <line x1="12" y1="40" x2="52" y2="40" stroke="#3b82f6" strokeWidth="1" strokeDasharray="2 2" />
-                              <line x1="12" y1="44" x2="52" y2="44" stroke="#ef4444" strokeWidth="1" strokeDasharray="2 2" />
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="6" y="14" width="52" height="36" rx="3" strokeWidth="2" fill="#18181b" />
+                              <line x1="12" y1="21" x2="52" y2="21" stroke="#52525b" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="25" x2="52" y2="25" stroke="#3f3f46" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="32" x2="52" y2="32" stroke="#71717a" strokeWidth="1.5" strokeDasharray="1 3" />
+                              <line x1="12" y1="39" x2="52" y2="39" stroke="#3f3f46" strokeWidth="1" strokeDasharray="2 2" />
+                              <line x1="12" y1="43" x2="52" y2="43" stroke="#52525b" strokeWidth="1" strokeDasharray="2 2" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Breadboard</span>
-                            <span className="text-[9px] text-zinc-500 font-mono">30 Rows (Half)</span>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Breadboard
+                            </span>
                           </button>
 
                           {/* 3. LED */}
-                          <div className="bg-[#151519] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all">
-                            <svg className="w-10 h-10 my-1 text-red-500" viewBox="0 0 64 64" fill="none">
-                              <path d="M22 28 C22 18, 42 18, 42 28 L44 38 L20 38 Z" fill="currentColor" fillOpacity="0.4" stroke="currentColor" strokeWidth="2" />
-                              <ellipse cx="32" cy="28" rx="8" ry="7" fill="currentColor" fillOpacity="0.7" />
-                              <line x1="26" y1="38" x2="26" y2="52" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
-                              <line x1="38" y1="38" x2="38" y2="52" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `led_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'led', x: 500, y: 80, props: { color: '#ef4444', vf: 2.0 } },
+                              ]);
+                              tauriInvoke('add_led', { id, color: '#ef4444' });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <path d="M22 28 C22 18, 42 18, 42 28 L44 38 L20 38 Z" fill="#18181b" strokeWidth="2" />
+                              <ellipse cx="32" cy="28" rx="8" ry="7" fill="#27272a" />
+                              <line x1="26" y1="38" x2="26" y2="52" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="38" y1="38" x2="38" y2="52" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200">LED Light</span>
-                            <div className="flex items-center gap-1 mt-1">
-                              {(['red', 'green', 'blue'] as const).map((col) => (
-                                <button
-                                  key={col}
-                                  type="button"
-                                  title={`Spawn ${col} LED`}
-                                  onClick={() => {
-                                    const id = `led_${components.length + 1}`;
-                                    setComponents((prev) => [
-                                      ...prev,
-                                      { id, kind: 'led', x: 500, y: 80, props: { color: col } },
-                                    ]);
-                                    tauriInvoke('add_led', { id, color: col });
-                                  }}
-                                  className="w-4 h-4 rounded-full border border-zinc-700 hover:scale-125 transition-transform cursor-pointer"
-                                  style={{
-                                    backgroundColor:
-                                      col === 'red' ? '#ef4444' : col === 'green' ? '#22c55e' : '#3b82f6',
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          </div>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              LED
+                            </span>
+                          </button>
 
                           {/* 4. Resistor */}
-                          <div className="bg-[#151519] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all">
-                            <svg className="w-10 h-10 my-1 text-zinc-400" viewBox="0 0 64 64" fill="none">
-                              <line x1="8" y1="32" x2="20" y2="32" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
-                              <line x1="44" y1="32" x2="56" y2="32" stroke="#71717a" strokeWidth="2" strokeLinecap="round" />
-                              <rect x="20" y="24" width="24" height="16" rx="4" fill="#d4b996" stroke="#a38258" strokeWidth="1.5" />
-                              <line x1="25" y1="24" x2="25" y2="40" stroke="#ef4444" strokeWidth="2" />
-                              <line x1="29" y1="24" x2="29" y2="40" stroke="#ef4444" strokeWidth="2" />
-                              <line x1="33" y1="24" x2="33" y2="40" stroke="#8b4513" strokeWidth="2" />
-                              <line x1="39" y1="24" x2="39" y2="40" stroke="#d97706" strokeWidth="2" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `r_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'resistor', x: 580, y: 80, props: { ohms: 220 } },
+                              ]);
+                              tauriInvoke('add_resistor', { id, ohms: 220 });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <line x1="8" y1="32" x2="20" y2="32" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="44" y1="32" x2="56" y2="32" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
+                              <rect x="20" y="24" width="24" height="16" rx="4" fill="#18181b" strokeWidth="1.5" />
+                              <line x1="26" y1="24" x2="26" y2="40" stroke="#71717a" strokeWidth="2" />
+                              <line x1="31" y1="24" x2="31" y2="40" stroke="#71717a" strokeWidth="2" />
+                              <line x1="36" y1="24" x2="36" y2="40" stroke="#71717a" strokeWidth="2" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200">Resistor</span>
-                            <div className="flex items-center gap-1 mt-1">
-                              {[220, 1000, 10000].map((ohms) => (
-                                <button
-                                  key={ohms}
-                                  type="button"
-                                  title={`Spawn ${ohms >= 1000 ? `${ohms / 1000}k` : `${ohms}`}Ω Resistor`}
-                                  onClick={() => {
-                                    const id = `r_${components.length + 1}`;
-                                    setComponents((prev) => [
-                                      ...prev,
-                                      { id, kind: 'resistor', x: 580, y: 80, props: { ohms } },
-                                    ]);
-                                    tauriInvoke('add_resistor', { id, ohms });
-                                  }}
-                                  className="px-1 py-0.5 rounded text-[9px] font-mono bg-[#18181b] hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 cursor-pointer"
-                                >
-                                  {ohms >= 1000 ? `${ohms / 1000}k` : `${ohms}Ω`}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Resistor
+                            </span>
+                          </button>
 
                           {/* 5. Pushbutton */}
                           <button
@@ -3297,19 +3290,22 @@ export default function App() {
                                 { id, kind: 'pushbutton', x: 680, y: 80, props: {} },
                               ]);
                               tauriInvoke('add_button', { id });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
                             }}
-                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
-                              <rect x="18" y="18" width="28" height="28" rx="4" fill="#27272a" strokeWidth="2" />
-                              <circle cx="32" cy="32" r="8" fill="#18181b" strokeWidth="1.5" />
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="18" y="18" width="28" height="28" rx="4" fill="#18181b" strokeWidth="2" />
+                              <circle cx="32" cy="32" r="8" fill="#27272a" strokeWidth="1.5" />
                               <line x1="12" y1="22" x2="18" y2="22" strokeWidth="2" strokeLinecap="round" />
                               <line x1="12" y1="42" x2="18" y2="42" strokeWidth="2" strokeLinecap="round" />
                               <line x1="46" y1="22" x2="52" y2="22" strokeWidth="2" strokeLinecap="round" />
                               <line x1="46" y1="42" x2="52" y2="42" strokeWidth="2" strokeLinecap="round" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Pushbutton</span>
-                            <span className="text-[9px] text-zinc-500 font-mono">Tactile SPST</span>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Pushbutton
+                            </span>
                           </button>
 
                           {/* 6. Potentiometer */}
@@ -3322,19 +3318,22 @@ export default function App() {
                                 { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } },
                               ]);
                               tauriInvoke('add_potentiometer', { id });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
                             }}
-                            className="bg-[#151519] hover:bg-[#1f1f26] border border-[#222226] hover:border-zinc-700 rounded-md p-2 flex flex-col items-center justify-between text-center transition-all group cursor-pointer"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-10 h-10 my-1 text-zinc-400 group-hover:text-zinc-200 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
-                              <circle cx="32" cy="28" r="16" fill="#1e1e24" strokeWidth="2" />
-                              <circle cx="32" cy="28" r="8" fill="#2d2d38" strokeWidth="1.5" />
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <circle cx="32" cy="28" r="16" fill="#18181b" strokeWidth="2" />
+                              <circle cx="32" cy="28" r="8" fill="#27272a" strokeWidth="1.5" />
                               <line x1="32" y1="20" x2="32" y2="28" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
                               <line x1="24" y1="44" x2="24" y2="52" strokeWidth="2" strokeLinecap="round" />
                               <line x1="32" y1="44" x2="32" y2="52" strokeWidth="2" strokeLinecap="round" />
                               <line x1="40" y1="44" x2="40" y2="52" strokeWidth="2" strokeLinecap="round" />
                             </svg>
-                            <span className="font-medium text-[11px] text-zinc-200 mt-1">Potentiometer</span>
-                            <span className="text-[9px] text-zinc-500 font-mono">10 kΩ Rotary</span>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Potentiometer
+                            </span>
                           </button>
                         </div>
                       </ScrollArea>
