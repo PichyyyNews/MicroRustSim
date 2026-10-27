@@ -730,13 +730,13 @@ export default function App() {
         <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">
           
           {/* Top Resizable Section: Editor + Canvas + Component Palette */}
-          <ResizablePanel defaultSize={showDrawer ? 72 : 100} minSize={30}>
+          <ResizablePanel id="workspace-top" defaultSize="72%" minSize="30%">
             <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
               
               {/* Left Sidebar: Monaco Code Editor */}
               {showEditor && (
                 <>
-                  <ResizablePanel defaultSize={28} minSize={15} maxSize={50}>
+                  <ResizablePanel id="editor-panel" defaultSize="26%" minSize="15%" maxSize="55%">
                     <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
@@ -777,10 +777,7 @@ export default function App() {
               )}
 
               {/* Center Canvas: Interactive Breadboard & Circuit Simulator */}
-              <ResizablePanel
-                defaultSize={showEditor && showPalette ? 50 : showEditor || showPalette ? 72 : 100}
-                minSize={30}
-              >
+              <ResizablePanel id="canvas-panel" minSize="30%">
                 <main
                   className="h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] cursor-default"
                   onMouseDown={handleCanvasMouseDown}
@@ -963,7 +960,7 @@ export default function App() {
               {showPalette && (
                 <>
                   <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
-                  <ResizablePanel defaultSize={22} minSize={15} maxSize={40}>
+                  <ResizablePanel id="palette-panel" defaultSize="22%" minSize="14%" maxSize="40%">
                     <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
@@ -1167,7 +1164,7 @@ export default function App() {
           {showDrawer && (
             <>
               <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
-              <ResizablePanel defaultSize={28} minSize={15} maxSize={65}>
+              <ResizablePanel id="bottom-panel" defaultSize="28%" minSize="12%" maxSize="65%">
                 <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
                   <Tabs
                     value={bottomTab}
