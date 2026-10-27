@@ -102,8 +102,8 @@ impl<'a> CanvasWidget<'a> {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         let painter = ui.painter_at(rect);
 
-        // Background canvas fill (Sleek dark theme canvas)
-        painter.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(18, 24, 38));
+        // Background canvas fill (Sleek dark theme canvas #0f1117)
+        painter.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_rgb(15, 17, 23));
 
         // 1. Handle Pan and Zoom
         let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
