@@ -33,6 +33,23 @@ pub struct StepResult {
     pub millis: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireDto {
+    pub id: String,
+    pub from_comp: String,
+    pub from_pin: String,
+    pub to_comp: String,
+    pub to_pin: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentDto {
+    pub id: String,
+    pub kind: String,
+    pub props: serde_json::Value,
+}
+
 pub enum SimCommand {
     CompileAndUpload {
         sketch: String,
@@ -52,6 +69,10 @@ pub enum SimCommand {
     AddResistor { id: String, ohms: f32 },
     AddButton { id: String },
     AddPot { id: String },
+    SyncCircuit {
+        components: Vec<ComponentDto>,
+        wires: Vec<WireDto>,
+    },
 }
 
 pub struct AppState {
@@ -181,6 +202,11 @@ fn add_button(id: String, state: State<'_, AppState>) {
 #[tauri::command]
 fn add_potentiometer(id: String, state: State<'_, AppState>) {
     let _ = state.sim_tx.send(SimCommand::AddPot { id });
+}
+
+#[tauri::command]
+fn sync_circuit(components: Vec<ComponentDto>, wires: Vec<WireDto>, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::SyncCircuit { components, wires });
 }
 
 #[tauri::command]
@@ -471,6 +497,49 @@ pub fn run() {
                     engine.pots.insert(id.clone(), components::PotentiometerComponent::new(id));
                     engine.resolve_electrical_nets();
                 }
+                SimCommand::SyncCircuit { components, wires } => {
+                    engine.wires.clear();
+                    engine.leds.clear();
+                    engine.resistors.clear();
+                    engine.buttons.clear();
+                    engine.pots.clear();
+
+                    for c in components {
+                        match c.kind.as_str() {
+                            "led" => {
+                                let color = c.props.get("color").and_then(|v| v.as_str()).unwrap_or("red");
+                                engine.leds.insert(c.id.clone(), components::LedComponent::new(c.id, color));
+                            }
+                            "resistor" => {
+                                let ohms = c.props.get("value")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<f32>().ok())
+                                    .unwrap_or(220.0);
+                                engine.resistors.insert(c.id.clone(), components::ResistorComponent::new(c.id, ohms));
+                            }
+                            "pushbutton" => {
+                                engine.buttons.insert(c.id.clone(), components::PushbuttonComponent::new(c.id));
+                            }
+                            "potentiometer" => {
+                                let val = c.props.get("value").and_then(|v| v.as_f64()).map(|f| f as f32).unwrap_or(0.5);
+                                let mut pot = components::PotentiometerComponent::new(c.id.clone());
+                                pot.value = val;
+                                engine.pots.insert(c.id, pot);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    for w in wires {
+                        engine.add_wire(Wire {
+                            id: w.id,
+                            from: PinId::new(w.from_comp, w.from_pin),
+                            to: PinId::new(w.to_comp, w.to_pin),
+                            color: w.color,
+                        });
+                    }
+                    engine.resolve_electrical_nets();
+                }
             }
         }
     });
@@ -509,6 +578,7 @@ pub fn run() {
             write_serial,
             sync_wire,
             remove_wire,
+            sync_circuit,
             add_led,
             add_resistor,
             add_button,

@@ -525,9 +525,19 @@ export default function App() {
 
           setComponents(newComps);
           setWires(newWires);
-          for (const w of newWires) {
-            syncWireToRust(w);
-          }
+
+          // Synchronize all components and wires to backend physical simulation engine
+          tauriInvoke('sync_circuit', {
+            components: newComps.map((c) => ({ id: c.id, kind: c.kind, props: c.props || {} })),
+            wires: newWires.map((w) => ({
+              id: w.id,
+              from_comp: w.fromComp,
+              from_pin: w.fromPin,
+              to_comp: w.toComp,
+              to_pin: w.toPin,
+              color: w.color,
+            })),
+          });
         }
       } catch (e) {
         console.error('Failed to import diagram.json:', e);
@@ -2435,10 +2445,10 @@ export default function App() {
                                     setActiveTabPath(tab.path);
                                     setActiveFile(tab.path);
                                   }}
-                                  className={`group h-full px-2.5 flex items-center gap-1.5 cursor-pointer border-t-2 text-[11px] font-mono transition-colors ${
+                                  className={`group h-full px-2.5 flex items-center gap-1.5 cursor-pointer text-[11px] font-mono transition-colors ${
                                     isActive
-                                      ? 'bg-[#18181b] text-white border-zinc-200 font-medium'
-                                      : 'text-zinc-400 border-transparent hover:bg-zinc-900/60 hover:text-zinc-300'
+                                      ? 'bg-[#18181b] text-zinc-100 font-medium'
+                                      : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-300'
                                   }`}
                                 >
                                   <GoFile className={`w-3 h-3 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`} />
@@ -2800,17 +2810,24 @@ export default function App() {
                               </TabsList>
 
                               {/* Tab Specific Action Controls */}
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 pr-1">
                                 {bottomTab === 'serial' && (
-                                  <select
-                                    value={baudRate}
-                                    onChange={(e) => setBaudRate(Number(e.target.value))}
-                                    className="bg-[#18181b] border border-zinc-800 text-[11px] text-zinc-300 rounded px-1.5 py-0.5"
-                                  >
-                                    <option value={9600}>9600 baud</option>
-                                    <option value={115200}>115200 baud</option>
-                                  </select>
+                                  <div className="relative flex items-center mr-1">
+                                    <select
+                                      value={baudRate}
+                                      onChange={(e) => setBaudRate(Number(e.target.value))}
+                                      className="appearance-none bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-zinc-700 text-[11px] text-zinc-300 rounded px-2.5 py-0.5 pr-5 cursor-pointer outline-none transition-colors"
+                                    >
+                                      <option value={9600}>9600 baud</option>
+                                      <option value={115200}>115200 baud</option>
+                                    </select>
+                                    <div className="absolute right-1.5 pointer-events-none text-zinc-500 text-[8px]">
+                                      ▼
+                                    </div>
+                                  </div>
                                 )}
+
+                                {bottomTab === 'serial' && <div className="h-3.5 w-px bg-[#27272a] mx-0.5" />}
 
                                 {/* Copy Terminal Logs */}
                                 <Button
@@ -2818,7 +2835,7 @@ export default function App() {
                                   size="icon-xs"
                                   onClick={handleCopyTerminalLogs}
                                   title={copiedTerminal ? 'Copied to clipboard!' : 'Copy output logs'}
-                                  className="h-5 px-1.5 flex items-center gap-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors text-[11px]"
+                                  className="h-5 px-2 flex items-center gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors text-[11px]"
                                 >
                                   {copiedTerminal ? (
                                     <>
@@ -2842,9 +2859,9 @@ export default function App() {
                                     else if (bottomTab === 'build') setBuildLogs('');
                                   }}
                                   title={bottomTab === 'serial' ? 'Clear Serial Logs' : 'Clear Build Output'}
-                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors flex items-center justify-center"
                                 >
-                                  <GoTrash />
+                                  <GoTrash className="w-3.5 h-3.5" />
                                 </Button>
 
                                 <Button
@@ -2852,9 +2869,9 @@ export default function App() {
                                   size="icon-xs"
                                   onClick={() => toggleTerminal()}
                                   title="Collapse Terminal"
-                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors flex items-center justify-center"
                                 >
-                                  <GoSidebarCollapse className="-rotate-90" />
+                                  <GoSidebarCollapse className="-rotate-90 w-3.5 h-3.5" />
                                 </Button>
                               </div>
                             </div>

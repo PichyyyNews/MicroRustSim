@@ -10,6 +10,7 @@ use avr8rs::runtime::{Backend, Runtime};
 pub enum LogicState {
     Low,
     High,
+    InputPullUp,
     Floating,
     Analog(f32), // Voltage 0.0 .. 5.0V
     Pwm { duty: u8, freq_hz: u32 },
@@ -18,7 +19,7 @@ pub enum LogicState {
 impl LogicState {
     pub fn is_high(&self) -> bool {
         match self {
-            LogicState::High => true,
+            LogicState::High | LogicState::InputPullUp => true,
             LogicState::Analog(v) => *v >= 2.5,
             LogicState::Pwm { duty, .. } => *duty > 127,
             _ => false,
@@ -28,12 +29,62 @@ impl LogicState {
     pub fn voltage(&self) -> f32 {
         match self {
             LogicState::Low => 0.0,
-            LogicState::High => 5.0,
+            LogicState::High | LogicState::InputPullUp => 5.0,
             LogicState::Floating => 0.0,
             LogicState::Analog(v) => *v,
             LogicState::Pwm { duty, .. } => (*duty as f32 / 255.0) * 5.0,
         }
     }
+}
+
+/// Helper function to normalize pin names across different schematic formats (Wokwi, EAGLE, Breadboard)
+pub fn normalize_pin_name(comp: &str, pin: &str) -> String {
+    let p_lower = pin.to_lowercase();
+    let c_lower = comp.to_lowercase();
+
+    if c_lower.starts_with("uno") || c_lower.starts_with("mcu") || c_lower.starts_with("arduino") {
+        if p_lower.starts_with("gnd") {
+            return "GND".to_string();
+        }
+        if p_lower == "5v" || p_lower == "vcc" {
+            return "5V".to_string();
+        }
+        if p_lower == "3.3v" || p_lower == "3v3" {
+            return "3.3V".to_string();
+        }
+    } else if c_lower.starts_with("btn") || c_lower.starts_with("sw") || c_lower.starts_with("button") {
+        if p_lower == "1" || p_lower == "1.l" || p_lower == "1.r" || p_lower == "1a" || p_lower == "1b" || p_lower == "t1" {
+            return "1".to_string();
+        }
+        if p_lower == "2" || p_lower == "2.l" || p_lower == "2.r" || p_lower == "2a" || p_lower == "2b" || p_lower == "t2" {
+            return "2".to_string();
+        }
+    } else if c_lower.starts_with("led") {
+        if p_lower == "anode" || p_lower == "a" || p_lower == "1" {
+            return "anode".to_string();
+        }
+        if p_lower == "cathode" || p_lower == "c" || p_lower == "k" || p_lower == "2" {
+            return "cathode".to_string();
+        }
+    } else if c_lower.starts_with("r") || c_lower.starts_with("res") {
+        if p_lower == "1" || p_lower == "p1" || p_lower == "a" {
+            return "1".to_string();
+        }
+        if p_lower == "2" || p_lower == "p2" || p_lower == "b" {
+            return "2".to_string();
+        }
+    } else if c_lower.starts_with("pot") {
+        if p_lower == "1" || p_lower == "vcc" {
+            return "VCC".to_string();
+        }
+        if p_lower == "2" || p_lower == "sig" || p_lower == "wiper" {
+            return "SIG".to_string();
+        }
+        if p_lower == "3" || p_lower == "gnd" {
+            return "GND".to_string();
+        }
+    }
+    pin.to_string()
 }
 
 /// Identifies a specific pin on a component instance.
@@ -49,6 +100,11 @@ impl PinId {
             component_id: component_id.into(),
             pin_name: pin_name.into(),
         }
+    }
+
+    pub fn normalized(&self) -> Self {
+        let norm = normalize_pin_name(&self.component_id, &self.pin_name);
+        Self::new(&self.component_id, norm)
     }
 }
 
@@ -77,6 +133,8 @@ pub trait McuCore {
     fn step_cycles(&mut self, cycles: u64);
     fn get_pin_state(&mut self, pin_name: &str) -> LogicState;
     fn set_pin_input(&mut self, pin_name: &str, high: bool);
+    fn set_pin_mode_pullup(&mut self, _pin_name: &str) {}
+    fn set_adc_voltage(&mut self, _channel: u8, _voltage: f32) {}
     fn read_serial_output(&mut self) -> Vec<u8>;
     fn write_serial_input(&mut self, bytes: &[u8]);
     fn cycles(&self) -> u64;
@@ -91,6 +149,7 @@ pub struct ArduinoUnoCore {
     flash: Vec<u8>,
     rx_buffer: Vec<u8>,
     tx_buffer: Vec<u8>,
+    pin_overrides: HashMap<String, LogicState>,
 }
 
 impl ArduinoUnoCore {
@@ -106,6 +165,7 @@ impl ArduinoUnoCore {
             flash,
             rx_buffer: Vec::new(),
             tx_buffer: Vec::new(),
+            pin_overrides: HashMap::new(),
         }
     }
 
@@ -120,7 +180,11 @@ impl ArduinoUnoCore {
             flash,
             rx_buffer: Vec::new(),
             tx_buffer: Vec::new(),
+            pin_overrides: HashMap::new(),
         }
+    }
+    pub fn set_pin_mode_pullup(&mut self, pin_name: &str) {
+        self.pin_overrides.insert(pin_name.to_string(), LogicState::InputPullUp);
     }
 }
 
@@ -140,6 +204,7 @@ impl McuCore for ArduinoUnoCore {
         self.board = Board::uno(self.backend.as_ref(), &mut self.runtime, self.flash.clone());
         self.rx_buffer.clear();
         self.tx_buffer.clear();
+        self.pin_overrides.clear();
     }
 
     fn load_hex(&mut self, hex: &str) -> Result<(), String> {
@@ -173,6 +238,9 @@ impl McuCore for ArduinoUnoCore {
     }
 
     fn get_pin_state(&mut self, pin_name: &str) -> LogicState {
+        if let Some(&override_state) = self.pin_overrides.get(pin_name) {
+            return override_state;
+        }
         // Builtin LED is pin 13 (PORTB 5)
         if pin_name == "13" || pin_name == "LED_BUILTIN" {
             let state = self.board.led_builtin(self.backend.as_ref(), &mut self.runtime);
@@ -180,7 +248,7 @@ impl McuCore for ArduinoUnoCore {
                 AvrPinState::High => LogicState::High,
                 AvrPinState::Low => LogicState::Low,
                 AvrPinState::Input => LogicState::Floating,
-                AvrPinState::InputPullUp => LogicState::High,
+                AvrPinState::InputPullUp => LogicState::InputPullUp,
             };
         }
 
@@ -192,7 +260,7 @@ impl McuCore for ArduinoUnoCore {
                     AvrPinState::High => LogicState::High,
                     AvrPinState::Low => LogicState::Low,
                     AvrPinState::Input => LogicState::Floating,
-                    AvrPinState::InputPullUp => LogicState::High,
+                    AvrPinState::InputPullUp => LogicState::InputPullUp,
                 };
             } else if d <= 13 {
                 // Digital pins 8-13 -> PORTB (0 to 5)
@@ -202,7 +270,7 @@ impl McuCore for ArduinoUnoCore {
                     AvrPinState::High => LogicState::High,
                     AvrPinState::Low => LogicState::Low,
                     AvrPinState::Input => LogicState::Floating,
-                    AvrPinState::InputPullUp => LogicState::High,
+                    AvrPinState::InputPullUp => LogicState::InputPullUp,
                 };
             }
         }
@@ -216,7 +284,7 @@ impl McuCore for ArduinoUnoCore {
                         AvrPinState::High => LogicState::High,
                         AvrPinState::Low => LogicState::Low,
                         AvrPinState::Input => LogicState::Floating,
-                        AvrPinState::InputPullUp => LogicState::High,
+                        AvrPinState::InputPullUp => LogicState::InputPullUp,
                     };
                 }
             }
@@ -225,7 +293,7 @@ impl McuCore for ArduinoUnoCore {
         // Power rails
         if pin_name == "5V" || pin_name == "3.3V" || pin_name == "VIN" || pin_name == "IOREF" {
             LogicState::High
-        } else if pin_name == "GND" || pin_name == "GND_1" || pin_name == "GND_2" {
+        } else if pin_name == "GND" || pin_name.starts_with("GND_") || pin_name.starts_with("GND.") {
             LogicState::Low
         } else {
             LogicState::Floating
@@ -243,6 +311,22 @@ impl McuCore for ArduinoUnoCore {
             if let Ok(a) = rest.parse::<u8>() {
                 if a <= 5 {
                     self.board.set_input(self.backend.as_ref(), &mut self.runtime, self.board.portc, a, high);
+                }
+            }
+        }
+    }
+
+    fn set_pin_mode_pullup(&mut self, pin_name: &str) {
+        self.pin_overrides.insert(pin_name.to_string(), LogicState::InputPullUp);
+    }
+
+    fn set_adc_voltage(&mut self, channel: u8, voltage: f32) {
+        if channel <= 7 {
+            let val = self.backend.get(self.board.adc, "channelValues");
+            if let avr8rs::runtime::Value::Array(channels) = val {
+                let mut borrowed = channels.borrow_mut();
+                if (channel as usize) < borrowed.len() {
+                    borrowed[channel as usize] = avr8rs::runtime::Value::Number(voltage.clamp(0.0, 5.0) as f64);
                 }
             }
         }
@@ -413,82 +497,160 @@ impl SimulationEngine {
             "A0", "A1", "A2", "A3", "A4", "A5", "5V", "3.3V", "GND", "GND_1", "GND_2", "VIN", "IOREF", "AREF", "SDA", "SCL",
         ];
 
-        // 1. Identify sources (positive potential) and sinks (ground/0V return path)
+        // 1. Identify sources and sinks with realistic internal impedances
         let mut source_pins: Vec<(PinId, f32)> = Vec::new();
         let mut sink_pins: HashSet<PinId> = HashSet::new();
         let mut initial_voltages: HashMap<PinId, f32> = HashMap::new();
+        let mut adj: HashMap<PinId, Vec<CircuitEdge>> = HashMap::new();
 
+        // Dedicated Ground Sink Node
+        let gnd_sink = PinId::new("uno1", "GND");
+        sink_pins.insert(gnd_sink.clone());
+        initial_voltages.insert(gnd_sink.clone(), 0.0);
+
+        // All Uno Ground Aliases map to GND sink
+        for gnd_alias in &["GND_1", "GND_2", "GND.1", "GND.2", "GND.3"] {
+            let pid = PinId::new("uno1", *gnd_alias);
+            sink_pins.insert(pid.clone());
+            initial_voltages.insert(pid.clone(), 0.0);
+            adj.entry(gnd_sink.clone()).or_default().push(CircuitEdge {
+                to: pid.clone(),
+                resistance: 0.0,
+                diode_drop: 0.0,
+                led_id: None,
+            });
+            adj.entry(pid).or_default().push(CircuitEdge {
+                to: gnd_sink.clone(),
+                resistance: 0.0,
+                diode_drop: 0.0,
+                led_id: None,
+            });
+        }
+
+        // Power rails
+        for pwr_pin in &["5V", "VIN", "IOREF"] {
+            let pid = PinId::new("uno1", *pwr_pin);
+            source_pins.push((pid.clone(), 5.0));
+            initial_voltages.insert(pid, 5.0);
+        }
+        let pwr33 = PinId::new("uno1", "3.3V");
+        source_pins.push((pwr33.clone(), 3.3));
+        initial_voltages.insert(pwr33, 3.3);
+
+        // Inspect GPIO pin states on Uno
         for &pin_name in &mcu_pins {
             let pid = PinId::new("uno1", pin_name);
             let state = self.mcu.get_pin_state(pin_name);
-            let volt = state.voltage();
-            initial_voltages.insert(pid.clone(), volt);
+            match state {
+                LogicState::High => {
+                    // Driven output HIGH
+                    source_pins.push((pid.clone(), 5.0));
+                    initial_voltages.insert(pid, 5.0);
+                }
+                LogicState::Low => {
+                    // Driven output LOW
+                    sink_pins.insert(pid.clone());
+                    initial_voltages.insert(pid, 0.0);
+                }
+                LogicState::InputPullUp => {
+                    // Internal ~35k ohm pull-up to 5V
+                    let pullup_source = PinId::new("uno1", format!("_INTERNAL_PULLUP_{}", pin_name));
+                    source_pins.push((pullup_source.clone(), 5.0));
+                    initial_voltages.insert(pullup_source.clone(), 5.0);
+                    initial_voltages.insert(pid.clone(), 5.0);
 
-            if pin_name == "5V" || pin_name == "VIN" || pin_name == "IOREF" {
-                source_pins.push((pid, 5.0));
-            } else if pin_name == "3.3V" {
-                source_pins.push((pid, 3.3));
-            } else if pin_name == "GND" || pin_name == "GND_1" || pin_name == "GND_2" {
-                sink_pins.insert(pid);
-            } else if state == LogicState::High {
-                source_pins.push((pid, 5.0));
-            } else if state == LogicState::Low {
-                sink_pins.insert(pid);
+                    adj.entry(pullup_source.clone()).or_default().push(CircuitEdge {
+                        to: pid.clone(),
+                        resistance: 35000.0,
+                        diode_drop: 0.0,
+                        led_id: None,
+                    });
+                    adj.entry(pid.clone()).or_default().push(CircuitEdge {
+                        to: pullup_source,
+                        resistance: 35000.0,
+                        diode_drop: 0.0,
+                        led_id: None,
+                    });
+                }
+                _ => {
+                    // Floating or analog input
+                    initial_voltages.insert(pid, 0.0);
+                }
             }
         }
 
-        // Potentiometer wiper output voltage (0.0 to 5.0V)
+        // Potentiometer
         for (pot_id, pot) in &self.pots {
-            let sig_pin = PinId::new(pot_id, "SIG");
-            let v = pot.value * 5.0;
-            initial_voltages.insert(sig_pin.clone(), v);
-            if v > 1.5 {
-                source_pins.push((sig_pin, v));
+            let vcc = PinId::new(pot_id, "VCC");
+            let gnd = PinId::new(pot_id, "GND");
+            let sig = PinId::new(pot_id, "SIG");
+
+            // Internal 10k resistance track
+            adj.entry(vcc.clone()).or_default().push(CircuitEdge {
+                to: gnd.clone(),
+                resistance: 10000.0,
+                diode_drop: 0.0,
+                led_id: None,
+            });
+            adj.entry(gnd.clone()).or_default().push(CircuitEdge {
+                to: vcc.clone(),
+                resistance: 10000.0,
+                diode_drop: 0.0,
+                led_id: None,
+            });
+
+            // Wiper voltage
+            let wiper_v = pot.value * 5.0;
+            initial_voltages.insert(sig.clone(), wiper_v);
+            if wiper_v > 1.5 {
+                source_pins.push((sig.clone(), wiper_v));
             } else {
-                sink_pins.insert(sig_pin);
+                sink_pins.insert(sig.clone());
             }
         }
 
-        // 2. Build circuit directed multigraph
-        let mut adj: HashMap<PinId, Vec<CircuitEdge>> = HashMap::new();
-
-        // Wires: ideal 0 ohm bidirectional
-        for wire in &self.wires {
-            adj.entry(wire.from.clone()).or_default().push(CircuitEdge {
-                to: wire.to.clone(),
-                resistance: 0.0,
-                diode_drop: 0.0,
-                led_id: None,
-            });
-            adj.entry(wire.to.clone()).or_default().push(CircuitEdge {
-                to: wire.from.clone(),
-                resistance: 0.0,
-                diode_drop: 0.0,
-                led_id: None,
-            });
-        }
-
-        // Pushbuttons: ideal contact when pressed
+        // Pushbuttons:
+        // Terminal 1 (1, 1a, 1b, 1.l, 1.r)
+        // Terminal 2 (2, 2a, 2b, 2.l, 2.r)
         for (btn_id, btn) in &self.buttons {
+            let t1_pins = ["1", "1a", "1b", "1.l", "1.r"];
+            let t2_pins = ["2", "2a", "2b", "2.l", "2.r"];
+            let t1_root = PinId::new(btn_id, "1");
+            let t2_root = PinId::new(btn_id, "2");
+
+            for p in &t1_pins {
+                let pid = PinId::new(btn_id, *p);
+                if pid != t1_root {
+                    adj.entry(t1_root.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: t1_root.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+            }
+            for p in &t2_pins {
+                let pid = PinId::new(btn_id, *p);
+                if pid != t2_root {
+                    adj.entry(t2_root.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: t2_root.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+            }
+
             if btn.is_pressed {
-                let p1 = PinId::new(btn_id, "1");
-                let p2 = PinId::new(btn_id, "2");
-                adj.entry(p1.clone()).or_default().push(CircuitEdge {
-                    to: p2.clone(),
-                    resistance: 0.0,
+                // Closed contact: low resistance ~0.05 ohm
+                adj.entry(t1_root.clone()).or_default().push(CircuitEdge {
+                    to: t2_root.clone(),
+                    resistance: 0.05,
                     diode_drop: 0.0,
                     led_id: None,
                 });
-                adj.entry(p2).or_default().push(CircuitEdge {
-                    to: p1,
-                    resistance: 0.0,
+                adj.entry(t2_root).or_default().push(CircuitEdge {
+                    to: t1_root,
+                    resistance: 0.05,
                     diode_drop: 0.0,
                     led_id: None,
                 });
             }
         }
 
-        // Resistors: bidirectional resistive edge
+        // Resistors:
         for (res_id, res) in &self.resistors {
             let p1 = PinId::new(res_id, "1");
             let p2 = PinId::new(res_id, "2");
@@ -506,15 +668,94 @@ impl SimulationEngine {
             });
         }
 
-        // LEDs: directed forward conduction only (anode -> cathode)
+        // LEDs:
         for (led_id, led) in &self.leds {
             let anode = PinId::new(led_id, "anode");
             let cathode = PinId::new(led_id, "cathode");
             adj.entry(anode).or_default().push(CircuitEdge {
                 to: cathode,
-                resistance: 5.0, // Internal forward diode dynamic resistance
+                resistance: 5.0,
                 diode_drop: led.forward_voltage(),
                 led_id: Some(led_id.clone()),
+            });
+        }
+
+        // Breadboard internal strips (support for bb1, etc.):
+        let mut bb_ids: HashSet<String> = HashSet::new();
+        for w in &self.wires {
+            if w.from.component_id.starts_with("bb") || w.from.component_id.contains("breadboard") {
+                bb_ids.insert(w.from.component_id.clone());
+            }
+            if w.to.component_id.starts_with("bb") || w.to.component_id.contains("breadboard") {
+                bb_ids.insert(w.to.component_id.clone());
+            }
+        }
+        for bb_id in bb_ids {
+            // Power rails
+            let top_plus = PinId::new(&bb_id, "top_plus");
+            let top_minus = PinId::new(&bb_id, "top_minus");
+            let bot_plus = PinId::new(&bb_id, "bot_plus");
+            let bot_minus = PinId::new(&bb_id, "bot_minus");
+
+            for col in 1..=30 {
+                for pin_str in &[format!("top_plus_{}", col), format!("tp_{}", col), format!("+{}.top", col)] {
+                    let pid = PinId::new(&bb_id, pin_str);
+                    adj.entry(top_plus.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: top_plus.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+                for pin_str in &[format!("top_minus_{}", col), format!("tm_{}", col), format!("-{}.top", col)] {
+                    let pid = PinId::new(&bb_id, pin_str);
+                    adj.entry(top_minus.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: top_minus.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+                for pin_str in &[format!("bot_plus_{}", col), format!("bp_{}", col), format!("+{}.bot", col)] {
+                    let pid = PinId::new(&bb_id, pin_str);
+                    adj.entry(bot_plus.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: bot_plus.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+                for pin_str in &[format!("bot_minus_{}", col), format!("bm_{}", col), format!("-{}.bot", col)] {
+                    let pid = PinId::new(&bb_id, pin_str);
+                    adj.entry(bot_minus.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(pid).or_default().push(CircuitEdge { to: bot_minus.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+
+                // Row A-E
+                let ae_root = PinId::new(&bb_id, format!("col_{}_ae", col));
+                for r in &["a", "b", "c", "d", "e"] {
+                    for pin_str in &[format!("{}_{}", r, col), format!("{}.{}", col, r)] {
+                        let pid = PinId::new(&bb_id, pin_str);
+                        adj.entry(ae_root.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                        adj.entry(pid).or_default().push(CircuitEdge { to: ae_root.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    }
+                }
+
+                // Row F-J
+                let fj_root = PinId::new(&bb_id, format!("col_{}_fj", col));
+                for r in &["f", "g", "h", "i", "j"] {
+                    for pin_str in &[format!("{}_{}", r, col), format!("{}.{}", col, r)] {
+                        let pid = PinId::new(&bb_id, pin_str);
+                        adj.entry(fj_root.clone()).or_default().push(CircuitEdge { to: pid.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                        adj.entry(pid).or_default().push(CircuitEdge { to: fj_root.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    }
+                }
+            }
+        }
+
+        // Wires:
+        for wire in &self.wires {
+            let from = wire.from.normalized();
+            let to = wire.to.normalized();
+            adj.entry(from.clone()).or_default().push(CircuitEdge {
+                to: to.clone(),
+                resistance: 0.01,
+                diode_drop: 0.0,
+                led_id: None,
+            });
+            adj.entry(to).or_default().push(CircuitEdge {
+                to: from,
+                resistance: 0.01,
+                diode_drop: 0.0,
+                led_id: None,
             });
         }
 
@@ -561,18 +802,49 @@ impl SimulationEngine {
         }
 
         // 5. Propagate voltages for passive/floating pins and open inputs
-        let mut node_voltages = initial_voltages;
+        let mut fixed_nodes: HashSet<PinId> = HashSet::new();
+        fixed_nodes.insert(gnd_sink.clone());
+        for gnd_alias in &["GND_1", "GND_2", "GND.1", "GND.2", "GND.3"] {
+            fixed_nodes.insert(PinId::new("uno1", *gnd_alias));
+        }
+        for pwr_pin in &["5V", "VIN", "IOREF", "3.3V"] {
+            fixed_nodes.insert(PinId::new("uno1", *pwr_pin));
+        }
+        for &pin_name in &mcu_pins {
+            let pid = PinId::new("uno1", pin_name);
+            let state = self.mcu.get_pin_state(pin_name);
+            if state == LogicState::High || state == LogicState::Low {
+                fixed_nodes.insert(pid);
+            }
+        }
+
+        let mut node_voltages = HashMap::new();
+        for (k, v) in &initial_voltages {
+            if fixed_nodes.contains(k) || k.pin_name.starts_with("_INTERNAL_PULLUP_") {
+                node_voltages.insert(k.clone(), *v);
+            }
+        }
         for (k, v) in path_voltages {
             node_voltages.insert(k, v);
         }
 
-        let mut q: Vec<(PinId, f32)> = node_voltages.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        // Active sources queue for propagation
+        let mut q: Vec<(PinId, f32)> = Vec::new();
+        for (src_pin, v) in &source_pins {
+            if let Some(&resolved_v) = node_voltages.get(src_pin) {
+                q.push((src_pin.clone(), resolved_v));
+            } else {
+                q.push((src_pin.clone(), *v));
+                node_voltages.insert(src_pin.clone(), *v);
+            }
+        }
+
         let mut visited_passive: HashSet<PinId> = node_voltages.keys().cloned().collect();
 
         while let Some((curr, v)) = q.pop() {
             if let Some(edges) = adj.get(&curr) {
                 for edge in edges {
-                    if edge.led_id.is_none() && !visited_passive.contains(&edge.to) {
+                    if edge.led_id.is_none() && !fixed_nodes.contains(&edge.to) && !visited_passive.contains(&edge.to) {
                         visited_passive.insert(edge.to.clone());
                         node_voltages.insert(edge.to.clone(), v);
                         q.push((edge.to.clone(), v));
@@ -581,14 +853,23 @@ impl SimulationEngine {
             }
         }
 
-        // 6. Update MCU inputs
+        // 6. Update MCU inputs and ADC channels
         for &pin_name in &mcu_pins {
             let pid = PinId::new("uno1", pin_name);
+            let state = self.mcu.get_pin_state(pin_name);
             if let Some(&volt) = node_voltages.get(&pid) {
-                if volt >= 2.5 {
-                    self.mcu.set_pin_input(pin_name, true);
-                } else {
-                    self.mcu.set_pin_input(pin_name, false);
+                if state == LogicState::InputPullUp {
+                    // Pull-up active: if pulled below 1.5V, it is LOW (active button press)
+                    self.mcu.set_pin_input(pin_name, volt >= 1.5);
+                } else if state == LogicState::Floating {
+                    self.mcu.set_pin_input(pin_name, volt >= 2.5);
+                }
+
+                // Update ADC channel if this is an analog pin
+                if let Some(rest) = pin_name.strip_prefix('A') {
+                    if let Ok(ch) = rest.parse::<u8>() {
+                        self.mcu.set_adc_voltage(ch, volt);
+                    }
                 }
             }
         }
@@ -758,5 +1039,68 @@ mod tests {
 
         assert!(!engine.leds["led1"].is_lit, "LED1 must turn off when wire is cut!");
         assert!(!engine.leds["led2"].is_lit, "LED2 must turn off when wire is cut!");
+    }
+
+    #[test]
+    fn test_pushbutton_pullup_toggle_and_conduction() {
+        let mut engine = SimulationEngine::new_with_uno();
+        engine.mcu.set_pin_mode_pullup("2");
+        engine.buttons.insert("btn1".into(), components::PushbuttonComponent::new("btn1"));
+
+        // Connect Uno pin 2 to btn1:1.l, and btn1:2.r to uno1:GND.1
+        engine.add_wire(Wire {
+            id: "w1".into(),
+            from: PinId::new("uno1", "2"),
+            to: PinId::new("btn1", "1.l"),
+            color: "#3b82f6".into(),
+        });
+        engine.add_wire(Wire {
+            id: "w2".into(),
+            from: PinId::new("btn1", "2.r"),
+            to: PinId::new("uno1", "GND.1"),
+            color: "#000000".into(),
+        });
+
+        // 1. Initially button is NOT pressed
+        engine.resolve_electrical_nets();
+        let unpressed_v = *engine.pin_voltages.get(&PinId::new("uno1", "2")).unwrap_or(&0.0);
+        assert!(unpressed_v >= 4.0, "Pin 2 with pullup unpressed must be HIGH (>=4V), got {}", unpressed_v);
+
+        // 2. Press tactile button (contact closure ~0.05 ohm to GND)
+        engine.buttons.get_mut("btn1").unwrap().is_pressed = true;
+        engine.resolve_electrical_nets();
+        let pressed_v = *engine.pin_voltages.get(&PinId::new("uno1", "2")).unwrap_or(&5.0);
+        assert!(pressed_v <= 1.0, "Pin 2 with button pressed must be pulled down to GND (<=1V), got {}", pressed_v);
+
+        // 3. Release button (springs back open)
+        engine.buttons.get_mut("btn1").unwrap().is_pressed = false;
+        engine.resolve_electrical_nets();
+        let released_v = *engine.pin_voltages.get(&PinId::new("uno1", "2")).unwrap_or(&0.0);
+        assert!(released_v >= 4.0, "Pin 2 after release must return to HIGH (>=4V), got {}", released_v);
+    }
+
+    #[test]
+    fn test_breadboard_row_and_potentiometer() {
+        let mut engine = SimulationEngine::new_with_uno();
+        engine.pots.insert("pot1".into(), components::PotentiometerComponent::new("pot1"));
+        engine.pots.get_mut("pot1").unwrap().value = 0.6; // 60% = 3.0V
+
+        // Connect pot1:SIG to breadboard column 10 row a, and breadboard column 10 row e to uno1:A0
+        engine.add_wire(Wire {
+            id: "w1".into(),
+            from: PinId::new("pot1", "SIG"),
+            to: PinId::new("bb1", "a_10"),
+            color: "#3b82f6".into(),
+        });
+        engine.add_wire(Wire {
+            id: "w2".into(),
+            from: PinId::new("bb1", "e_10"),
+            to: PinId::new("uno1", "A0"),
+            color: "#3b82f6".into(),
+        });
+
+        engine.resolve_electrical_nets();
+        let a0_v = *engine.pin_voltages.get(&PinId::new("uno1", "A0")).unwrap_or(&0.0);
+        assert!((a0_v - 3.0).abs() < 0.2, "A0 through breadboard row 10 must receive 3.0V wiper, got {}", a0_v);
     }
 }
