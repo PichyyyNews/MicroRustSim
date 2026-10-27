@@ -231,6 +231,17 @@ export default function App() {
   const [showInspector, setShowInspector] = useState(true);
   const [bottomTab, setBottomTab] = useState<'serial' | 'waveform' | 'build'>('serial');
 
+  // --- Initial Loading Splash Screen State ---
+  const [isAppLoading, setIsAppLoading] = useState(true);
+
+  useEffect(() => {
+    // Graceful brief splash delay to allow SQLite layout & last project to settle smoothly
+    const t = setTimeout(() => {
+      setIsAppLoading(false);
+    }, 700);
+    return () => clearTimeout(t);
+  }, []);
+
   // Load layout preferences from SQLite on app startup
   useEffect(() => {
     let mounted = true;
@@ -1634,9 +1645,12 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <span className="font-semibold text-xs text-zinc-300 tracking-tight pl-1 pr-2 select-none">
-              MicroRustSim
-            </span>
+            <div className="flex items-center gap-1.5 pl-1 pr-2 select-none">
+              <img src="/logo.png" alt="MicroRustSim" className="w-3.5 h-3.5 object-contain" />
+              <span className="font-semibold text-xs text-zinc-300 tracking-tight">
+                MicroRustSim
+              </span>
+            </div>
 
             {/* Menubar: File */}
             <div className="relative">
@@ -3446,8 +3460,8 @@ export default function App() {
             <div className="w-[360px] bg-[#121215] border border-[#27272a] rounded-lg shadow-2xl p-5 select-none text-zinc-300">
               <div className="flex items-center justify-between pb-3 border-b border-[#222226]">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded bg-[#1e1e24] border border-zinc-700 flex items-center justify-center text-white font-mono font-bold text-xs">
-                    μR
+                  <div className="w-7 h-7 rounded bg-[#1e1e24] border border-zinc-700 flex items-center justify-center p-1">
+                    <img src="/logo.png" alt="MicroRustSim" className="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
@@ -3499,6 +3513,32 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Minimalist Theme Splash Screen (Clean Logo, No Clutter, Prevents White Screen) */}
+        <div
+          className={`fixed inset-0 z-[99999] bg-[#09090b] flex flex-col items-center justify-center select-none transition-opacity duration-300 pointer-events-none ${
+            isAppLoading ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <div className="flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-[#121215] border border-[#222226] p-3 shadow-2xl flex items-center justify-center mb-4">
+              <img
+                src="/logo.png"
+                alt="MicroRustSim"
+                className="w-full h-full object-contain animate-pulse"
+              />
+            </div>
+            <div className="text-zinc-200 font-semibold text-sm tracking-tight mb-1">
+              MicroRustSim
+            </div>
+            <div className="text-[11px] font-mono text-zinc-500 mb-5">
+              Cycle-Accurate ATmega328P Simulator
+            </div>
+            <div className="w-28 h-0.5 bg-[#222226] rounded-full overflow-hidden">
+              <div className="w-full h-full bg-zinc-300 rounded-full animate-pulse" />
+            </div>
+          </div>
+        </div>
 
       </div>
     </TooltipProvider>
