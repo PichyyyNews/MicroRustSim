@@ -29,14 +29,20 @@ export function generateWirePath(
 
   if (mode === 'ortho') {
     // Diagram / Orthogonal right-angle routing
-    const all = [p1, ...wps, p2];
-    let d = `M ${all[0].x} ${all[0].y}`;
-    for (let i = 0; i < all.length - 1; i++) {
-      const a = all[i];
-      const b = all[i + 1];
-      const midX = Math.round((a.x + b.x) / 2);
-      d += ` L ${midX} ${a.y} L ${midX} ${b.y} L ${b.x} ${b.y}`;
+    if (wps.length === 0) {
+      const midX = Math.round((p1.x + p2.x) / 2);
+      return `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
     }
+
+    // Route cleanly through every waypoint at 90-degree right angles
+    let d = `M ${p1.x} ${p1.y}`;
+    let prev = p1;
+    for (let i = 0; i < wps.length; i++) {
+      const wp = wps[i];
+      d += ` L ${wp.x} ${prev.y} L ${wp.x} ${wp.y}`;
+      prev = wp;
+    }
+    d += ` L ${p2.x} ${prev.y} L ${p2.x} ${p2.y}`;
     return d;
   }
 
@@ -163,20 +169,20 @@ export const WireLayer: React.FC<WireLayerProps> = ({
             <circle cx={p1.x} cy={p1.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
             <circle cx={p2.x} cy={p2.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
 
-            {/* Interactive Bend Handles (Waypoints & Segment Midpoints) - Visible on Hover OR Selection */}
-            {activeTool !== 'eraser' && (isHovered || isSelected) && (
+            {/* Interactive Bend Handles - Stably visible only when Selected (Zero Flicker/Jitter) */}
+            {activeTool !== 'eraser' && isSelected && (
               <>
-                {/* 1. Existing Waypoint Handles */}
+                {/* Existing Waypoint Handles */}
                 {waypoints.map((wp, wpIdx) => (
                   <circle
                     key={`wp-${wire.id}-${wpIdx}`}
                     cx={wp.x}
                     cy={wp.y}
-                    r="5"
-                    fill="#ffffff"
-                    stroke="#18181b"
-                    strokeWidth="1.5"
-                    className="cursor-move hover:scale-125 transition-transform shadow"
+                    r="5.5"
+                    fill="#0284c7"
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                    className="cursor-move drop-shadow"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onStartDragWaypoint?.(wire.id, wpIdx, e);
@@ -186,34 +192,44 @@ export const WireLayer: React.FC<WireLayerProps> = ({
                       onDeleteWaypoint?.(wire.id, wpIdx);
                     }}
                   >
-                    <title>Drag to bend • Double-click to remove</title>
+                    <title>Drag to bend • Double-click to delete</title>
                   </circle>
                 ))}
 
-                {/* 2. Segment Midpoints (Click & Drag to create a new bend point) */}
-                {allPoints.slice(0, -1).map((curr, idx) => {
-                  const next = allPoints[idx + 1];
-                  const midX = Math.round((curr.x + next.x) / 2);
-                  const midY = Math.round((curr.y + next.y) / 2);
+                {/* Initial Bend Point Handle when wire has no waypoints yet */}
+                {waypoints.length === 0 && (() => {
+                  const midX = Math.round((p1.x + p2.x) / 2);
+                  const midY =
+                    mode === 'ortho'
+                      ? Math.round((p1.y + p2.y) / 2)
+                      : Math.round(
+                          (p1.y + p2.y) / 2 +
+                            Math.min(
+                              80,
+                              Math.max(25, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.25)
+                            ) *
+                              0.75
+                        );
+
                   return (
                     <circle
-                      key={`mid-${wire.id}-${idx}`}
+                      key={`init-wp-${wire.id}`}
                       cx={midX}
                       cy={midY}
-                      r="4"
-                      fill={wire.color}
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                      className="cursor-crosshair opacity-80 hover:opacity-100 hover:scale-125 transition-all"
+                      r="5"
+                      fill="#ffffff"
+                      stroke="#0284c7"
+                      strokeWidth="2"
+                      className="cursor-crosshair drop-shadow"
                       onMouseDown={(e) => {
                         e.stopPropagation();
-                        onAddAndDragWaypoint?.(wire.id, idx, { x: midX, y: midY }, e);
+                        onAddAndDragWaypoint?.(wire.id, 0, { x: midX, y: midY }, e);
                       }}
                     >
-                      <title>Drag to add bend point</title>
+                      <title>Drag to bend wire</title>
                     </circle>
                   );
-                })}
+                })()}
               </>
             )}
           </g>
