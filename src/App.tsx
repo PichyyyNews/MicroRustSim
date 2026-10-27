@@ -323,18 +323,21 @@ export default function App() {
     <TooltipProvider delay={150}>
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
         
-        {/* 1. Unified IDE Titlebar & Toolbar (Single Top Bar with File, View, Window & Win Controls) */}
+        {/* 1. Top Window Titlebar (Menubar + Wide Drag Area + Window Controls) */}
         <header
           data-tauri-drag-region
-          className="h-8 bg-[#121215] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-30 shrink-0"
+          onMouseDown={(e) => {
+            if (e.buttons === 1) tauriInvoke('start_drag_window');
+          }}
+          onDoubleClick={() => tauriInvoke('toggle_maximize_window')}
+          className="h-7 bg-[#0e0e11] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-30 shrink-0 cursor-default"
         >
-          <div className="flex items-center gap-1">
-            
-            {/* Program Name in front of File */}
-            <span
-              data-tauri-drag-region
-              className="font-semibold text-xs text-zinc-200 tracking-tight pl-1 pr-2 select-none cursor-default"
-            >
+          {/* Left Menubar */}
+          <div
+            className="flex items-center gap-0.5 pointer-events-auto"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <span className="font-semibold text-xs text-zinc-300 tracking-tight pl-1 pr-2 select-none">
               MicroRustSim
             </span>
 
@@ -345,7 +348,7 @@ export default function App() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
                   >
                     File
                   </Button>
@@ -387,7 +390,7 @@ export default function App() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
                   >
                     View
                   </Button>
@@ -476,7 +479,7 @@ export default function App() {
                   <Button
                     variant="ghost"
                     size="xs"
-                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                    className="text-xs h-5 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
                   >
                     Window
                   </Button>
@@ -504,24 +507,72 @@ export default function App() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
 
-            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
+          {/* Center Drag Region (Allows moving window effortlessly in normal/minimal mode) */}
+          <div
+            data-tauri-drag-region
+            className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-500 pointer-events-none"
+          >
+            {projectName} — MicroRustSim
+          </div>
 
-            {/* Quick Action: Run / Pause (Only Icon) */}
+          {/* Right Window Controls (—, □, ✕) */}
+          <div
+            className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => tauriInvoke('minimize_window')}
+              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+              title="Minimize"
+            >
+              <svg width="10" height="1" viewBox="0 0 10 1">
+                <rect width="10" height="1" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => tauriInvoke('toggle_maximize_window')}
+              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+              title="Maximize / Restore"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
+                <rect x="0.5" y="0.5" width="9" height="9" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => tauriInvoke('close_window')}
+              className="h-full w-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors"
+              title="Close"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        {/* 2. Secondary Action Toolbar (Dedicated Row, Larger Buttons, Premium Run Color) */}
+        <div className="h-10 bg-[#121215] border-b border-[#222226] px-3 flex items-center justify-between select-none z-20 shrink-0">
+          <div className="flex items-center gap-2">
+            
+            {/* Run / Pause (Solid, Vibrant Emerald / Amber - High Quality) */}
             {isRunning ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
-                      variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={() => {
                         setIsRunning(false);
                         tauriInvoke('pause_simulation');
                       }}
-                      className="h-6 w-6 text-amber-400 hover:text-amber-300 hover:bg-amber-950/40"
+                      className="h-8 w-8 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-md shadow-md border-0 flex items-center justify-center transition-colors"
                     >
-                      <PauseIcon className="text-xs" />
+                      <PauseIcon className="text-sm" />
                     </Button>
                   }
                 />
@@ -532,15 +583,14 @@ export default function App() {
                 <TooltipTrigger
                   render={
                     <Button
-                      variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={() => {
                         setIsRunning(true);
                         tauriInvoke('start_simulation');
                       }}
-                      className="h-6 w-6 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40"
+                      className="h-8 w-8 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md shadow-md shadow-emerald-950/40 border-0 flex items-center justify-center transition-colors"
                     >
-                      <GoPlay className="text-xs" />
+                      <GoPlay className="text-base ml-0.5" />
                     </Button>
                   }
                 />
@@ -548,61 +598,61 @@ export default function App() {
               </Tooltip>
             )}
 
-            {/* Quick Action: Upload (Only Icon) */}
+            {/* Quick Action: Upload */}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    variant="outline"
+                    size="icon"
                     onClick={handleCompile}
-                    className="h-6 w-6 text-zinc-300 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center"
                   >
-                    <GoZap className="text-xs" />
+                    <GoZap className="text-base text-zinc-300" />
                   </Button>
                 }
               />
               <TooltipContent className="text-xs">Compile & Flash to ATmega328P</TooltipContent>
             </Tooltip>
 
-            {/* Quick Action: Reset (Only Icon) */}
+            {/* Quick Action: Reset */}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    variant="outline"
+                    size="icon"
                     onClick={() => {
                       setIsRunning(false);
                       tauriInvoke('reset_simulation');
                       setSerialLogs([]);
                     }}
-                    className="h-6 w-6 text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]"
+                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center"
                   >
-                    <GoSync className="text-xs" />
+                    <GoSync className="text-base" />
                   </Button>
                 }
               />
               <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
+            <Separator orientation="vertical" className="h-5 mx-1 bg-[#27272a]" />
 
-            {/* Drawer Quick Toggles (Icon Only, Flat Zinc Active, No Purple) */}
+            {/* Drawer Toggles (Larger h-8 w-8 with 16px icons) */}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    variant="outline"
+                    size="icon"
                     onClick={() => setShowEditor(!showEditor)}
-                    className={`h-6 w-6 ${
+                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
                       showEditor
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
+                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
                     }`}
                   >
-                    <GoCode className="text-xs" />
+                    <GoCode className="text-base" />
                   </Button>
                 }
               />
@@ -613,16 +663,16 @@ export default function App() {
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    variant="outline"
+                    size="icon"
                     onClick={() => setShowPalette(!showPalette)}
-                    className={`h-6 w-6 ${
+                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
                       showPalette
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
+                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
                     }`}
                   >
-                    <GoPackage className="text-xs" />
+                    <GoPackage className="text-base" />
                   </Button>
                 }
               />
@@ -633,35 +683,35 @@ export default function App() {
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    variant="outline"
+                    size="icon"
                     onClick={() => setShowDrawer(!showDrawer)}
-                    className={`h-6 w-6 ${
+                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
                       showDrawer
-                        ? 'bg-zinc-800 text-zinc-100'
-                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1f1f23]'
+                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
+                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
                     }`}
                   >
-                    <GoTerminal className="text-xs" />
+                    <GoTerminal className="text-base" />
                   </Button>
                 }
               />
               <TooltipContent className="text-xs">Toggle Bottom Console</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-3.5 mx-1 bg-[#27272a]" />
+            <Separator orientation="vertical" className="h-5 mx-1 bg-[#27272a]" />
 
-            {/* Wire Color Palette Dots (Clean, Flat, No Purple Halo) */}
-            <div className="flex items-center gap-1 ml-1">
+            {/* Wire Color Palette Dots (Comfortable 16px size with clear white selection ring) */}
+            <div className="flex items-center gap-1.5 ml-1">
               {WIRE_COLORS.map((c) => (
                 <button
                   key={c.hex}
                   title={`Wire Color: ${c.name}`}
                   onClick={() => setCurrentWireColor(c.hex)}
-                  className={`w-3 h-3 rounded-full transition-all ${
+                  className={`w-4 h-4 rounded-full transition-all ${
                     currentWireColor === c.hex
-                      ? 'ring-2 ring-zinc-300 scale-110'
-                      : 'border border-zinc-700 hover:scale-105 opacity-80 hover:opacity-100'
+                      ? 'ring-2 ring-white ring-offset-2 ring-offset-[#121215] scale-110'
+                      : 'border border-zinc-700/80 hover:scale-105 opacity-80 hover:opacity-100'
                   }`}
                   style={{ backgroundColor: c.hex }}
                 />
@@ -669,62 +719,26 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Status Badges & Native-feel Window Controls (—, □, ✕) on the SAME bar */}
-          <div className="flex items-center h-full">
-            <div data-tauri-drag-region className="flex items-center gap-2 pr-3 h-full cursor-default">
-              <span className="text-[11px] text-zinc-500 font-mono">{projectName}</span>
-              <Badge
-                variant="outline"
-                className={`font-mono text-[10px] gap-1.5 h-5 px-2 border-zinc-800 ${
-                  isRunning
-                    ? 'border-emerald-600/40 text-emerald-400 bg-emerald-950/20'
-                    : 'text-zinc-500 bg-[#18181b]'
+          {/* Right Status */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-400 font-mono">{projectName}</span>
+            <Badge
+              variant="outline"
+              className={`font-mono text-xs gap-1.5 h-6 px-2.5 border-zinc-800 ${
+                isRunning
+                  ? 'border-emerald-600/50 text-emerald-400 bg-emerald-950/30'
+                  : 'text-zinc-500 bg-[#18181b]'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
                 }`}
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
-                  }`}
-                />
-                {isRunning ? '16 MHz' : 'PAUSED'}
-              </Badge>
-            </div>
-
-            {/* Window Controls: Minimize (ยุบ), Maximize (เต็มจอ), Close (ปิด) */}
-            <div className="flex items-center h-full border-l border-[#222226]">
-              <button
-                type="button"
-                onClick={() => tauriInvoke('minimize_window')}
-                className="h-full w-9 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
-                title="Minimize"
-              >
-                <svg width="10" height="1" viewBox="0 0 10 1">
-                  <rect width="10" height="1" fill="currentColor" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => tauriInvoke('toggle_maximize_window')}
-                className="h-full w-9 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
-                title="Maximize / Restore"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
-                  <rect x="0.5" y="0.5" width="9" height="9" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => tauriInvoke('close_window')}
-                className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors"
-                title="Close"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                  <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
+              />
+              {isRunning ? '16 MHz' : 'PAUSED'}
+            </Badge>
           </div>
-        </header>
+        </div>
 
         {/* 2. Main Resizable Workspace (Left Editor, Center Canvas, Right Palette, Bottom Terminal) */}
         <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">

@@ -74,6 +74,11 @@ fn close_window(window: tauri::Window) {
 }
 
 #[tauri::command]
+fn start_drag_window(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
+
+#[tauri::command]
 fn get_initial_data() -> InitialData {
     InitialData {
         sketch_code: BuiltinSketches::blink_source().to_string(),
@@ -360,6 +365,7 @@ pub fn run() {
         })
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            start_drag_window,
             minimize_window,
             toggle_maximize_window,
             close_window,
