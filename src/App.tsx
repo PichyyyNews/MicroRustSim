@@ -18,6 +18,7 @@ import {
   GoZoomOut,
   GoCpu,
 } from 'react-icons/go';
+import { MousePointer, Move, Cable, ChevronDown, Check } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -94,17 +100,30 @@ void loop() {
 `;
 
 const WIRE_COLORS = [
-  { hex: '#22c55e', name: 'Green' },
-  { hex: '#ef4444', name: 'Red' },
-  { hex: '#3b82f6', name: 'Blue' },
-  { hex: '#eab308', name: 'Yellow' },
-  { hex: '#18181b', name: 'Black' },
-  { hex: '#f97316', name: 'Orange' },
-  { hex: '#71717a', name: 'Gray' },
-  { hex: '#ffffff', name: 'White' },
+  { hex: '#ef4444', name: 'Red', role: '5V / VCC' },
+  { hex: '#18181b', name: 'Black', role: 'GND' },
+  { hex: '#22c55e', name: 'Green', role: 'Signal' },
+  { hex: '#3b82f6', name: 'Blue', role: 'Analog / Clock' },
+  { hex: '#eab308', name: 'Yellow', role: 'Digital / I2C' },
+  { hex: '#f97316', name: 'Orange', role: '3.3V / Reset' },
+  { hex: '#a855f7', name: 'Purple', role: 'SPI / Bus' },
+  { hex: '#06b6d4', name: 'Cyan', role: 'PWM' },
+  { hex: '#71717a', name: 'Gray', role: 'Shield' },
+  { hex: '#ffffff', name: 'White', role: 'Misc' },
 ];
 
 export default function App() {
+  // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popover ---
+  const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire'>('select');
+  const [wireColorPopoverOpen, setWireColorPopoverOpen] = useState(false);
+  const draggedCompRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startCompX: number;
+    startCompY: number;
+  } | null>(null);
+
   // --- UI Layout & Drawers ---
   const [showEditor, setShowEditor] = useState(true);
   const [showPalette, setShowPalette] = useState(true);
@@ -268,11 +287,101 @@ export default function App() {
     }
   };
 
+  // --- Window Dragging Listener for Smooth Component Movement ---
+  useEffect(() => {
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (draggedCompRef.current) {
+        const dx = (e.clientX - draggedCompRef.current.startMouseX) / zoom;
+        const dy = (e.clientY - draggedCompRef.current.startMouseY) / zoom;
+        const compId = draggedCompRef.current.id;
+        const newX = Math.round(draggedCompRef.current.startCompX + dx);
+        const newY = Math.round(draggedCompRef.current.startCompY + dy);
+        setComponents((prev) =>
+          prev.map((item) => (item.id === compId ? { ...item, x: newX, y: newY } : item))
+        );
+      }
+    };
+
+    const handleWindowMouseUp = () => {
+      if (draggedCompRef.current) {
+        draggedCompRef.current = null;
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [zoom]);
+
+  // --- Keyboard Shortcuts (V: Select, M: Move, W: Wire, Delete: Delete Component) ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('.monaco-editor'))
+      ) {
+        return;
+      }
+
+      if (e.key === 'v' || e.key === 'V') {
+        setActiveTool('select');
+      } else if (e.key === 'm' || e.key === 'M') {
+        setActiveTool('move');
+      } else if (e.key === 'w' || e.key === 'W') {
+        setActiveTool('wire');
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCompId) {
+        setComponents((prev) => prev.filter((c) => c.id !== selectedCompId));
+        setWires((prev) =>
+          prev.filter((w) => w.fromComp !== selectedCompId && w.toComp !== selectedCompId)
+        );
+        setSelectedCompId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCompId]);
+
+  // --- Component Click & Drag Handler ---
+  const handleComponentMouseDown = (compId: string, e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only primary mouse button
+    e.stopPropagation();
+
+    setSelectedCompId(compId);
+
+    if (activeTool === 'move') {
+      const comp = components.find((c) => c.id === compId);
+      if (comp) {
+        draggedCompRef.current = {
+          id: compId,
+          startMouseX: e.clientX,
+          startMouseY: e.clientY,
+          startCompX: comp.x,
+          startCompY: comp.y,
+        };
+      }
+    }
+  };
+
   // --- Canvas Mouse Handlers (Pan & Wire Drawing) ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || e.button === 2) {
       isPanning.current = true;
       panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    } else if (e.button === 0) {
+      // Left click on empty canvas deselects component or clears wire draft
+      if (activeTool === 'select') {
+        setSelectedCompId(null);
+      } else if (activeTool === 'wire') {
+        setWireDraftStart(null);
+      }
     }
   };
 
@@ -290,7 +399,6 @@ export default function App() {
 
   const handleCanvasMouseUp = () => {
     isPanning.current = false;
-    setWireDraftStart(null);
   };
 
   const handleCanvasWheel = (e: React.WheelEvent) => {
@@ -302,6 +410,7 @@ export default function App() {
   const handlePinMouseDown = (compId: string, pinName: string) => {
     if (!wireDraftStart) {
       setWireDraftStart({ compId, pinName });
+      setActiveTool('wire');
     } else {
       if (wireDraftStart.compId !== compId || wireDraftStart.pinName !== pinName) {
         const newWire: CircuitWire = {
@@ -647,21 +756,176 @@ export default function App() {
 
             <Separator orientation="vertical" className="h-5 mx-2 bg-[#27272a]" />
 
-            {/* Wire Color Palette Dots (Comfortable 16px size with clear white selection ring) */}
-            <div className="flex items-center gap-1.5 ml-1">
-              {WIRE_COLORS.map((c) => (
-                <button
-                  key={c.hex}
-                  title={`Wire Color: ${c.name}`}
-                  onClick={() => setCurrentWireColor(c.hex)}
-                  className={`w-4 h-4 rounded-full transition-all ${
-                    currentWireColor === c.hex
-                      ? 'ring-2 ring-white ring-offset-2 ring-offset-[#121215] scale-110'
-                      : 'border border-zinc-700/80 hover:scale-105 opacity-80 hover:opacity-100'
-                  }`}
-                  style={{ backgroundColor: c.hex }}
+            {/* Tool Selection Group: Select (V), Move (M), Wire (W) with Word-Style Color Popover */}
+            <div className="flex items-center bg-[#18181b] border border-zinc-800 rounded-md p-0.5 gap-0.5 shadow-inner">
+              {/* 1. Select Tool */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setActiveTool('select')}
+                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-all ${
+                        activeTool === 'select'
+                          ? 'bg-zinc-700 text-white font-medium shadow-sm'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <MousePointer className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">Select</span>
+                    </Button>
+                  }
                 />
-              ))}
+                <TooltipContent className="text-xs">Select Tool (V) • Click component to select</TooltipContent>
+              </Tooltip>
+
+              {/* 2. Move Tool */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setActiveTool('move')}
+                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-all ${
+                        activeTool === 'move'
+                          ? 'bg-zinc-700 text-white font-medium shadow-sm'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <Move className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">Move</span>
+                    </Button>
+                  }
+                />
+                <TooltipContent className="text-xs">Move Tool (M) • Drag components to reposition</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-4 bg-zinc-800 my-auto" />
+
+              {/* 3. Wire Tool Split Button + Word-Style Floating Color Popover */}
+              <div className="flex items-center">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => setActiveTool('wire')}
+                        className={`h-7 px-2 flex items-center gap-1.5 text-xs rounded-l transition-all ${
+                          activeTool === 'wire'
+                            ? 'bg-zinc-700 text-white font-medium'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <div className="flex flex-col items-center justify-center">
+                          <Cable className="w-3.5 h-3.5" />
+                          <span
+                            className="w-3.5 h-[2.5px] rounded-full mt-0.5 shadow-sm"
+                            style={{ backgroundColor: currentWireColor }}
+                          />
+                        </div>
+                        <span className="text-[11px]">Wire</span>
+                      </Button>
+                    }
+                  />
+                  <TooltipContent className="text-xs">Wire Tool (W) • Connect pins with wires</TooltipContent>
+                </Tooltip>
+
+                {/* Dropdown Chevron for Word-style Floating Color Popup */}
+                <Popover open={wireColorPopoverOpen} onOpenChange={setWireColorPopoverOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className={`h-7 w-5 px-0 flex items-center justify-center rounded-r border-l border-zinc-800 transition-colors ${
+                          activeTool === 'wire'
+                            ? 'bg-zinc-700 text-white'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                        }`}
+                        title="Wire Color Options"
+                      >
+                        <ChevronDown className="w-3 h-3 text-zinc-400" />
+                      </Button>
+                    }
+                  />
+                  <PopoverContent
+                    align="start"
+                    sideOffset={6}
+                    className="w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-[#27272a]">
+                      <span className="font-semibold text-xs text-zinc-200">Wire Color</span>
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-zinc-700 shadow-sm"
+                        style={{ backgroundColor: currentWireColor }}
+                      />
+                    </div>
+
+                    <div className="py-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold block mb-2">
+                        Electronic Color Codes
+                      </span>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {WIRE_COLORS.map((c) => (
+                          <button
+                            key={c.hex}
+                            type="button"
+                            title={`${c.name} (${c.role})`}
+                            onClick={() => {
+                              setCurrentWireColor(c.hex);
+                              setActiveTool('wire');
+                              setWireColorPopoverOpen(false);
+                            }}
+                            className={`relative w-10 h-8 rounded flex items-center justify-center transition-all ${
+                              currentWireColor === c.hex
+                                ? 'ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-105'
+                                : 'hover:scale-105 border border-zinc-700/60'
+                            }`}
+                            style={{ backgroundColor: c.hex }}
+                          >
+                            {currentWireColor === c.hex && (
+                              <Check
+                                className={`w-3.5 h-3.5 ${
+                                  c.hex === '#ffffff' || c.hex === '#eab308' || c.hex === '#22c55e'
+                                    ? 'text-zinc-900'
+                                    : 'text-white'
+                                } stroke-[3]`}
+                              />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between px-2 py-1 bg-[#121215] rounded border border-zinc-800 mb-2">
+                      <span>Active:</span>
+                      <span className="text-zinc-200 font-medium">
+                        {WIRE_COLORS.find((w) => w.hex === currentWireColor)?.name || 'Custom'} (
+                        {WIRE_COLORS.find((w) => w.hex === currentWireColor)?.role || 'Custom'})
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-[#27272a] flex items-center justify-between gap-2">
+                      <label className="text-[11px] text-zinc-400 flex items-center gap-1.5 cursor-pointer hover:text-zinc-200 transition-colors">
+                        <input
+                          type="color"
+                          value={currentWireColor}
+                          onChange={(e) => {
+                            setCurrentWireColor(e.target.value);
+                            setActiveTool('wire');
+                          }}
+                          className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0"
+                        />
+                        <span>Custom Color...</span>
+                      </label>
+                      <span className="font-mono text-[10px] text-zinc-500 uppercase">{currentWireColor}</span>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </div>
 
@@ -739,7 +1003,9 @@ export default function App() {
               {/* Center Canvas: Interactive Breadboard & Circuit Simulator */}
               <ResizablePanel id="canvas-panel" minSize="30%">
                 <main
-                  className="h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] cursor-default"
+                  className={`h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] ${
+                    activeTool === 'wire' ? 'cursor-crosshair' : 'cursor-default'
+                  }`}
                   onMouseDown={handleCanvasMouseDown}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseUp={handleCanvasMouseUp}
@@ -776,14 +1042,40 @@ export default function App() {
 
                     {/* Circuit Components */}
                     {components.map((c) => {
+                      const isSelected = selectedCompId === c.id;
+                      const outlineClass = isSelected
+                        ? 'outline outline-1 outline-white/85 ring-1 ring-white/40 shadow-sm shadow-white/5 rounded'
+                        : activeTool === 'select'
+                        ? 'hover:outline hover:outline-1 hover:outline-white/30 rounded'
+                        : '';
+
+                      const cursorClass =
+                        activeTool === 'move'
+                          ? 'cursor-grab active:cursor-grabbing'
+                          : activeTool === 'wire'
+                          ? 'cursor-crosshair'
+                          : 'cursor-pointer';
+
+                      const wrapperProps = {
+                        key: c.id,
+                        className: `pointer-events-auto transition-[outline,ring] duration-75 ${outlineClass} ${cursorClass}`,
+                        style: {
+                          position: 'absolute' as const,
+                          left: c.x,
+                          top: c.y,
+                          width: 'fit-content',
+                          height: 'fit-content',
+                        },
+                        onMouseDown: (e: React.MouseEvent) => handleComponentMouseDown(c.id, e),
+                        onClick: (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          setSelectedCompId(c.id);
+                        },
+                      };
+
                       if (c.kind === 'arduino_uno') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <ArduinoUno
                               pin13Lit={pin13State}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
@@ -797,12 +1089,7 @@ export default function App() {
 
                       if (c.kind === 'breadboard') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <Breadboard
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
@@ -815,12 +1102,7 @@ export default function App() {
 
                       if (c.kind === 'led') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <Led
                               id={c.id}
                               color={(c.props.color as any) || 'red'}
@@ -836,12 +1118,7 @@ export default function App() {
 
                       if (c.kind === 'resistor') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <Resistor
                               ohms={c.props.ohms || 220}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
@@ -855,14 +1132,10 @@ export default function App() {
 
                       if (c.kind === 'pushbutton') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <Pushbutton
                               id={c.id}
+                              isInteractive={activeTool !== 'move'}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
@@ -877,15 +1150,11 @@ export default function App() {
 
                       if (c.kind === 'potentiometer') {
                         return (
-                          <div
-                            key={c.id}
-                            className="pointer-events-auto"
-                            style={{ position: 'absolute', left: c.x, top: c.y }}
-                            onClick={() => setSelectedCompId(c.id)}
-                          >
+                          <div {...wrapperProps}>
                             <Potentiometer
                               id={c.id}
                               value={c.props.value ?? 0.5}
+                              isInteractive={activeTool !== 'move'}
                               onValueChange={(val: number) => {
                                 setComponents((prev) =>
                                   prev.map((item) =>

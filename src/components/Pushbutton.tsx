@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 
 interface PushbuttonProps {
   id: string;
+  isInteractive?: boolean;
   onPressChange?: (pressed: boolean) => void;
   onPinMouseDown?: (pinName: string, e: React.MouseEvent) => void;
 }
 
-export const Pushbutton: React.FC<PushbuttonProps> = ({ onPressChange, onPinMouseDown }) => {
+export const Pushbutton: React.FC<PushbuttonProps> = ({ isInteractive = true, onPressChange, onPinMouseDown }) => {
   const [isPressed, setIsPressed] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isInteractive) return;
     e.stopPropagation();
     setIsPressed(true);
     onPressChange?.(true);

@@ -3,16 +3,18 @@ import React, { useState, useRef } from 'react';
 interface PotentiometerProps {
   id: string;
   value: number; // 0.0 to 1.0
+  isInteractive?: boolean;
   onValueChange?: (val: number) => void;
   onPinMouseDown?: (pinName: string, e: React.MouseEvent) => void;
 }
 
-export const Potentiometer: React.FC<PotentiometerProps> = ({ value, onValueChange, onPinMouseDown }) => {
+export const Potentiometer: React.FC<PotentiometerProps> = ({ value, isInteractive = true, onValueChange, onPinMouseDown }) => {
   const [val, setVal] = useState(value);
   const isDragging = useRef(false);
   const startY = useRef(0);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isInteractive) return;
     e.stopPropagation();
     isDragging.current = true;
     startY.current = e.clientY;
