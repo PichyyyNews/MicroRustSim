@@ -102,6 +102,52 @@ const WIRE_COLORS = [
   { hex: '#78350f', name: 'Brown', role: 'Reference' },
 ];
 
+const setupMonacoTheme = (monaco: any) => {
+  monaco.editor.defineTheme('microrustsim-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '71717a', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '10b981' },
+      { token: 'keyword.control', foreground: '10b981' },
+      { token: 'type', foreground: '38bdf8' },
+      { token: 'type.identifier', foreground: '38bdf8' },
+      { token: 'number', foreground: 'fb923c' },
+      { token: 'string', foreground: 'fcd34d' },
+      { token: 'delimiter', foreground: 'a1a1aa' },
+      { token: 'operator', foreground: 'a1a1aa' },
+      { token: 'identifier', foreground: 'f4f4f5' },
+    ],
+    colors: {
+      'editor.background': '#121215',
+      'editor.foreground': '#f4f4f5',
+      'editorGutter.background': '#121215',
+      'editorLineNumber.foreground': '#52525b',
+      'editorLineNumber.activeForeground': '#f4f4f5',
+      'editorCursor.foreground': '#10b981',
+      'editor.lineHighlightBackground': '#18181b80',
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.selectionBackground': '#27272a',
+      'editor.inactiveSelectionBackground': '#1e1e24',
+      'editorIndentGuide.background': '#222226',
+      'editorIndentGuide.activeBackground': '#3f3f46',
+      'editorWidget.background': '#18181b',
+      'editorWidget.border': '#27272a',
+      'editorSuggestWidget.background': '#18181b',
+      'editorSuggestWidget.border': '#27272a',
+      'editorSuggestWidget.foreground': '#f4f4f5',
+      'editorSuggestWidget.selectedBackground': '#27272a',
+      'input.background': '#121215',
+      'input.border': '#27272a',
+      'input.foreground': '#f4f4f5',
+      'scrollbarSlider.background': '#27272a40',
+      'scrollbarSlider.hoverBackground': '#27272a80',
+      'scrollbarSlider.activeBackground': '#3f3f46',
+    },
+  });
+  monaco.editor.setTheme('microrustsim-dark');
+};
+
 export default function App() {
   // --- Menubar Active Menu (File, View, Window) ---
   const [activeMenu, setActiveMenu] = useState<'file' | 'view' | 'window' | null>(null);
@@ -1100,21 +1146,33 @@ export default function App() {
                           <GoSidebarCollapse />
                         </Button>
                       </div>
-                      <div className="flex-1 overflow-hidden">
+                      <div className="flex-1 overflow-hidden bg-[#121215]">
                         <Editor
                           height="100%"
                           defaultLanguage="cpp"
-                          theme="vs-dark"
+                          theme="microrustsim-dark"
+                          beforeMount={setupMonacoTheme}
+                          onMount={(_editor, monaco) => {
+                            monaco.editor.setTheme('microrustsim-dark');
+                          }}
                           value={sketchCode}
                           onChange={(val) => setSketchCode(val || '')}
+                          loading={
+                            <div className="h-full w-full bg-[#121215] flex items-center justify-center text-xs text-zinc-500">
+                              Loading editor...
+                            </div>
+                          }
                           options={{
                             minimap: { enabled: false },
                             fontSize: 13,
-                            fontFamily: 'monospace',
+                            fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
                             lineNumbers: 'on',
                             scrollBeyondLastLine: false,
                             automaticLayout: true,
                             padding: { top: 8 },
+                            cursorBlinking: 'smooth',
+                            smoothScrolling: true,
+                            renderLineHighlight: 'line',
                           }}
                         />
                       </div>

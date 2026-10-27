@@ -159,3 +159,11 @@ body {
   width: 24px !important;
   height: 2px !important;
 }
+
+/* Monaco Editor seamless dark theme background */
+.monaco-editor,
+.monaco-editor-background,
+.monaco-editor .inputarea.ime-input,
+.monaco-editor .margin {
+  background-color: #121215 !important;
+}
