@@ -183,6 +183,61 @@ export function updateOrthoSegment(
   return verts;
 }
 
+/**
+ * Computes natural sagging midpoint for flexible curve wire.
+ */
+export function getCurveMidpoint(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number }
+): { x: number; y: number } {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  const sag = Math.min(80, Math.max(25, dist * 0.25));
+  return {
+    x: Math.round((p1.x + p2.x) / 2),
+    y: Math.round((p1.y + p2.y) / 2 + sag * 0.75),
+  };
+}
+
+/**
+ * Catmull-Rom spline that strictly passes through EVERY waypoint in `points`.
+ * Zero mathematical error: every waypoint handle sits 100% exactly on the curve stroke.
+ */
+export function catmullRomCurve(points: { x: number; y: number }[]): string {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  // Extend end control tangents for smooth terminal departure & arrival
+  const p0 = {
+    x: 2 * points[0].x - points[1].x,
+    y: 2 * points[0].y - points[1].y,
+  };
+  const pn = {
+    x: 2 * points[points.length - 1].x - points[points.length - 2].x,
+    y: 2 * points[points.length - 1].y - points[points.length - 2].y,
+  };
+  const ext = [p0, ...points, pn];
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < ext.length - 2; i++) {
+    const pPrev = ext[i - 1];
+    const pCurr = ext[i];
+    const pNext = ext[i + 1];
+    const pAfter = ext[i + 2];
+
+    const cp1x = pCurr.x + (pNext.x - pPrev.x) / 6;
+    const cp1y = pCurr.y + (pNext.y - pPrev.y) / 6;
+    const cp2x = pNext.x - (pAfter.x - pCurr.x) / 6;
+    const cp2y = pNext.y - (pAfter.y - pCurr.y) / 6;
+
+    d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${pNext.x} ${pNext.y}`;
+  }
+  return d;
+}
+
 export function generateWirePath(
   p1: { x: number; y: number },
   waypoints: { x: number; y: number }[] | undefined,
@@ -200,28 +255,9 @@ export function generateWirePath(
     return d;
   }
 
-  // Curve / Flexible wire mode
-  if (wps.length === 0) {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const dist = Math.hypot(dx, dy);
-    const sag = Math.min(80, Math.max(25, dist * 0.25));
-    return `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + sag}, ${p2.x} ${p2.y + sag}, ${p2.x} ${p2.y}`;
-  }
-
-  // Smooth spline through waypoints
-  const all = [p1, ...wps, p2];
-  let d = `M ${all[0].x} ${all[0].y}`;
-  for (let i = 0; i < all.length - 1; i++) {
-    const curr = all[i];
-    const next = all[i + 1];
-    const mx = (curr.x + next.x) / 2;
-    const my = (curr.y + next.y) / 2;
-    d += ` Q ${curr.x} ${curr.y}, ${mx} ${my}`;
-  }
-  const last = all[all.length - 1];
-  d += ` L ${last.x} ${last.y}`;
-  return d;
+  // Curve / Flexible wire mode: guaranteed smooth Catmull-Rom spline through all waypoints
+  const points = wps.length === 0 ? [p1, getCurveMidpoint(p1, p2), p2] : [p1, ...wps, p2];
+  return catmullRomCurve(points);
 }
 
 export const WireLayer: React.FC<WireLayerProps> = ({
@@ -421,53 +457,67 @@ export const WireLayer: React.FC<WireLayerProps> = ({
                 {mode === 'curve' && (
                   <>
                     {waypoints.map((wp, wpIdx) => (
-                      <circle
-                        key={`wp-${wire.id}-${wpIdx}`}
-                        cx={wp.x}
-                        cy={wp.y}
-                        r="4.5"
-                        fill="#ffffff"
-                        stroke="#52525b"
-                        strokeWidth="1.5"
-                        className="cursor-move drop-shadow hover:scale-125 transition-transform"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          onStartDragWaypoint?.(wire.id, wpIdx, e);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteWaypoint?.(wire.id, wpIdx);
-                        }}
-                      >
-                        <title>Drag to bend • Double-click to delete</title>
-                      </circle>
-                    ))}
-
-                    {waypoints.length === 0 && (() => {
-                      const midX = Math.round((p1.x + p2.x) / 2);
-                      const dx = p2.x - p1.x;
-                      const dy = p2.y - p1.y;
-                      const dist = Math.hypot(dx, dy);
-                      const sag = Math.min(80, Math.max(25, dist * 0.25));
-                      const midY = Math.round((p1.y + p2.y) / 2 + sag * 0.75);
-
-                      return (
+                      <g key={`wp-${wire.id}-${wpIdx}`}>
+                        {/* Generous hit area for effortless clicking & dragging */}
                         <circle
-                          key={`init-wp-${wire.id}`}
-                          cx={midX}
-                          cy={midY}
+                          cx={wp.x}
+                          cy={wp.y}
+                          r="12"
+                          fill="transparent"
+                          className="cursor-move"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            onStartDragWaypoint?.(wire.id, wpIdx, e);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteWaypoint?.(wire.id, wpIdx);
+                          }}
+                        >
+                          <title>Drag to bend • Double-click to delete</title>
+                        </circle>
+                        {/* Crisp visual handle directly locked onto curve */}
+                        <circle
+                          cx={wp.x}
+                          cy={wp.y}
                           r="4.5"
                           fill="#ffffff"
                           stroke="#27272a"
                           strokeWidth="1.5"
-                          className="cursor-crosshair drop-shadow hover:scale-125 transition-transform"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            onAddAndDragWaypoint?.(wire.id, 0, { x: midX, y: midY }, e);
-                          }}
-                        >
-                          <title>Drag to bend wire</title>
-                        </circle>
+                          className="cursor-move drop-shadow pointer-events-none"
+                        />
+                      </g>
+                    ))}
+
+                    {waypoints.length === 0 && (() => {
+                      const mid = getCurveMidpoint(p1, p2);
+                      return (
+                        <g key={`init-wp-${wire.id}`}>
+                          {/* Generous hit area for initial bend */}
+                          <circle
+                            cx={mid.x}
+                            cy={mid.y}
+                            r="14"
+                            fill="transparent"
+                            className="cursor-crosshair"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              onAddAndDragWaypoint?.(wire.id, 0, mid, e);
+                            }}
+                          >
+                            <title>Drag to bend curve</title>
+                          </circle>
+                          {/* Crisp visual handle sitting 100% on the curve */}
+                          <circle
+                            cx={mid.x}
+                            cy={mid.y}
+                            r="4.5"
+                            fill="#ffffff"
+                            stroke="#27272a"
+                            strokeWidth="1.5"
+                            className="cursor-crosshair drop-shadow pointer-events-none"
+                          />
+                        </g>
                       );
                     })()}
                   </>
