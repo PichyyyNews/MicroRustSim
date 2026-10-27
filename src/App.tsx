@@ -1705,12 +1705,9 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <div className="flex items-center gap-1.5 pl-1 pr-2 select-none">
-              <img src="/logo.png" alt="MicroRustSim" className="w-3.5 h-3.5 object-contain" />
-              <span className="font-semibold text-xs text-zinc-300 tracking-tight">
-                MicroRustSim
-              </span>
-            </div>
+            <span className="font-semibold text-xs text-zinc-300 tracking-tight pl-1 pr-2 select-none">
+              MicroRustSim
+            </span>
 
             {/* Menubar: File */}
             <div className="relative">
@@ -3489,6 +3486,13 @@ export default function App() {
         {/* 3. Status Bar */}
         <div className="h-5 bg-[#121215] border-t border-[#222226] px-3 flex items-center justify-between text-[10px] text-zinc-500 shrink-0">
           <span className="flex items-center gap-2">
+            {isCompiling && (
+              <div className="flex items-center gap-1.5" title="Compiling firmware with arduino-cli...">
+                <div className="w-12 h-1 bg-[#222226] rounded-full overflow-hidden flex items-center">
+                  <div className="w-full h-full bg-emerald-400 rounded-full animate-pulse" />
+                </div>
+              </div>
+            )}
             <span>{statusMessage}</span>
             {projectPath && (
               <span className="text-zinc-600 font-mono text-[9px]">• {projectPath}</span>

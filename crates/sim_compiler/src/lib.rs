@@ -316,9 +316,14 @@ impl CompilerBackend for ArduinoCliBackend {
     }
 
     fn is_available(&self) -> bool {
-        Command::new(&self.cli_path)
-            .arg("version")
-            .output()
+        let mut cmd = Command::new(&self.cli_path);
+        cmd.arg("version");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        cmd.output()
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
@@ -382,15 +387,21 @@ impl CompilerBackend for ArduinoCliBackend {
         let output_dir = temp_dir.join("build");
         fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-        let output = Command::new(&self.cli_path)
-            .args([
-                "compile",
-                "--fqbn",
-                fqbn,
-                sketch_dir.to_str().unwrap(),
-                "--output-dir",
-                output_dir.to_str().unwrap(),
-            ])
+        let mut cmd = Command::new(&self.cli_path);
+        cmd.args([
+            "compile",
+            "--fqbn",
+            fqbn,
+            sketch_dir.to_str().unwrap(),
+            "--output-dir",
+            output_dir.to_str().unwrap(),
+        ]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let output = cmd
             .output()
             .map_err(|e| format!("Failed to execute {}: {e}", self.cli_path))?;
 

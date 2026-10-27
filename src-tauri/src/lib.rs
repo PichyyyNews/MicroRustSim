@@ -117,16 +117,21 @@ fn get_initial_data() -> InitialData {
 }
 
 #[tauri::command]
-fn compile_and_upload(
+async fn compile_and_upload(
     sketch: String,
     files: Option<std::collections::HashMap<String, String>>,
     state: State<'_, AppState>,
 ) -> Result<CompileResult, String> {
-    let (tx, rx) = sync_channel(1);
-    state.sim_tx
-        .send(SimCommand::CompileAndUpload { sketch, files, reply: tx })
-        .map_err(|e| e.to_string())?;
-    rx.recv().map_err(|e| e.to_string())
+    let sim_tx = state.sim_tx.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (tx, rx) = sync_channel(1);
+        sim_tx
+            .send(SimCommand::CompileAndUpload { sketch, files, reply: tx })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

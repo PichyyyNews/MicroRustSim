@@ -51,16 +51,20 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
         onMouseDown={handleMouseDown}
         title={`Rotate Wiper: ${voltage}V (Drag Up/Down)`}
       >
-        {/* Notch indicator */}
+        {/* Rotating dial container that orbits strictly around the knob center */}
         <div
-          className="absolute w-1 h-3.5 bg-zinc-200 rounded-full top-0.5"
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
           style={{
-            transformOrigin: '50% 18px',
             transform: `rotate(${angle}deg)`,
+            transformOrigin: 'center center',
           }}
-        />
+        >
+          {/* Radial indicator needle (cleanly positioned) */}
+          <div className="w-1 h-3 bg-zinc-100 rounded-full shadow-sm absolute top-1" />
+        </div>
+
         {/* Metal center cap */}
-        <div className="w-3.5 h-3.5 rounded-full bg-zinc-600 border border-zinc-500 shadow-inner" />
+        <div className="w-3.5 h-3.5 rounded-full bg-zinc-600 border border-zinc-500 shadow-inner z-10" />
       </div>
 
       <span className="text-[9px] font-mono text-zinc-400 mt-1">{voltage}V</span>
