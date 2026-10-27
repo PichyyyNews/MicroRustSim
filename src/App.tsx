@@ -19,6 +19,7 @@ import {
   GoZoomIn,
   GoZoomOut,
   GoCpu,
+  GoX,
 } from 'react-icons/go';
 import {
   MousePointer,
@@ -81,6 +82,7 @@ import {
   ProjectData,
   RecentProject,
   WorkspaceLayout,
+  OpenTab,
 } from './types';
 
 // Safely invoke Tauri IPC commands with web preview fallback
@@ -346,6 +348,18 @@ export default function App() {
   const [showOpenProjectModal, setShowOpenProjectModal] = useState(false);
   const [openProjectPathInput, setOpenProjectPathInput] = useState('');
 
+  // --- Multi-Tab Code Editor State (VS Code Style) ---
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([
+    { path: 'sketch.ino', name: 'sketch.ino' },
+    { path: 'config.h', name: 'config.h' },
+  ]);
+  const [activeTabPath, setActiveTabPath] = useState<string>('sketch.ino');
+  const [fileContents, setFileContents] = useState<Record<string, string>>({
+    'sketch.ino': DEFAULT_BLINK_CODE,
+    'config.h':
+      '#pragma once\n\n// Hardware Pin Definitions\n#define LED_PIN 13\n#define BUTTON_PIN 2\n#define POT_PIN A0\n\n// UART Baud Configuration\n#define SYSTEM_BAUD 9600\n',
+  });
+
   // --- Simulation & MCU State ---
   const [isRunning, setIsRunning] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
@@ -504,12 +518,75 @@ export default function App() {
   );
 
   // --- Project Management Functions ---
+  const handleOpenFileTab = useCallback(async (filePath: string) => {
+    const fileName = filePath.split('/').pop() || filePath;
+    setActiveFile(filePath);
+    setActiveTabPath(filePath);
+    setShowEditor(true);
+
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.path === filePath || t.name === fileName)) return prev;
+      return [...prev, { path: filePath, name: fileName }];
+    });
+
+    if (fileContents[filePath] === undefined) {
+      if (projectPath) {
+        const full = filePath.startsWith(projectPath) ? filePath : `${projectPath}/${filePath}`;
+        try {
+          const content = await tauriInvoke<string>('read_project_file', { path: full });
+          if (content !== null && content !== undefined) {
+            setFileContents((prev) => ({ ...prev, [filePath]: content }));
+          }
+        } catch (e) {
+          console.warn('Failed to read file:', e);
+        }
+      }
+    }
+  }, [fileContents, projectPath]);
+
+  const handleCloseTab = useCallback((tabPath: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOpenTabs((prev) => {
+      const remaining = prev.filter((t) => t.path !== tabPath);
+      if (remaining.length === 0) {
+        const fallback = [{ path: 'sketch.ino', name: 'sketch.ino' }];
+        setActiveTabPath('sketch.ino');
+        setActiveFile('sketch.ino');
+        return fallback;
+      }
+      if (activeTabPath === tabPath) {
+        const nextActive = remaining[remaining.length - 1];
+        setActiveTabPath(nextActive.path);
+        setActiveFile(nextActive.path);
+      }
+      return remaining;
+    });
+  }, [activeTabPath]);
+
+  const handleEditorContentChange = useCallback((val: string | undefined) => {
+    const nextVal = val || '';
+    setFileContents((prev) => ({ ...prev, [activeTabPath]: nextVal }));
+    if (activeTabPath === 'sketch.ino' || activeTabPath.endsWith('/sketch.ino')) {
+      setSketchCode(nextVal);
+    }
+    setIsDirty(true);
+    setOpenTabs((prev) =>
+      prev.map((t) => (t.path === activeTabPath ? { ...t, isDirty: true } : t))
+    );
+  }, [activeTabPath]);
+
   const handleSaveProject = useCallback(async () => {
     if (!projectPath) {
       await tauriInvoke('save_project_db', { name: projectName, sketch: sketchCode });
       setIsDirty(false);
       setStatusMessage(`Saved ${projectName} to SQLite`);
       return;
+    }
+
+    // Save all active/buffered files to disk
+    for (const [relPath, content] of Object.entries(fileContents)) {
+      const full = relPath.startsWith(projectPath) ? relPath : `${projectPath}/${relPath}`;
+      await tauriInvoke('write_project_file', { path: full, content });
     }
 
     const diag = JSON.stringify(exportWokwiDiagram(components, wires), null, 2);
@@ -519,7 +596,7 @@ export default function App() {
         board: 'arduino:avr:uno',
         mcu: 'atmega328p',
         baud_rate: baudRate,
-        updated_at: Date.now(),
+        updated_at: new Date().toISOString(),
       },
       null,
       2
@@ -527,16 +604,17 @@ export default function App() {
 
     await tauriInvoke('save_project_to_disk', {
       path: projectPath,
-      sketch: sketchCode,
+      sketch: fileContents['sketch.ino'] || sketchCode,
       diagram: diag,
       meta,
     });
 
     setIsDirty(false);
+    setOpenTabs((prev) => prev.map((t) => ({ ...t, isDirty: false })));
     setStatusMessage(`Saved ${projectName}`);
     const tree = await tauriInvoke<ProjectFileEntry[]>('read_dir_tree', { path: projectPath });
     if (tree) setProjectFiles(tree);
-  }, [projectPath, projectName, sketchCode, components, wires, baudRate, exportWokwiDiagram]);
+  }, [projectPath, projectName, sketchCode, fileContents, components, wires, baudRate, exportWokwiDiagram]);
 
   const handleCreateProject = useCallback(
     async (parentPath: string, name: string) => {
@@ -552,7 +630,15 @@ export default function App() {
         setProjectPath(res.path);
         setSketchCode(res.sketch_code);
         setProjectFiles(res.files);
+        setOpenTabs([
+          { path: 'sketch.ino', name: 'sketch.ino' },
+          { path: 'config.h', name: 'config.h' },
+        ]);
+        setActiveTabPath('sketch.ino');
         setActiveFile('sketch.ino');
+        setFileContents({
+          'sketch.ino': res.sketch_code,
+        });
         setIsDirty(false);
         setStatusMessage(`Project created: ${res.name}`);
         setShowNewProjectModal(false);
@@ -573,7 +659,23 @@ export default function App() {
           importWokwiDiagram(res.diagram_json);
         }
         setProjectFiles(res.files);
+
+        const initialTabs: OpenTab[] = [
+          { path: 'sketch.ino', name: 'sketch.ino' },
+        ];
+        const newContents: Record<string, string> = {
+          'sketch.ino': res.sketch_code,
+        };
+
+        const configEntry = res.files.find((f) => f.name === 'config.h');
+        if (configEntry) {
+          initialTabs.push({ path: configEntry.relative_path, name: configEntry.name });
+        }
+
+        setOpenTabs(initialTabs);
+        setActiveTabPath('sketch.ino');
         setActiveFile('sketch.ino');
+        setFileContents(newContents);
         setIsDirty(false);
         setStatusMessage(`Opened: ${res.name}`);
         setShowOpenProjectModal(false);
@@ -583,6 +685,17 @@ export default function App() {
     [importWokwiDiagram, loadRecentProjects]
   );
 
+  const handleOpenNativeFolder = useCallback(async () => {
+    try {
+      const selected = await tauriInvoke<string | null>('select_folder_dialog');
+      if (selected) {
+        await handleOpenProject(selected);
+      }
+    } catch (err) {
+      console.error('Failed to open native folder dialog:', err);
+    }
+  }, [handleOpenProject]);
+
   const handleRefreshFiles = useCallback(async () => {
     if (projectPath) {
       const tree = await tauriInvoke<ProjectFileEntry[]>('read_dir_tree', { path: projectPath });
@@ -591,21 +704,28 @@ export default function App() {
   }, [projectPath]);
 
   const handleCreateFile = useCallback(
-    async (fileName: string) => {
+    async (fileName: string, isDir?: boolean) => {
       if (!projectPath) return;
-      const fullPath = `${projectPath}/${fileName}`;
-      await tauriInvoke('write_project_file', { path: fullPath, content: '' });
-      handleRefreshFiles();
+      await tauriInvoke('create_project_dir_entry', {
+        dirPath: projectPath,
+        relativePath: fileName,
+        isDir: !!isDir,
+      });
+      await handleRefreshFiles();
+      if (!isDir) {
+        handleOpenFileTab(fileName);
+      }
     },
-    [projectPath, handleRefreshFiles]
+    [projectPath, handleRefreshFiles, handleOpenFileTab]
   );
 
   const handleDeleteFile = useCallback(
     async (filePath: string) => {
-      await tauriInvoke('delete_project_file', { path: filePath });
+      const full = projectPath && !filePath.startsWith(projectPath) ? `${projectPath}/${filePath}` : filePath;
+      await tauriInvoke('delete_project_file', { path: full });
       handleRefreshFiles();
     },
-    [handleRefreshFiles]
+    [projectPath, handleRefreshFiles]
   );
 
   // --- Parametric Property Updates ---
@@ -1167,6 +1287,11 @@ export default function App() {
         handleSaveProject();
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) {
+        e.preventDefault();
+        handleOpenNativeFolder();
+        return;
+      }
 
       const target = e.target as HTMLElement | null;
       if (
@@ -1210,6 +1335,7 @@ export default function App() {
     handleDeleteComponent,
     handleDeleteWire,
     handleSaveProject,
+    handleOpenNativeFolder,
   ]);
 
   // --- Close Menubar Dropdown when Clicking Outside ---
@@ -1375,13 +1501,27 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      handleOpenNativeFolder();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoFileDirectory className="text-zinc-400" /> Open Folder...
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+O</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       setShowOpenProjectModal(true);
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
                     <span className="flex items-center gap-2">
-                      <GoFileDirectory className="text-zinc-400" /> Open Project Folder...
+                      <GoClock className="text-zinc-400" /> Browse Stored Projects...
                     </span>
                   </button>
 
@@ -2231,51 +2371,95 @@ export default function App() {
                       minSize="20%"
                     >
                       <aside className="h-full flex flex-col bg-[#121215] border-r border-[#222226] overflow-hidden">
-                      <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
-                        <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
-                          <GoFile className="text-zinc-500" /> sketch.ino
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => toggleEditor()}
-                          title="Collapse Editor"
-                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                        >
-                          <GoSidebarCollapse />
-                        </Button>
-                      </div>
-                      <div className="flex-1 overflow-hidden bg-[#121215]">
-                        <Editor
-                          height="100%"
-                          defaultLanguage="cpp"
-                          theme="microrustsim-dark"
-                          beforeMount={setupMonacoTheme}
-                          onMount={(_editor, monaco) => {
-                            monaco.editor.setTheme('microrustsim-dark');
-                          }}
-                          value={sketchCode}
-                          onChange={(val) => setSketchCode(val || '')}
-                          loading={
-                            <div className="h-full w-full bg-[#121215] flex items-center justify-center text-xs text-zinc-500">
-                              Loading editor...
-                            </div>
-                          }
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 13,
-                            fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
-                            lineNumbers: 'on',
-                            scrollBeyondLastLine: false,
-                            automaticLayout: true,
-                            padding: { top: 8 },
-                            cursorBlinking: 'smooth',
-                            smoothScrolling: true,
-                            renderLineHighlight: 'line',
-                          }}
-                        />
-                      </div>
-                    </aside>
+                        {/* Multi-Tab Bar */}
+                        <div className="h-7 px-1 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0 select-none overflow-x-auto">
+                          <div className="flex items-center h-full gap-0.5 overflow-x-auto scrollbar-none">
+                            {openTabs.map((tab) => {
+                              const isActive = tab.path === activeTabPath;
+                              return (
+                                <div
+                                  key={tab.path}
+                                  onClick={() => {
+                                    setActiveTabPath(tab.path);
+                                    setActiveFile(tab.path);
+                                  }}
+                                  className={`group h-full px-2.5 flex items-center gap-1.5 cursor-pointer border-t-2 text-[11px] font-mono transition-colors ${
+                                    isActive
+                                      ? 'bg-[#18181b] text-zinc-100 border-emerald-500 font-medium'
+                                      : 'text-zinc-400 border-transparent hover:bg-zinc-900/60 hover:text-zinc-300'
+                                  }`}
+                                >
+                                  <GoFile className={`w-3 h-3 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                                  <span className="truncate max-w-[120px]">{tab.name}</span>
+                                  {tab.isDirty && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 group-hover:hidden" />
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleCloseTab(tab.path, e)}
+                                    className="ml-1 p-0.5 rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-200 opacity-60 group-hover:opacity-100 transition-opacity"
+                                    title="Close Tab"
+                                  >
+                                    <GoX className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-1 px-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => toggleEditor()}
+                              title="Collapse Editor"
+                              className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                            >
+                              <GoSidebarCollapse />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="flex-1 overflow-hidden bg-[#121215]">
+                          <Editor
+                            height="100%"
+                            language={
+                              activeTabPath.endsWith('.ino') ||
+                              activeTabPath.endsWith('.cpp') ||
+                              activeTabPath.endsWith('.h') ||
+                              activeTabPath.endsWith('.c')
+                                ? 'cpp'
+                                : activeTabPath.endsWith('.json')
+                                ? 'json'
+                                : activeTabPath.endsWith('.md')
+                                ? 'markdown'
+                                : 'plaintext'
+                            }
+                            theme="microrustsim-dark"
+                            beforeMount={setupMonacoTheme}
+                            onMount={(_editor, monaco) => {
+                              monaco.editor.setTheme('microrustsim-dark');
+                            }}
+                            value={fileContents[activeTabPath] ?? (activeTabPath === 'sketch.ino' ? sketchCode : '')}
+                            onChange={handleEditorContentChange}
+                            loading={
+                              <div className="h-full w-full bg-[#121215] flex items-center justify-center text-xs text-zinc-500">
+                                Loading editor...
+                              </div>
+                            }
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
+                              lineNumbers: 'on',
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              padding: { top: 8 },
+                              cursorBlinking: 'smooth',
+                              smoothScrolling: true,
+                              renderLineHighlight: 'line',
+                            }}
+                          />
+                        </div>
+                      </aside>
                     </ResizablePanel>
                   )}
                   {showEditor && showExplorer && <ResizableHandle withHandle orientation="horizontal" />}
@@ -2286,20 +2470,16 @@ export default function App() {
                       minSize="20%"
                     >
                       <FileExplorer
-                          projectName={projectName}
-                          projectPath={projectPath}
-                          files={projectFiles}
-                          activeFile={activeFile}
-                          onSelectFile={(filePath) => {
-                            setActiveFile(filePath);
-                            if (filePath.endsWith('.ino')) {
-                              setShowEditor(true);
-                            }
-                          }}
-                          onCreateFile={handleCreateFile}
-                          onDeleteFile={handleDeleteFile}
-                          onRefresh={handleRefreshFiles}
-                        />
+                        projectName={projectName}
+                        projectPath={projectPath}
+                        files={projectFiles}
+                        activeFile={activeFile}
+                        onSelectFile={handleOpenFileTab}
+                        onCreateFile={handleCreateFile}
+                        onDeleteFile={handleDeleteFile}
+                        onRefresh={handleRefreshFiles}
+                        onOpenFolder={handleOpenNativeFolder}
+                      />
                     </ResizablePanel>
                   )}
                 </ResizablePanelGroup>

@@ -72,3 +72,18 @@ export interface WorkspaceLayout {
   showPalette?: boolean;
   showInspector?: boolean;
 }
+
+export interface OpenTab {
+  path: string;
+  name: string;
+  isDirty?: boolean;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  relativePath: string;
+  isDir: boolean;
+  size: number;
+  children: FileTreeNode[];
+}

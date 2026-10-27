@@ -248,6 +248,11 @@ fn read_dir_tree(path: String) -> Result<Vec<FileEntry>, String> {
 }
 
 #[tauri::command]
+fn read_project_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
 fn write_project_file(path: String, content: String) -> Result<(), String> {
     DirectoryProject::write_file_content(std::path::Path::new(&path), &content)
 }
@@ -279,6 +284,31 @@ fn get_user_setting(key: String, state: State<'_, AppState>) -> Result<Option<St
 fn save_user_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
     let storage = state.storage.lock();
     storage.set_setting(&key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn select_folder_dialog() -> Result<Option<String>, String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Select Project Working Folder")
+        .pick_folder()
+        .await;
+
+    Ok(folder.map(|h| h.path().to_string_lossy().replace('\\', "/")))
+}
+
+#[tauri::command]
+fn create_project_dir_entry(dir_path: String, relative_path: String, is_dir: bool) -> Result<(), String> {
+    let base = std::path::Path::new(&dir_path);
+    let target = base.join(&relative_path);
+    if is_dir {
+        std::fs::create_dir_all(&target).map_err(|e| format!("Failed to create directory: {}", e))?;
+    } else {
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&target, "").map_err(|e| format!("Failed to create file: {}", e))?;
+    }
+    Ok(())
 }
 
 pub fn run() {
@@ -480,12 +510,15 @@ pub fn run() {
             open_project_dir,
             save_project_to_disk,
             read_dir_tree,
+            read_project_file,
             write_project_file,
             delete_project_file,
             list_recent_projects,
             remove_recent_project,
             get_user_setting,
             save_user_setting,
+            select_folder_dialog,
+            create_project_dir_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

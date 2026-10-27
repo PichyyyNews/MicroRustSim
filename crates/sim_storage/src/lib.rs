@@ -202,18 +202,22 @@ impl DirectoryProject {
         let src_dir = project_dir.join("src");
         let _ = std::fs::create_dir_all(&src_dir);
 
-        let default_sketch = r#"// MicroRustSim Arduino Sketch
+        let default_sketch = r#"#include "config.h"
+
+// MicroRustSim Arduino Firmware
+// Target: ATmega328P @ 16 MHz (Arduino Uno R3)
+
 void setup() {
-  pinMode(13, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
   Serial.begin(9600);
-  Serial.println("System Initialized");
+  Serial.println("[MicroRustSim] System online. Firmware loaded.");
 }
 
 void loop() {
-  digitalWrite(13, HIGH);
-  delay(500);
-  digitalWrite(13, LOW);
-  delay(500);
+  digitalWrite(LED_PIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_PIN, LOW);
+  delay(1000);
 }
 "#;
 
@@ -221,11 +225,32 @@ void loop() {
         std::fs::write(project_dir.join("sketch.ino"), code_to_write)
             .map_err(|e| format!("Failed to write sketch.ino: {}", e))?;
 
+        let default_config = r#"#pragma once
+
+// Hardware Pin Definitions
+#define LED_PIN 13
+#define BUTTON_PIN 2
+#define POT_PIN A0
+
+// UART Baud Configuration
+#define SYSTEM_BAUD 9600
+"#;
+        let _ = std::fs::write(project_dir.join("config.h"), default_config);
+
         let default_diagram = serde_json::to_string_pretty(&DiagramSchema::default())
             .unwrap_or_else(|_| "{}".to_string());
         let diagram_to_write = diagram_json.unwrap_or(&default_diagram);
         std::fs::write(project_dir.join("diagram.json"), diagram_to_write)
             .map_err(|e| format!("Failed to write diagram.json: {}", e))?;
+
+        let readme_content = format!(
+            "# {}\n\nArduino firmware and circuit simulation built with **MicroRustSim**.\n\n## Project Structure\n- `sketch.ino`: Main firmware (setup and loop routines)\n- `config.h`: Hardware pin definitions and constants\n- `diagram.json`: Circuit schematic and breadboard wiring (Wokwi-compatible)\n- `project.json`: Target MCU and board metadata\n\n## Execution\n- Click **⚡ Compile & Upload** to compile using genuine `arduino-cli`.\n- Click **▶ Run Simulation** to execute cycle-accurate AVR simulation at 16 MHz.\n",
+            sanitized_name
+        );
+        let _ = std::fs::write(project_dir.join("README.md"), readme_content);
+
+        let gitignore_content = "build/\n*.hex\n*.elf\n";
+        let _ = std::fs::write(project_dir.join(".gitignore"), gitignore_content);
 
         let now_str = chrono_like_now();
         let meta = serde_json::json!({
@@ -280,27 +305,56 @@ void loop() {
                     }
                 }
             }
-            found
+            if found.is_empty() {
+                let default_sketch = format!(
+                    "#include \"config.h\"\n\n// MicroRustSim Project: {}\n// Target: ATmega328P @ 16 MHz (Arduino Uno R3)\n\nvoid setup() {{\n  pinMode(LED_PIN, OUTPUT);\n  Serial.begin(9600);\n  Serial.println(\"[MicroRustSim] System online.\");\n}}\n\nvoid loop() {{\n  digitalWrite(LED_PIN, HIGH);\n  delay(1000);\n  digitalWrite(LED_PIN, LOW);\n  delay(1000);\n}}\n",
+                    name
+                );
+                let _ = std::fs::write(&sketch_path, &default_sketch);
+                default_sketch
+            } else {
+                found
+            }
         };
+
+        let config_path = project_dir.join("config.h");
+        if !config_path.exists() {
+            let default_config = "#pragma once\n\n// Hardware Pin Definitions\n#define LED_PIN 13\n#define BUTTON_PIN 2\n#define POT_PIN A0\n\n#define SYSTEM_BAUD 9600\n";
+            let _ = std::fs::write(&config_path, default_config);
+        }
 
         let diagram_path = project_dir.join("diagram.json");
         let diagram_json = if diagram_path.exists() {
             std::fs::read_to_string(&diagram_path).unwrap_or_default()
         } else {
-            serde_json::to_string_pretty(&DiagramSchema::default()).unwrap_or_else(|_| "{}".to_string())
+            let default_diag = serde_json::to_string_pretty(&DiagramSchema::default())
+                .unwrap_or_else(|_| "{}".to_string());
+            let _ = std::fs::write(&diagram_path, &default_diag);
+            default_diag
         };
+
+        let readme_path = project_dir.join("README.md");
+        if !readme_path.exists() {
+            let readme_content = format!(
+                "# {}\n\nArduino firmware and circuit simulation built with **MicroRustSim**.\n\n## Project Structure\n- `sketch.ino`: Main firmware (setup and loop routines)\n- `config.h`: Hardware pin definitions and constants\n- `diagram.json`: Circuit schematic and breadboard wiring (Wokwi-compatible)\n- `project.json`: Target MCU and board metadata\n\n## Execution\n- Click **⚡ Compile & Upload** to compile using genuine `arduino-cli`.\n- Click **▶ Run Simulation** to execute cycle-accurate AVR simulation at 16 MHz.\n",
+                name
+            );
+            let _ = std::fs::write(&readme_path, readme_content);
+        }
 
         let meta_path = project_dir.join("project.json");
         let metadata_json = if meta_path.exists() {
             std::fs::read_to_string(&meta_path).unwrap_or_default()
         } else {
-            serde_json::json!({
+            let default_meta = serde_json::json!({
                 "name": name,
                 "board": "arduino:avr:uno",
                 "mcu": "atmega328p",
                 "baud_rate": 9600,
             })
-            .to_string()
+            .to_string();
+            let _ = std::fs::write(&meta_path, &default_meta);
+            default_meta
         };
 
         let files = Self::read_dir_tree(project_dir)?;

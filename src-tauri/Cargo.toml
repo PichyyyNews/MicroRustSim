@@ -19,3 +19,4 @@ sim_core = { path = "../crates/sim_core" }
 sim_compiler = { path = "../crates/sim_compiler" }
 sim_storage = { path = "../crates/sim_storage" }
 parking_lot = "0.12"
+rfd = "0.15"
