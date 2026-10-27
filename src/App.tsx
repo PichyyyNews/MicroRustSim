@@ -18,7 +18,7 @@ import {
   GoZoomOut,
   GoCpu,
 } from 'react-icons/go';
-import { MousePointer, Move, Cable, ChevronDown, Check } from 'lucide-react';
+import { MousePointer, Move, Cable, ChevronDown, Check, Eraser, RotateCw, FlipHorizontal, CornerDownRight, Spline } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
 import { Button } from '@/components/ui/button';
@@ -136,7 +136,16 @@ export default function App() {
   const menubarRef = useRef<HTMLDivElement>(null);
 
   // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
-  const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire'>('select');
+  const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire' | 'eraser'>('select');
+  const [wireRoutingMode, setWireRoutingMode] = useState<'curve' | 'ortho'>('curve');
+  const draggedWaypointRef = useRef<{
+    wireId: string;
+    index: number;
+    startMouseX: number;
+    startMouseY: number;
+    startWpX: number;
+    startWpY: number;
+  } | null>(null);
   const [showWireColorMenu, setShowWireColorMenu] = useState(false);
   const [customColorInput, setCustomColorInput] = useState('#22C55E');
   const wireMenuRef = useRef<HTMLDivElement>(null);
@@ -215,43 +224,74 @@ export default function App() {
     });
   }, []);
 
-  // --- Pin World Position Calculator ---
+  // --- Pin World Position Calculator with Rotation & Flip ---
   const getPinWorldPos = useCallback(
     (compId: string, pinName: string): { x: number; y: number } | null => {
       const comp = components.find((c) => c.id === compId);
       if (!comp) return null;
 
+      let local: { x: number; y: number } | null = null;
+      let w = 40;
+      let h = 40;
+
       if (comp.kind === 'arduino_uno') {
+        w = 285.2;
+        h = 209;
         const offset = ARDUINO_PINS[pinName];
-        if (offset) {
-          return { x: comp.x + offset.x, y: comp.y + offset.y };
-        }
+        if (offset) local = offset;
+      } else if (comp.kind === 'breadboard') {
+        w = 460;
+        h = 140;
+        local = { x: 20, y: 20 };
+      } else if (comp.kind === 'led') {
+        w = 50;
+        h = 70;
+        if (pinName === 'anode') local = { x: 19, y: 60 };
+        else if (pinName === 'cathode') local = { x: 31, y: 56 };
+      } else if (comp.kind === 'resistor') {
+        w = 64;
+        h = 20;
+        if (pinName === '1') local = { x: 4, y: 10 };
+        else if (pinName === '2') local = { x: 60, y: 10 };
+      } else if (comp.kind === 'pushbutton') {
+        w = 48;
+        h = 48;
+        if (pinName === '1a' || pinName === '1') local = { x: 2, y: 2 };
+        else if (pinName === '1b') local = { x: 46, y: 2 };
+        else if (pinName === '2a' || pinName === '2') local = { x: 2, y: 46 };
+        else if (pinName === '2b') local = { x: 46, y: 46 };
+      } else if (comp.kind === 'potentiometer') {
+        w = 52;
+        h = 80;
+        if (pinName === '1' || pinName === 'VCC') local = { x: 22, y: 76 };
+        else if (pinName === '2' || pinName === 'SIG') local = { x: 32, y: 76 };
+        else if (pinName === '3' || pinName === 'GND') local = { x: 42, y: 76 };
       }
 
-      if (comp.kind === 'led') {
-        if (pinName === 'anode') return { x: comp.x + 19, y: comp.y + 60 };
-        if (pinName === 'cathode') return { x: comp.x + 31, y: comp.y + 56 };
+      if (!local) local = { x: 20, y: 20 };
+
+      // Rotate and flip around center
+      const cx = w / 2;
+      const cy = h / 2;
+      let dx = local.x - cx;
+      let dy = local.y - cy;
+      if (comp.flipped) dx = -dx;
+
+      const rot = comp.rotation || 0;
+      if (rot !== 0) {
+        const rad = (rot * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const rx = dx * cos - dy * sin;
+        const ry = dx * sin + dy * cos;
+        dx = rx;
+        dy = ry;
       }
 
-      if (comp.kind === 'resistor') {
-        if (pinName === '1') return { x: comp.x + 4, y: comp.y + 10 };
-        if (pinName === '2') return { x: comp.x + 60, y: comp.y + 10 };
-      }
-
-      if (comp.kind === 'pushbutton') {
-        if (pinName === '1a') return { x: comp.x + 2, y: comp.y + 2 };
-        if (pinName === '1b') return { x: comp.x + 46, y: comp.y + 2 };
-        if (pinName === '2a') return { x: comp.x + 2, y: comp.y + 46 };
-        if (pinName === '2b') return { x: comp.x + 46, y: comp.y + 46 };
-      }
-
-      if (comp.kind === 'potentiometer') {
-        if (pinName === '1') return { x: comp.x + 22, y: comp.y + 76 };
-        if (pinName === '2') return { x: comp.x + 32, y: comp.y + 76 };
-        if (pinName === '3') return { x: comp.x + 42, y: comp.y + 76 };
-      }
-
-      return { x: comp.x + 20, y: comp.y + 20 };
+      return {
+        x: Math.round(comp.x + cx + dx),
+        y: Math.round(comp.y + cy + dy),
+      };
     },
     [components]
   );
@@ -365,6 +405,23 @@ export default function App() {
   // --- Window Dragging Listener for Smooth Component Movement ---
   useEffect(() => {
     const handleWindowMouseMove = (e: MouseEvent) => {
+      if (draggedWaypointRef.current) {
+        const dx = (e.clientX - draggedWaypointRef.current.startMouseX) / zoom;
+        const dy = (e.clientY - draggedWaypointRef.current.startMouseY) / zoom;
+        const { wireId, index, startWpX, startWpY } = draggedWaypointRef.current;
+        const newX = Math.round(startWpX + dx);
+        const newY = Math.round(startWpY + dy);
+        setWires((prev) =>
+          prev.map((w) => {
+            if (w.id !== wireId) return w;
+            const nextWp = [...(w.waypoints || [])];
+            nextWp[index] = { x: newX, y: newY };
+            return { ...w, waypoints: nextWp };
+          })
+        );
+        return;
+      }
+
       if (draggedCompRef.current) {
         const dx = (e.clientX - draggedCompRef.current.startMouseX) / zoom;
         const dy = (e.clientY - draggedCompRef.current.startMouseY) / zoom;
@@ -378,6 +435,9 @@ export default function App() {
     };
 
     const handleWindowMouseUp = () => {
+      if (draggedWaypointRef.current) {
+        draggedWaypointRef.current = null;
+      }
       if (draggedCompRef.current) {
         draggedCompRef.current = null;
       }
@@ -391,7 +451,96 @@ export default function App() {
     };
   }, [zoom]);
 
-  // --- Keyboard Shortcuts (V: Select, M: Move, W: Wire, Delete: Delete Component) ---
+  // --- Component Management & Transform Handlers ---
+  const handleDeleteComponent = useCallback((id: string) => {
+    setComponents((prev) => prev.filter((c) => c.id !== id));
+    const attachedWires = wires.filter((w) => w.fromComp === id || w.toComp === id);
+    for (const w of attachedWires) {
+      tauriInvoke('remove_wire', { id: w.id });
+    }
+    setWires((prev) => prev.filter((w) => w.fromComp !== id && w.toComp !== id));
+    if (selectedCompId === id) {
+      setSelectedCompId(null);
+    }
+  }, [wires, selectedCompId]);
+
+  const handleRotateSelected = useCallback(() => {
+    if (!selectedCompId) return;
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedCompId) return c;
+        const nextRot = ((c.rotation || 0) + 90) % 360;
+        return { ...c, rotation: nextRot };
+      })
+    );
+  }, [selectedCompId]);
+
+  const handleFlipSelected = useCallback(() => {
+    if (!selectedCompId) return;
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedCompId) return c;
+        return { ...c, flipped: !c.flipped };
+      })
+    );
+  }, [selectedCompId]);
+
+  // --- Waypoint Drag Handlers ---
+  const handleStartDragWaypoint = useCallback((wireId: string, index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const wire = wires.find((w) => w.id === wireId);
+    const wp = wire?.waypoints?.[index];
+    if (!wp) return;
+    draggedWaypointRef.current = {
+      wireId,
+      index,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startWpX: wp.x,
+      startWpY: wp.y,
+    };
+  }, [wires]);
+
+  const handleAddAndDragWaypoint = useCallback(
+    (
+      wireId: string,
+      insertIndex: number,
+      initialPoint: { x: number; y: number },
+      e: React.MouseEvent
+    ) => {
+      e.stopPropagation();
+      setWires((prev) =>
+        prev.map((w) => {
+          if (w.id !== wireId) return w;
+          const nextWp = [...(w.waypoints || [])];
+          nextWp.splice(insertIndex, 0, initialPoint);
+          return { ...w, waypoints: nextWp };
+        })
+      );
+      draggedWaypointRef.current = {
+        wireId,
+        index: insertIndex,
+        startMouseX: e.clientX,
+        startMouseY: e.clientY,
+        startWpX: initialPoint.x,
+        startWpY: initialPoint.y,
+      };
+    },
+    []
+  );
+
+  const handleDeleteWaypoint = useCallback((wireId: string, waypointIndex: number) => {
+    setWires((prev) =>
+      prev.map((w) => {
+        if (w.id !== wireId) return w;
+        const nextWp = [...(w.waypoints || [])];
+        nextWp.splice(waypointIndex, 1);
+        return { ...w, waypoints: nextWp };
+      })
+    );
+  }, []);
+
+  // --- Keyboard Shortcuts (V: Select, M: Move, W: Wire, E: Eraser, R: Rotate, F: Flip, Del: Delete) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -411,18 +560,20 @@ export default function App() {
         setActiveTool('move');
       } else if (e.key === 'w' || e.key === 'W') {
         setActiveTool('wire');
+      } else if (e.key === 'e' || e.key === 'E') {
+        setActiveTool('eraser');
+      } else if (e.key === 'r' || e.key === 'R') {
+        handleRotateSelected();
+      } else if (e.key === 'f' || e.key === 'F') {
+        handleFlipSelected();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCompId) {
-        setComponents((prev) => prev.filter((c) => c.id !== selectedCompId));
-        setWires((prev) =>
-          prev.filter((w) => w.fromComp !== selectedCompId && w.toComp !== selectedCompId)
-        );
-        setSelectedCompId(null);
+        handleDeleteComponent(selectedCompId);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCompId]);
+  }, [selectedCompId, handleRotateSelected, handleFlipSelected, handleDeleteComponent]);
 
   // --- Close Menubar Dropdown when Clicking Outside ---
   useEffect(() => {
@@ -521,6 +672,8 @@ export default function App() {
           toComp: compId,
           toPin: pinName,
           color: currentWireColor,
+          routingMode: wireRoutingMode,
+          waypoints: [],
         };
         setWires((prev) => [...prev, newWire]);
         syncWireToRust(newWire);
@@ -945,7 +1098,7 @@ export default function App() {
             {/* Minimal Grey Separator between Run/Upload Controls and Mouse Tools */}
             <div className="w-[1px] h-5 bg-zinc-600/70 mx-2.5 self-center shrink-0" />
 
-            {/* Tool Selection Group: Select (V), Move (M), Wire (W) - Borderless Flat Design */}
+            {/* Tool Selection Group - Icon-First, Clean Low-Text Design */}
             <div className="flex items-center gap-1">
               {/* 1. Select Tool */}
               <Tooltip>
@@ -954,18 +1107,17 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('select')}
-                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                         activeTool === 'select'
-                          ? 'bg-[#27272a] text-zinc-100 font-medium'
+                          ? 'bg-[#27272a] text-zinc-100'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
                       <MousePointer className="w-3.5 h-3.5" />
-                      <span className="text-[11px]">Select</span>
                     </button>
                   }
                 />
-                <TooltipContent className="text-xs">Select Tool (V) • Click component to select</TooltipContent>
+                <TooltipContent className="text-xs">Select Tool (V)</TooltipContent>
               </Tooltip>
 
               {/* 2. Move Tool */}
@@ -975,21 +1127,20 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('move')}
-                      className={`h-7 px-2.5 flex items-center gap-1.5 text-xs rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                         activeTool === 'move'
-                          ? 'bg-[#27272a] text-zinc-100 font-medium'
+                          ? 'bg-[#27272a] text-zinc-100'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
                       <Move className="w-3.5 h-3.5" />
-                      <span className="text-[11px]">Move</span>
                     </button>
                   }
                 />
-                <TooltipContent className="text-xs">Move Tool (M) • Drag components to reposition</TooltipContent>
+                <TooltipContent className="text-xs">Move Tool (M)</TooltipContent>
               </Tooltip>
 
-              {/* 3. Wire Tool Split Button + Word-Style Floating Color Popup (Zero Borders) */}
+              {/* 3. Wire Tool Split Button */}
               <div className="relative flex items-center" ref={wireMenuRef}>
                 <Tooltip>
                   <TooltipTrigger
@@ -997,44 +1148,41 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setActiveTool('wire')}
-                        className={`h-7 pl-2.5 pr-1.5 flex items-center gap-1.5 text-xs rounded-l transition-colors ${
+                        className={`h-7 px-1.5 flex flex-col items-center justify-center rounded-l transition-colors ${
                           activeTool === 'wire'
-                            ? 'bg-[#27272a] text-zinc-100 font-medium'
+                            ? 'bg-[#27272a] text-zinc-100'
                             : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                         }`}
                       >
-                        <div className="flex flex-col items-center justify-center">
-                          <Cable className="w-3.5 h-3.5" />
-                          <span
-                            className="w-3.5 h-[2px] rounded-full mt-0.5 shadow-sm"
-                            style={{ backgroundColor: currentWireColor }}
-                          />
-                        </div>
-                        <span className="text-[11px]">Wire</span>
+                        <Cable className="w-3.5 h-3.5" />
+                        <span
+                          className="w-3.5 h-[2px] rounded-full mt-0.5 shadow-sm"
+                          style={{ backgroundColor: currentWireColor }}
+                        />
                       </button>
                     }
                   />
-                  <TooltipContent className="text-xs">Wire Tool (W) • Connect pins with wires</TooltipContent>
+                  <TooltipContent className="text-xs">Wire Tool (W)</TooltipContent>
                 </Tooltip>
 
-                {/* Dropdown Chevron for Word-style Floating Color Popup (Zero Border) */}
+                {/* Dropdown Chevron for Wire Color Picker */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowWireColorMenu((prev) => !prev);
                   }}
-                  className={`h-7 px-1.5 flex items-center justify-center rounded-r transition-colors ${
+                  className={`h-7 px-1 flex items-center justify-center rounded-r transition-colors ${
                     activeTool === 'wire' || showWireColorMenu
                       ? 'bg-[#27272a] text-zinc-100 hover:bg-[#333338]'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                   }`}
-                  title="Choose Wire Color"
+                  title="Choose Wire Color & Style"
                 >
                   <ChevronDown className="w-3 h-3" />
                 </button>
 
-                {/* Floating Word-Style Color Picker Popover */}
+{/* Floating Word-Style Color Picker Popover */}
                 {showWireColorMenu && (
                   <div
                     className="absolute top-full left-0 mt-1 w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50 animate-in fade-in zoom-in-95 duration-100 select-none"
@@ -1143,7 +1291,104 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Status */}
+          
+
+              {/* 4. Eraser Tool */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setActiveTool('eraser')}
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                        activeTool === 'eraser'
+                          ? 'bg-rose-950/70 text-rose-300 border border-rose-800/80'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
+                      }`}
+                    >
+                      <Eraser className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent className="text-xs">Eraser Tool (E) • Click wire or component to delete</TooltipContent>
+              </Tooltip>
+
+              {/* Divider between tools and transform actions */}
+              <div className="w-[1px] h-4 bg-zinc-800 mx-1 shrink-0" />
+
+              {/* 5. Rotate Selected Component */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      disabled={!selectedCompId}
+                      onClick={handleRotateSelected}
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                        selectedCompId
+                          ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
+                          : 'text-zinc-600 cursor-not-allowed opacity-40'
+                      }`}
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent className="text-xs">Rotate Component 90° (R)</TooltipContent>
+              </Tooltip>
+
+              {/* 6. Flip Selected Component */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      disabled={!selectedCompId}
+                      onClick={handleFlipSelected}
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                        selectedCompId
+                          ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
+                          : 'text-zinc-600 cursor-not-allowed opacity-40'
+                      }`}
+                    >
+                      <FlipHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent className="text-xs">Flip Component Horizontal (F)</TooltipContent>
+              </Tooltip>
+
+              {/* Divider between transforms and routing mode */}
+              <div className="w-[1px] h-4 bg-zinc-800 mx-1 shrink-0" />
+
+              {/* 7. Wire Routing Mode (Curve vs Ortho Diagram) */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setWireRoutingMode((m) => (m === 'curve' ? 'ortho' : 'curve'))}
+                      className={`h-7 px-2 flex items-center gap-1.5 text-xs rounded transition-colors ${
+                        wireRoutingMode === 'ortho'
+                          ? 'bg-[#27272a] text-emerald-400 font-medium'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
+                      }`}
+                    >
+                      {wireRoutingMode === 'ortho' ? (
+                        <CornerDownRight className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Spline className="w-3.5 h-3.5" />
+                      )}
+                      <span className="text-[10px] font-mono">{wireRoutingMode === 'ortho' ? 'Ortho' : 'Curve'}</span>
+                    </button>
+                  }
+                />
+                <TooltipContent className="text-xs">
+                  Wire Routing Mode • {wireRoutingMode === 'ortho' ? 'Diagram 90° Right-Angles' : 'Flexible Natural Curves'} (Click to toggle)
+                </TooltipContent>
+              </Tooltip>
+
+                {/* Right Status */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-400 font-mono">{projectName}</span>
             <Badge
@@ -1261,20 +1506,27 @@ export default function App() {
                           ? 'cursor-crosshair'
                           : 'cursor-pointer';
 
+                      const eraserHoverClass = activeTool === 'eraser' ? 'hover:ring-2 hover:ring-rose-500 hover:opacity-85 cursor-pointer' : '';
                       const wrapperProps = {
                         key: c.id,
-                        className: `pointer-events-auto transition-[outline,ring] duration-75 ${outlineClass} ${cursorClass}`,
+                        className: `pointer-events-auto transition-[outline,ring,transform] duration-75 ${outlineClass} ${cursorClass} ${eraserHoverClass}`,
                         style: {
                           position: 'absolute' as const,
                           left: c.x,
                           top: c.y,
                           width: 'fit-content',
                           height: 'fit-content',
+                          transform: `rotate(${c.rotation || 0}deg) scaleX(${c.flipped ? -1 : 1})`,
+                          transformOrigin: 'center center',
                         },
                         onMouseDown: (e: React.MouseEvent) => handleComponentMouseDown(c.id, e),
                         onClick: (e: React.MouseEvent) => {
                           e.stopPropagation();
-                          setSelectedCompId(c.id);
+                          if (activeTool === 'eraser') {
+                            handleDeleteComponent(c.id);
+                          } else {
+                            setSelectedCompId(c.id);
+                          }
                         },
                       };
 
@@ -1395,10 +1647,15 @@ export default function App() {
                             }
                           : null
                       }
+                      activeTool={activeTool}
+                      globalRoutingMode={wireRoutingMode}
                       onWireClick={(wireId) => {
                         setWires((prev) => prev.filter((w) => w.id !== wireId));
                         tauriInvoke('remove_wire', { id: wireId });
                       }}
+                      onStartDragWaypoint={handleStartDragWaypoint}
+                      onAddAndDragWaypoint={handleAddAndDragWaypoint}
+                      onDeleteWaypoint={handleDeleteWaypoint}
                     />
                   </div>
 

@@ -11,6 +11,8 @@ export interface CircuitComponent {
   kind: ComponentKind;
   x: number;
   y: number;
+  rotation?: number; // 0, 90, 180, 270 (degrees)
+  flipped?: boolean;
   props: Record<string, any>;
 }
 
@@ -21,6 +23,8 @@ export interface CircuitWire {
   toComp: string;
   toPin: string;
   color: string;
+  routingMode?: 'curve' | 'ortho';
+  waypoints?: { x: number; y: number }[];
 }
 
 export interface PinDefinition {

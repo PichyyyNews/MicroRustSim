@@ -1,19 +1,81 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CircuitWire } from '../types';
 
-interface WireLayerProps {
+export interface WireLayerProps {
   wires: CircuitWire[];
   getPinWorldPos: (compId: string, pinName: string) => { x: number; y: number } | null;
   draggingWire: { fromX: number; fromY: number; toX: number; toY: number; color: string } | null;
+  activeTool: 'select' | 'move' | 'wire' | 'eraser';
+  globalRoutingMode?: 'curve' | 'ortho';
   onWireClick?: (wireId: string) => void;
+  onStartDragWaypoint?: (wireId: string, waypointIndex: number, e: React.MouseEvent) => void;
+  onAddAndDragWaypoint?: (
+    wireId: string,
+    insertIndex: number,
+    initialPoint: { x: number; y: number },
+    e: React.MouseEvent
+  ) => void;
+  onDeleteWaypoint?: (wireId: string, waypointIndex: number) => void;
+}
+
+export function generateWirePath(
+  p1: { x: number; y: number },
+  waypoints: { x: number; y: number }[] | undefined,
+  p2: { x: number; y: number },
+  mode: 'curve' | 'ortho' = 'curve'
+): string {
+  const wps = waypoints || [];
+
+  if (mode === 'ortho') {
+    // Diagram / Orthogonal right-angle routing
+    const all = [p1, ...wps, p2];
+    let d = `M ${all[0].x} ${all[0].y}`;
+    for (let i = 0; i < all.length - 1; i++) {
+      const a = all[i];
+      const b = all[i + 1];
+      const midX = Math.round((a.x + b.x) / 2);
+      d += ` L ${midX} ${a.y} L ${midX} ${b.y} L ${b.x} ${b.y}`;
+    }
+    return d;
+  }
+
+  // Curve / Flexible wire mode
+  if (wps.length === 0) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dist = Math.hypot(dx, dy);
+    const sag = Math.min(80, Math.max(25, dist * 0.25));
+    return `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + sag}, ${p2.x} ${p2.y + sag}, ${p2.x} ${p2.y}`;
+  }
+
+  // Smooth spline through waypoints
+  const all = [p1, ...wps, p2];
+  let d = `M ${all[0].x} ${all[0].y}`;
+  for (let i = 0; i < all.length - 1; i++) {
+    const curr = all[i];
+    const next = all[i + 1];
+    const mx = (curr.x + next.x) / 2;
+    const my = (curr.y + next.y) / 2;
+    d += ` Q ${curr.x} ${curr.y}, ${mx} ${my}`;
+  }
+  const last = all[all.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
 }
 
 export const WireLayer: React.FC<WireLayerProps> = ({
   wires,
   getPinWorldPos,
   draggingWire,
+  activeTool,
+  globalRoutingMode = 'curve',
   onWireClick,
+  onStartDragWaypoint,
+  onAddAndDragWaypoint,
+  onDeleteWaypoint,
 }) => {
+  const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
+
   return (
     <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-20">
       {/* Existing Wires */}
@@ -22,48 +84,120 @@ export const WireLayer: React.FC<WireLayerProps> = ({
         const p2 = getPinWorldPos(wire.toComp, wire.toPin);
         if (!p1 || !p2) return null;
 
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dist = Math.hypot(dx, dy);
-        const sag = Math.min(80, Math.max(25, dist * 0.25));
-
-        const pathData = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + sag}, ${p2.x} ${p2.y + sag}, ${p2.x} ${p2.y}`;
+        const mode = wire.routingMode || globalRoutingMode;
+        const waypoints = wire.waypoints || [];
+        const pathData = generateWirePath(p1, waypoints, p2, mode);
+        const isHovered = hoveredWireId === wire.id;
+        const allPoints = [p1, ...waypoints, p2];
 
         return (
-          <g key={wire.id} className="pointer-events-auto cursor-pointer group">
-            {/* Wider transparent hit area */}
+          <g
+            key={wire.id}
+            className="pointer-events-auto group"
+            onMouseEnter={() => setHoveredWireId(wire.id)}
+            onMouseLeave={() => setHoveredWireId((curr) => (curr === wire.id ? null : curr))}
+          >
+            {/* Wider transparent hit area for easy clicking & erasing */}
             <path
               d={pathData}
               fill="none"
               stroke="transparent"
-              strokeWidth="14"
-              onClick={() => onWireClick?.(wire.id)}
+              strokeWidth="16"
+              className={activeTool === 'eraser' ? 'cursor-pointer' : 'cursor-pointer'}
+              onClick={(e) => {
+                e.stopPropagation();
+                onWireClick?.(wire.id);
+              }}
             />
-            {/* Visual wire stroke with shadow */}
+
+            {/* Visual wire shadow */}
             <path
               d={pathData}
               fill="none"
-              stroke="#0f172a"
+              stroke="#09090b"
               strokeWidth="4.5"
               strokeLinecap="round"
-              className="opacity-40"
+              strokeLinejoin="round"
+              className="opacity-50"
             />
+
+            {/* Visual colored wire stroke */}
             <path
               d={pathData}
               fill="none"
-              stroke={wire.color}
-              strokeWidth="3.2"
+              stroke={activeTool === 'eraser' && isHovered ? '#f43f5e' : wire.color}
+              strokeWidth={isHovered ? '3.8' : '3.2'}
               strokeLinecap="round"
-              className="group-hover:stroke-white transition-colors"
+              strokeLinejoin="round"
+              className="transition-[stroke,stroke-width] duration-75"
+              onClick={(e) => {
+                e.stopPropagation();
+                onWireClick?.(wire.id);
+              }}
             />
+
             {/* Terminal End Caps */}
             <circle cx={p1.x} cy={p1.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
             <circle cx={p2.x} cy={p2.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
+
+            {/* Interactive Bend Handles (Waypoints & Segment Midpoints) in Select/Wire mode */}
+            {activeTool !== 'eraser' && isHovered && (
+              <>
+                {/* 1. Existing Waypoint Handles */}
+                {waypoints.map((wp, wpIdx) => (
+                  <circle
+                    key={`wp-${wire.id}-${wpIdx}`}
+                    cx={wp.x}
+                    cy={wp.y}
+                    r="5"
+                    fill="#ffffff"
+                    stroke="#18181b"
+                    strokeWidth="1.5"
+                    className="cursor-move hover:scale-125 transition-transform shadow"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onStartDragWaypoint?.(wire.id, wpIdx, e);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteWaypoint?.(wire.id, wpIdx);
+                    }}
+                  >
+                    <title>Drag to bend • Double-click to remove</title>
+                  </circle>
+                ))}
+
+                {/* 2. Segment Midpoints (Click & Drag to create a new bend point) */}
+                {allPoints.slice(0, -1).map((curr, idx) => {
+                  const next = allPoints[idx + 1];
+                  const midX = Math.round((curr.x + next.x) / 2);
+                  const midY = Math.round((curr.y + next.y) / 2);
+                  return (
+                    <circle
+                      key={`mid-${wire.id}-${idx}`}
+                      cx={midX}
+                      cy={midY}
+                      r="4"
+                      fill={wire.color}
+                      stroke="#ffffff"
+                      strokeWidth="1.5"
+                      className="cursor-crosshair opacity-80 hover:opacity-100 hover:scale-125 transition-all"
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        onAddAndDragWaypoint?.(wire.id, idx, { x: midX, y: midY }, e);
+                      }}
+                    >
+                      <title>Drag to add bend point</title>
+                    </circle>
+                  );
+                })}
+              </>
+            )}
           </g>
         );
       })}
 
-      {/* Wire being dragged right now */}
+      {/* Wire being drafted/dragged right now */}
       {draggingWire && (
         <g>
           {(() => {
