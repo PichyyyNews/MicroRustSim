@@ -445,6 +445,15 @@ export default function App() {
                 >
                   <GoTerminal className="text-zinc-400" /> Switch to Serial Monitor
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => {
+                    setShowDrawer(true);
+                    setBottomTab('build');
+                  }}
+                >
+                  <GoGear className="text-zinc-400" /> Switch to Build Output
+                </DropdownMenuItem>
 
                 <DropdownMenuSeparator className="bg-[#27272a]" />
 
@@ -636,70 +645,7 @@ export default function App() {
               <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-5 mx-1 bg-[#27272a]" />
-
-            {/* Drawer Toggles (Larger h-8 w-8 with 16px icons) */}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowEditor(!showEditor)}
-                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
-                      showEditor
-                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
-                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
-                    }`}
-                  >
-                    <GoCode className="text-base" />
-                  </Button>
-                }
-              />
-              <TooltipContent className="text-xs">Toggle Code Editor</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowPalette(!showPalette)}
-                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
-                      showPalette
-                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
-                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
-                    }`}
-                  >
-                    <GoPackage className="text-base" />
-                  </Button>
-                }
-              />
-              <TooltipContent className="text-xs">Toggle Component Palette</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowDrawer(!showDrawer)}
-                    className={`h-8 w-8 rounded-md flex items-center justify-center transition-colors ${
-                      showDrawer
-                        ? 'bg-zinc-700/80 text-zinc-100 border-zinc-500'
-                        : 'bg-[#18181b] hover:bg-[#27272a] text-zinc-400 border-zinc-800'
-                    }`}
-                  >
-                    <GoTerminal className="text-base" />
-                  </Button>
-                }
-              />
-              <TooltipContent className="text-xs">Toggle Bottom Console</TooltipContent>
-            </Tooltip>
-
-            <Separator orientation="vertical" className="h-5 mx-1 bg-[#27272a]" />
+            <Separator orientation="vertical" className="h-5 mx-2 bg-[#27272a]" />
 
             {/* Wire Color Palette Dots (Comfortable 16px size with clear white selection ring) */}
             <div className="flex items-center gap-1.5 ml-1">
