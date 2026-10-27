@@ -2805,6 +2805,75 @@ export default function App() {
                       Routing wire from <span className="font-mono text-zinc-100 font-semibold">{wireDraftStart.pinName}</span>. Click target pin to connect.
                     </div>
                   )}
+
+                  {/* Canvas Shortcut Help Badge (? in top-right) */}
+                  <div className="absolute top-3 right-3 z-20">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="w-5 h-5 rounded-full bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800/80 text-zinc-500 hover:text-zinc-300 text-[11px] font-mono flex items-center justify-center transition-colors backdrop-blur-xs cursor-help select-none"
+                            aria-label="Canvas Keyboard Shortcuts"
+                          >
+                            ?
+                          </button>
+                        }
+                      />
+                      <TooltipContent side="bottom" align="end" className="p-3 w-60 bg-[#141417] border border-zinc-800 shadow-2xl flex flex-col gap-2 select-none">
+                        <div className="text-[11px] font-semibold text-zinc-200 border-b border-zinc-800/80 pb-1.5 flex items-center justify-between">
+                          <span>Keyboard Shortcuts</span>
+                          <span className="text-[9px] font-mono text-zinc-500 uppercase">Controls</span>
+                        </div>
+                        <div className="space-y-1.5 text-[11px]">
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Select Tool</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">V</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Move Tool</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">M</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Wire Tool</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">W</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Eraser Tool</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">E</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Rotate Component</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">R</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Flip Component</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">F</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Delete Selected</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">Del / ⌫</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Pan Canvas</span>
+                            <span className="text-[10px] font-mono text-zinc-500">Space + Drag</span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Zoom Canvas</span>
+                            <span className="text-[10px] font-mono text-zinc-500">Mouse Wheel</span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Save Project</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">Ctrl + S</kbd>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Open Folder</span>
+                            <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700/60 rounded text-[10px] font-mono text-zinc-300">Ctrl + O</kbd>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </main>
               </ResizablePanel>
 
