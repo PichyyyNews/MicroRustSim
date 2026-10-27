@@ -1,3 +1,6 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -58,4 +61,85 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #8b5cf6;
+}
+
+@layer base {
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+  }
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+  .dark {
+    --background: #0f1117;
+    --foreground: #f8fafc;
+    --card: #181b26;
+    --card-foreground: #f8fafc;
+    --popover: #181b26;
+    --popover-foreground: #f8fafc;
+    --primary: #8b5cf6;
+    --primary-foreground: #ffffff;
+    --secondary: #202533;
+    --secondary-foreground: #f8fafc;
+    --muted: #202533;
+    --muted-foreground: #94a3b8;
+    --accent: #3c2d69;
+    --accent-foreground: #a78bfa;
+    --destructive: #ef4444;
+    --warning: oklch(0.41 0.11 46);
+    --warning-foreground: oklch(0.99 0.02 95);
+    --border: #262b3c;
+    --input: #202533;
+    --ring: #8b5cf6;
+    --radius: 8px;
+    --sidebar: #181b26;
+    --sidebar-foreground: #f8fafc;
+    --sidebar-primary: #8b5cf6;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #3c2d69;
+    --sidebar-accent-foreground: #a78bfa;
+    --sidebar-border: #262b3c;
+    --sidebar-ring: #8b5cf6;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

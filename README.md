@@ -3,16 +3,18 @@
 <div align="center">
 
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![GUI](https://img.shields.io/badge/GUI-egui%200.36-blue.svg)](https://github.com/emilk/egui)
+[![Tauri](https://img.shields.io/badge/Tauri-v2.2-24c8db.svg?logo=tauri&logoColor=white)](https://tauri.app/)
+[![React](https://img.shields.io/badge/React-18.3-61dafb.svg?logo=react&logoColor=black)](https://react.dev/)
+[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-Base%20Nova-000000.svg)](https://ui.shadcn.com/)
 [![MCU](https://img.shields.io/badge/MCU-ATmega328P%20%40%2016MHz-8b5cf6.svg)](https://github.com/avr8rs/avr8rs)
 [![Storage](https://img.shields.io/badge/Storage-Local--first%20SQLite-green.svg)](https://github.com/rusqlite/rusqlite)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-informational.svg)](https://github.com/PichyyyNews/MicroRustSim)
 
-**A high-performance, cycle-accurate embedded microcontroller & circuit simulator built in Pure Rust + egui.**  
+**A high-performance, cycle-accurate embedded microcontroller & circuit simulator built in Pure Rust + Tauri v2 + React (shadcn/ui).**  
 *Native-first, WebAssembly-ready, low-latency, and local-first.*
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Design System](#-design-system--visual-hierarchy) • [Quickstart](#-quickstart) • [Design Guide (AGENTS.md)](AGENTS.md)
+[Features](#-key-features) • [Architecture](#-architecture) • [Design System](#-design-system--visual-hierarchy) • [Quickstart](#-quickstart) • [Design Guide (DESIGN.md)](DESIGN.md) • [Agent Guidelines (AGENTS.md)](AGENTS.md)
 
 </div>
 
@@ -170,26 +172,29 @@ Strictly enforced through [`AGENTS.md`](AGENTS.md) and [`crates/app/src/theme.rs
 
 ### Build & Run
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/PichyyyNews/MicroRustSim.git
-   cd MicroRustSim
-   ```
+#### 1. Tauri v2 Desktop App (React + shadcn/ui + Rust Backend)
 
-2. **Run via Cargo:**
-   ```bash
-   cargo run --bin microrustsim
-   ```
+```bash
+# Install frontend dependencies
+npm install
 
-   *On Windows, you can also simply double-click or run:*
-   ```powershell
-   .\run.bat
-   ```
+# Run in Tauri v2 development mode
+npm run tauri dev
+```
 
-3. **Run Automated Test Suite:**
-   ```bash
-   cargo test --all
-   ```
+#### 2. Native egui Application (Alternative standalone GUI)
+
+```bash
+cargo run --bin microrustsim
+```
+
+*On Windows, you can also run `.\run.bat`.*
+
+#### 3. Automated Test Suite
+
+```bash
+cargo test --all
+```
 
 All 5 core verification suites will run:
 - Cycle-accurate Blink HEX execution.
