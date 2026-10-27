@@ -138,3 +138,24 @@ body {
     @apply font-sans;
   }
 }
+
+/* Ensure horizontal resizable handle has horizontal grip */
+[data-slot="resizable-handle"][aria-orientation="horizontal"] {
+  width: 100% !important;
+  height: 4px !important;
+  cursor: row-resize !important;
+}
+
+[data-slot="resizable-handle"][aria-orientation="horizontal"] .handle-line {
+  top: auto !important;
+  bottom: auto !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 1px !important;
+}
+
+[data-slot="resizable-handle"][aria-orientation="horizontal"] .handle-grip {
+  width: 24px !important;
+  height: 2px !important;
+}

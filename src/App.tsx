@@ -1430,7 +1430,7 @@ export default function App() {
           {/* Bottom Resizable Section: Serial Monitor, Logic Waveform & Build Output */}
           {showDrawer && (
             <>
-              <ResizableHandle withHandle />
+              <ResizableHandle withHandle orientation="horizontal" />
               <ResizablePanel id="bottom-panel" defaultSize="28%" minSize="12%" maxSize="65%">
                 <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
                   <Tabs
