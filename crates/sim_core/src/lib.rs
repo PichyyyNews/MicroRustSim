@@ -585,6 +585,29 @@ impl SimulationEngine {
             let gnd = PinId::new(pot_id, "GND");
             let sig = PinId::new(pot_id, "SIG");
 
+            // Alias terminal pins 1 <-> GND, 2 <-> SIG <-> WIPER, 3 <-> VCC
+            let gnd_aliases = [PinId::new(pot_id, "1"), PinId::new(pot_id, "GND")];
+            for p in &gnd_aliases {
+                if p != &gnd {
+                    adj.entry(gnd.clone()).or_default().push(CircuitEdge { to: p.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(p.clone()).or_default().push(CircuitEdge { to: gnd.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+            }
+            let sig_aliases = [PinId::new(pot_id, "2"), PinId::new(pot_id, "SIG"), PinId::new(pot_id, "WIPER")];
+            for p in &sig_aliases {
+                if p != &sig {
+                    adj.entry(sig.clone()).or_default().push(CircuitEdge { to: p.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(p.clone()).or_default().push(CircuitEdge { to: sig.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+            }
+            let vcc_aliases = [PinId::new(pot_id, "3"), PinId::new(pot_id, "VCC"), PinId::new(pot_id, "5V")];
+            for p in &vcc_aliases {
+                if p != &vcc {
+                    adj.entry(vcc.clone()).or_default().push(CircuitEdge { to: p.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                    adj.entry(p.clone()).or_default().push(CircuitEdge { to: vcc.clone(), resistance: 0.0, diode_drop: 0.0, led_id: None });
+                }
+            }
+
             // Internal 10k resistance track
             adj.entry(vcc.clone()).or_default().push(CircuitEdge {
                 to: gnd.clone(),
@@ -599,14 +622,12 @@ impl SimulationEngine {
                 led_id: None,
             });
 
-            // Wiper voltage
-            let wiper_v = pot.value * 5.0;
-            initial_voltages.insert(sig.clone(), wiper_v);
-            if wiper_v > 1.5 {
-                source_pins.push((sig.clone(), wiper_v));
-            } else {
-                sink_pins.insert(sig.clone());
+            // Wiper voltage: Continuous analog voltage divider output (0.0V to 5.0V)
+            let wiper_v = (pot.value * 5.0).clamp(0.0, 5.0);
+            for p in &sig_aliases {
+                initial_voltages.insert(p.clone(), wiper_v);
             }
+            source_pins.push((sig.clone(), wiper_v));
         }
 
         // Pushbuttons:
@@ -809,6 +830,11 @@ impl SimulationEngine {
         }
         for pwr_pin in &["5V", "VIN", "IOREF", "3.3V"] {
             fixed_nodes.insert(PinId::new("uno1", *pwr_pin));
+        }
+        for (pot_id, _) in &self.pots {
+            for p in &["SIG", "2", "WIPER"] {
+                fixed_nodes.insert(PinId::new(pot_id, *p));
+            }
         }
         for &pin_name in &mcu_pins {
             let pid = PinId::new("uno1", pin_name);
@@ -1102,5 +1128,11 @@ mod tests {
         engine.resolve_electrical_nets();
         let a0_v = *engine.pin_voltages.get(&PinId::new("uno1", "A0")).unwrap_or(&0.0);
         assert!((a0_v - 3.0).abs() < 0.2, "A0 through breadboard row 10 must receive 3.0V wiper, got {}", a0_v);
+
+        // Test at 0.0V (0% wiper position)
+        engine.pots.get_mut("pot1").unwrap().value = 0.0;
+        engine.resolve_electrical_nets();
+        let zero_v = *engine.pin_voltages.get(&PinId::new("uno1", "A0")).unwrap_or(&0.0);
+        assert!(zero_v < 0.05, "A0 at 0% wiper must receive 0.0V, got {}", zero_v);
     }
 }
