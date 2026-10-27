@@ -323,12 +323,18 @@ export default function App() {
     <TooltipProvider delay={150}>
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
         
-        {/* 1. Top IDE Toolbar (Flat, Minimal, Program Name in front of File, No Logo/Text clutter, Only Icons) */}
-        <header className="h-9 bg-[#121215] border-b border-[#222226] px-2 flex items-center justify-between select-none z-30 shrink-0">
+        {/* 1. Unified IDE Titlebar & Toolbar (Single Top Bar with File, View, Window & Win Controls) */}
+        <header
+          data-tauri-drag-region
+          className="h-8 bg-[#121215] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-30 shrink-0"
+        >
           <div className="flex items-center gap-1">
             
-            {/* Program Name in front of File (Clean, Sharp, No Purple Logo Box) */}
-            <span className="font-semibold text-xs text-zinc-200 tracking-tight pl-1 pr-2 select-none">
+            {/* Program Name in front of File */}
+            <span
+              data-tauri-drag-region
+              className="font-semibold text-xs text-zinc-200 tracking-tight pl-1 pr-2 select-none cursor-default"
+            >
               MicroRustSim
             </span>
 
@@ -374,7 +380,7 @@ export default function App() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Menubar: View (Centralized View Controls) */}
+            {/* Menubar: View */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -459,6 +465,42 @@ export default function App() {
                   onClick={() => setZoom((z) => Math.max(0.3, z * 0.85))}
                 >
                   <GoZoomOut className="text-zinc-400" /> Zoom Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Menubar: Window */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-xs h-6 px-2 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
+                  >
+                    Window
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-52 bg-[#18181b] border border-[#27272a] shadow-xl text-xs">
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => tauriInvoke('minimize_window')}
+                >
+                  Minimize
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-zinc-200 focus:bg-zinc-800"
+                  onClick={() => tauriInvoke('toggle_maximize_window')}
+                >
+                  Maximize / Restore
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-[#27272a]" />
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-red-400 focus:bg-zinc-800"
+                  onClick={() => tauriInvoke('close_window')}
+                >
+                  Close Window
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -627,24 +669,60 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Status Badges */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-zinc-500 font-mono">{projectName}</span>
-            <Badge
-              variant="outline"
-              className={`font-mono text-[10px] gap-1.5 h-5 px-2 border-zinc-800 ${
-                isRunning
-                  ? 'border-emerald-600/40 text-emerald-400 bg-emerald-950/20'
-                  : 'text-zinc-500 bg-[#18181b]'
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
+          {/* Right Status Badges & Native-feel Window Controls (—, □, ✕) on the SAME bar */}
+          <div className="flex items-center h-full">
+            <div data-tauri-drag-region className="flex items-center gap-2 pr-3 h-full cursor-default">
+              <span className="text-[11px] text-zinc-500 font-mono">{projectName}</span>
+              <Badge
+                variant="outline"
+                className={`font-mono text-[10px] gap-1.5 h-5 px-2 border-zinc-800 ${
+                  isRunning
+                    ? 'border-emerald-600/40 text-emerald-400 bg-emerald-950/20'
+                    : 'text-zinc-500 bg-[#18181b]'
                 }`}
-              />
-              {isRunning ? '16 MHz' : 'PAUSED'}
-            </Badge>
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'
+                  }`}
+                />
+                {isRunning ? '16 MHz' : 'PAUSED'}
+              </Badge>
+            </div>
+
+            {/* Window Controls: Minimize (ยุบ), Maximize (เต็มจอ), Close (ปิด) */}
+            <div className="flex items-center h-full border-l border-[#222226]">
+              <button
+                type="button"
+                onClick={() => tauriInvoke('minimize_window')}
+                className="h-full w-9 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+                title="Minimize"
+              >
+                <svg width="10" height="1" viewBox="0 0 10 1">
+                  <rect width="10" height="1" fill="currentColor" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => tauriInvoke('toggle_maximize_window')}
+                className="h-full w-9 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+                title="Maximize / Restore"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
+                  <rect x="0.5" y="0.5" width="9" height="9" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => tauriInvoke('close_window')}
+                className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors"
+                title="Close"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
           </div>
         </header>
 

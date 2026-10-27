@@ -53,6 +53,27 @@ pub struct AppState {
 }
 
 #[tauri::command]
+fn minimize_window(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+fn toggle_maximize_window(window: tauri::Window) {
+    if let Ok(is_max) = window.is_maximized() {
+        if is_max {
+            let _ = window.unmaximize();
+        } else {
+            let _ = window.maximize();
+        }
+    }
+}
+
+#[tauri::command]
+fn close_window(window: tauri::Window) {
+    let _ = window.close();
+}
+
+#[tauri::command]
 fn get_initial_data() -> InitialData {
     InitialData {
         sketch_code: BuiltinSketches::blink_source().to_string(),
@@ -339,6 +360,9 @@ pub fn run() {
         })
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            minimize_window,
+            toggle_maximize_window,
+            close_window,
             get_initial_data,
             compile_and_upload,
             start_simulation,
