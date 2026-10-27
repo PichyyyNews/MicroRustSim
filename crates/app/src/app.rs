@@ -158,6 +158,9 @@ impl MicroRustSimApp {
 
 impl eframe::App for MicroRustSimApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Enforce dark design system visuals
+        crate::theme::apply_design_system(ui.ctx());
+
         let ctx = ui.ctx().clone();
 
         // Advance simulation clock

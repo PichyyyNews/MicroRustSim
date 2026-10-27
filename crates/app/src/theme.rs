@@ -107,6 +107,15 @@ pub fn apply_design_system(ctx: &egui::Context) {
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
     visuals.widgets.active.corner_radius = cr;
 
+    // Open widgets (Dropdown menus, combo boxes)
+    visuals.widgets.open.bg_fill = tokens::BG_ELEVATED;
+    visuals.widgets.open.bg_stroke = Stroke::new(1.0, tokens::ACCENT);
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0, tokens::TEXT_PRIMARY);
+    visuals.widgets.open.corner_radius = cr;
+
+    // Text editor and input field background
+    visuals.extreme_bg_color = tokens::BG_APP; // #13161f dark input background
+
     // Selections & text highlight
     visuals.selection.bg_fill = tokens::ACCENT;
     visuals.selection.stroke = Stroke::new(1.0, tokens::ACCENT_LIGHT);
