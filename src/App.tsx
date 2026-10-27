@@ -348,6 +348,89 @@ export default function App() {
   const [showOpenProjectModal, setShowOpenProjectModal] = useState(false);
   const [openProjectPathInput, setOpenProjectPathInput] = useState('');
 
+  // --- Draggable Modal Position States ---
+  const [createModalPos, setCreateModalPos] = useState({ x: 0, y: 0 });
+  const isDraggingCreateModal = useRef(false);
+  const createModalDragStart = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
+
+  const [openModalPos, setOpenModalPos] = useState({ x: 0, y: 0 });
+  const isDraggingOpenModal = useRef(false);
+  const openModalDragStart = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
+
+  const handleCreateModalMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) return;
+    isDraggingCreateModal.current = true;
+    createModalDragStart.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: createModalPos.x,
+      startY: createModalPos.y,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingCreateModal.current) return;
+      const dx = ev.clientX - createModalDragStart.current.mouseX;
+      const dy = ev.clientY - createModalDragStart.current.mouseY;
+      setCreateModalPos({
+        x: createModalDragStart.current.startX + dx,
+        y: createModalDragStart.current.startY + dy,
+      });
+    };
+
+    const onMouseUp = () => {
+      isDraggingCreateModal.current = false;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  const handleOpenModalMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) return;
+    isDraggingOpenModal.current = true;
+    openModalDragStart.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: openModalPos.x,
+      startY: openModalPos.y,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingOpenModal.current) return;
+      const dx = ev.clientX - openModalDragStart.current.mouseX;
+      const dy = ev.clientY - openModalDragStart.current.mouseY;
+      setOpenModalPos({
+        x: openModalDragStart.current.startX + dx,
+        y: openModalDragStart.current.startY + dy,
+      });
+    };
+
+    const onMouseUp = () => {
+      isDraggingOpenModal.current = false;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  useEffect(() => {
+    if (showNewProjectModal) {
+      setCreateModalPos({ x: 0, y: 0 });
+    }
+  }, [showNewProjectModal]);
+
+  useEffect(() => {
+    if (showOpenProjectModal) {
+      setOpenModalPos({ x: 0, y: 0 });
+    }
+  }, [showOpenProjectModal]);
+
   // --- Multi-Tab Code Editor State (VS Code Style) ---
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
     { path: 'sketch.ino', name: 'sketch.ino' },
@@ -519,23 +602,29 @@ export default function App() {
 
   // --- Project Management Functions ---
   const handleOpenFileTab = useCallback(async (filePath: string) => {
-    const fileName = filePath.split('/').pop() || filePath;
-    setActiveFile(filePath);
-    setActiveTabPath(filePath);
+    let relPath = filePath;
+    if (projectPath && filePath.startsWith(projectPath)) {
+      relPath = filePath.slice(projectPath.length).replace(/^[/\\]+/, '');
+    }
+    const fileName = relPath.split('/').pop() || relPath;
+    setActiveFile(relPath);
+    setActiveTabPath(relPath);
     setShowEditor(true);
 
     setOpenTabs((prev) => {
-      if (prev.some((t) => t.path === filePath || t.name === fileName)) return prev;
-      return [...prev, { path: filePath, name: fileName }];
+      if (prev.some((t) => t.path === relPath || t.name === fileName)) {
+        return prev.map((t) => (t.name === fileName ? { ...t, path: relPath } : t));
+      }
+      return [...prev, { path: relPath, name: fileName }];
     });
 
-    if (fileContents[filePath] === undefined) {
+    if (fileContents[relPath] === undefined) {
       if (projectPath) {
-        const full = filePath.startsWith(projectPath) ? filePath : `${projectPath}/${filePath}`;
+        const full = filePath.startsWith(projectPath) ? filePath : `${projectPath}/${relPath}`;
         try {
           const content = await tauriInvoke<string>('read_project_file', { path: full });
           if (content !== null && content !== undefined) {
-            setFileContents((prev) => ({ ...prev, [filePath]: content }));
+            setFileContents((prev) => ({ ...prev, [relPath]: content }));
           }
         } catch (e) {
           console.warn('Failed to read file:', e);
@@ -638,6 +727,8 @@ export default function App() {
         setActiveFile('sketch.ino');
         setFileContents({
           'sketch.ino': res.sketch_code,
+          'diagram.json': res.diagram_json,
+          'project.json': res.metadata_json,
         });
         setIsDirty(false);
         setStatusMessage(`Project created: ${res.name}`);
@@ -665,6 +756,8 @@ export default function App() {
         ];
         const newContents: Record<string, string> = {
           'sketch.ino': res.sketch_code,
+          'diagram.json': res.diagram_json,
+          'project.json': res.metadata_json,
         };
 
         const configEntry = res.files.find((f) => f.name === 'config.h');
@@ -1621,7 +1714,7 @@ export default function App() {
                     <span className="flex items-center gap-2">
                       <GoCode className="text-zinc-400" /> Code Editor (Left Top)
                     </span>
-                    {showEditor && <GoCheck className="text-emerald-400" />}
+                    {showEditor && <GoCheck className="text-zinc-200" />}
                   </button>
 
                   <button
@@ -1635,7 +1728,7 @@ export default function App() {
                     <span className="flex items-center gap-2">
                       <FolderOpen className="w-3.5 h-3.5 text-zinc-400" /> File Explorer (Left Bottom)
                     </span>
-                    {showExplorer && <GoCheck className="text-emerald-400" />}
+                    {showExplorer && <GoCheck className="text-zinc-200" />}
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
@@ -1654,7 +1747,7 @@ export default function App() {
                     <span className="flex items-center gap-2">
                       <GoTerminal className="text-zinc-400" /> Terminal & Logs (Center Bottom)
                     </span>
-                    {showTerminal && <GoCheck className="text-emerald-400" />}
+                    {showTerminal && <GoCheck className="text-zinc-200" />}
                   </button>
 
                   <button
@@ -1668,7 +1761,7 @@ export default function App() {
                     <span className="flex items-center gap-2">
                       <GoPackage className="text-zinc-400" /> Component Palette (Right Top)
                     </span>
-                    {showPalette && <GoCheck className="text-emerald-400" />}
+                    {showPalette && <GoCheck className="text-zinc-200" />}
                   </button>
 
                   <button
@@ -1682,7 +1775,7 @@ export default function App() {
                     <span className="flex items-center gap-2">
                       <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" /> Property Inspector (Right Bottom)
                     </span>
-                    {showInspector && <GoCheck className="text-emerald-400" />}
+                    {showInspector && <GoCheck className="text-zinc-200" />}
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
@@ -2255,12 +2348,12 @@ export default function App() {
                     onClick={handleToggleRoutingMode}
                     className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
                       activeRoutingDisplay === 'ortho'
-                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
+                        ? 'text-zinc-100 bg-[#27272a] border border-zinc-600'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
                     }`}
                   >
                     {activeRoutingDisplay === 'ortho' ? (
-                      <CornerDownRight className="w-3.5 h-3.5 text-emerald-400" />
+                      <CornerDownRight className="w-3.5 h-3.5 text-zinc-200" />
                     ) : (
                       <Spline className="w-3.5 h-3.5" />
                     )}
@@ -2385,11 +2478,11 @@ export default function App() {
                                   }}
                                   className={`group h-full px-2.5 flex items-center gap-1.5 cursor-pointer border-t-2 text-[11px] font-mono transition-colors ${
                                     isActive
-                                      ? 'bg-[#18181b] text-zinc-100 border-emerald-500 font-medium'
+                                      ? 'bg-[#18181b] text-white border-zinc-200 font-medium'
                                       : 'text-zinc-400 border-transparent hover:bg-zinc-900/60 hover:text-zinc-300'
                                   }`}
                                 >
-                                  <GoFile className={`w-3 h-3 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                                  <GoFile className={`w-3 h-3 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`} />
                                   <span className="truncate max-w-[120px]">{tab.name}</span>
                                   {tab.isDirty && (
                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 group-hover:hidden" />
@@ -2709,7 +2802,7 @@ export default function App() {
                   {/* Wire Dragging Floating Hint */}
                   {wireDraftStart && (
                     <div className="absolute top-3 left-3 bg-[#18181b]/90 border border-zinc-700 px-2.5 py-1 rounded text-[11px] text-zinc-300 shadow-md">
-                      Routing wire from <span className="font-mono text-emerald-400">{wireDraftStart.pinName}</span>. Click target pin to connect.
+                      Routing wire from <span className="font-mono text-zinc-100 font-semibold">{wireDraftStart.pinName}</span>. Click target pin to connect.
                     </div>
                   )}
                 </main>
@@ -3088,51 +3181,73 @@ export default function App() {
 
         {/* Modal Dialog: Create New Project */}
         <Dialog open={showNewProjectModal} onOpenChange={setShowNewProjectModal}>
-          <DialogContent className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-base text-zinc-100 flex items-center gap-2">
-                <GoPlus className="text-emerald-400" /> Create New Project
-              </DialogTitle>
-              <DialogDescription className="text-xs text-zinc-400">
-                Creates an on-disk project directory with sketch.ino, diagram.json, and project.json.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            style={{
+              transform: `translate(calc(-50% + ${createModalPos.x}px), calc(-50% + ${createModalPos.y}px))`,
+            }}
+            className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md shadow-2xl p-0 overflow-hidden"
+          >
+            <div
+              onMouseDown={handleCreateModalMouseDown}
+              className="px-4 py-3 border-b border-zinc-800 bg-[#141417] cursor-move select-none flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <GoPlus className="text-zinc-200 w-4 h-4" />
+                <span className="text-sm font-semibold text-white">Create New Project</span>
+              </div>
+            </div>
 
-            <div className="space-y-3 py-2 text-xs">
+            <div className="p-4 space-y-3.5 text-xs">
               <div>
-                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-300 block mb-1">
                   Project Name
                 </label>
                 <Input
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
                   placeholder="e.g. Traffic_Light_Lab"
-                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
+                  className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs focus-visible:ring-zinc-600"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
-                  Parent Directory Path
+                <label className="text-[11px] font-medium text-zinc-300 block mb-1">
+                  Destination Directory
                 </label>
-                <Input
-                  value={newProjectParentPath}
-                  onChange={(e) => setNewProjectParentPath(e.target.value)}
-                  placeholder="e.g. C:/MicroRustSim/Projects"
-                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
-                />
+                <div className="flex gap-1.5">
+                  <Input
+                    value={newProjectParentPath}
+                    onChange={(e) => setNewProjectParentPath(e.target.value)}
+                    placeholder="e.g. C:/Projects (or click Browse)"
+                    className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs flex-1 focus-visible:ring-zinc-600"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const selected = await tauriInvoke<string | null>('select_folder_dialog');
+                      if (selected) setNewProjectParentPath(selected);
+                    }}
+                    className="border-zinc-800 bg-[#141417] hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs shrink-0 px-2.5 h-8 flex items-center gap-1.5"
+                    title="Browse folder with Windows Explorer"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Browse...</span>
+                  </Button>
+                </div>
                 <span className="text-[10px] text-zinc-500 mt-1 block">
-                  Leave blank to create in current working directory.
+                  Location: <span className="text-zinc-300 font-mono">{newProjectParentPath ? `${newProjectParentPath}/${newProjectName}` : `./${newProjectName}`}</span>
                 </span>
               </div>
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="px-4 py-3 bg-[#141417] border-t border-zinc-800 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowNewProjectModal(false)}
-                className="border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                className="border-zinc-800 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs"
               >
                 Cancel
               </Button>
@@ -3143,7 +3258,7 @@ export default function App() {
                     handleCreateProject(newProjectParentPath.trim() || '.', newProjectName.trim());
                   }
                 }}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3 shadow-none transition-colors"
               >
                 Create Project
               </Button>
@@ -3153,33 +3268,55 @@ export default function App() {
 
         {/* Modal Dialog: Open Project Directory */}
         <Dialog open={showOpenProjectModal} onOpenChange={setShowOpenProjectModal}>
-          <DialogContent className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-base text-zinc-100 flex items-center gap-2">
-                <FolderOpen className="text-blue-400" /> Open Project Folder
-              </DialogTitle>
-              <DialogDescription className="text-xs text-zinc-400">
-                Enter the absolute or relative path to a MicroRustSim project directory.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            style={{
+              transform: `translate(calc(-50% + ${openModalPos.x}px), calc(-50% + ${openModalPos.y}px))`,
+            }}
+            className="bg-[#18181b] border border-zinc-800 text-zinc-200 max-w-md shadow-2xl p-0 overflow-hidden"
+          >
+            <div
+              onMouseDown={handleOpenModalMouseDown}
+              className="px-4 py-3 border-b border-zinc-800 bg-[#141417] cursor-move select-none flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <FolderOpen className="text-zinc-200 w-4 h-4" />
+                <span className="text-sm font-semibold text-white">Open Project Folder</span>
+              </div>
+            </div>
 
-            <div className="space-y-3 py-2 text-xs">
+            <div className="p-4 space-y-3.5 text-xs">
               <div>
-                <label className="text-[11px] font-medium text-zinc-400 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-300 block mb-1">
                   Project Directory Path
                 </label>
-                <Input
-                  value={openProjectPathInput}
-                  onChange={(e) => setOpenProjectPathInput(e.target.value)}
-                  placeholder="e.g. C:/MicroRustSim/Projects/Traffic_Light_Lab"
-                  className="bg-[#121215] border-zinc-800 text-zinc-200 font-mono text-xs"
-                />
+                <div className="flex gap-1.5">
+                  <Input
+                    value={openProjectPathInput}
+                    onChange={(e) => setOpenProjectPathInput(e.target.value)}
+                    placeholder="e.g. C:/MicroRustSim/Projects/Traffic_Light_Lab"
+                    className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs flex-1 focus-visible:ring-zinc-600"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const selected = await tauriInvoke<string | null>('select_folder_dialog');
+                      if (selected) setOpenProjectPathInput(selected);
+                    }}
+                    className="border-zinc-800 bg-[#141417] hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs shrink-0 px-2.5 h-8 flex items-center gap-1.5"
+                    title="Browse folder with Windows Explorer"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Browse...</span>
+                  </Button>
+                </div>
               </div>
 
               {recentProjects.length > 0 && (
                 <div>
                   <label className="text-[11px] font-medium text-zinc-400 block mb-1">
-                    Or select from recent:
+                    Recent Projects
                   </label>
                   <div className="bg-[#121215] border border-zinc-800/80 rounded max-h-36 overflow-y-auto divide-y divide-zinc-800/50">
                     {recentProjects.map((rec) => (
@@ -3202,12 +3339,12 @@ export default function App() {
               )}
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="px-4 py-3 bg-[#141417] border-t border-zinc-800 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowOpenProjectModal(false)}
-                className="border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                className="border-zinc-800 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs"
               >
                 Cancel
               </Button>
@@ -3218,7 +3355,7 @@ export default function App() {
                     handleOpenProject(openProjectPathInput.trim());
                   }
                 }}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-medium"
+                className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3 shadow-none transition-colors"
               >
                 Open Project
               </Button>

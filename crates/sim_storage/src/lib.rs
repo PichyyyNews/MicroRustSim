@@ -150,7 +150,12 @@ impl DirectoryProject {
             let path = entry.path();
             let file_name = entry.file_name().to_string_lossy().to_string();
 
-            if file_name.starts_with('.') || file_name == "build" || file_name == "target" || file_name == "node_modules" {
+            if file_name == ".git"
+                || file_name == ".vscode"
+                || file_name == "build"
+                || file_name == "target"
+                || file_name == "node_modules"
+            {
                 continue;
             }
 
@@ -356,6 +361,11 @@ void loop() {
             let _ = std::fs::write(&meta_path, &default_meta);
             default_meta
         };
+
+        let gitignore_path = project_dir.join(".gitignore");
+        if !gitignore_path.exists() {
+            let _ = std::fs::write(&gitignore_path, "build/\n*.hex\n*.elf\n");
+        }
 
         let files = Self::read_dir_tree(project_dir)?;
 
@@ -656,9 +666,14 @@ mod tests {
         assert_eq!(proj.name, "TrafficLight");
         assert!(proj.files.iter().any(|f| f.name == "sketch.ino"));
         assert!(proj.files.iter().any(|f| f.name == "diagram.json"));
+        assert!(proj.files.iter().any(|f| f.name == "config.h"));
+        assert!(proj.files.iter().any(|f| f.name == "project.json"));
+        assert!(proj.files.iter().any(|f| f.name == "README.md"));
+        assert!(proj.files.iter().any(|f| f.name == ".gitignore"));
 
         let opened = DirectoryProject::open_project_dir(Path::new(&proj.path)).unwrap();
         assert_eq!(opened.name, "TrafficLight");
+        assert!(opened.files.iter().any(|f| f.name == ".gitignore"));
 
         let _ = std::fs::remove_dir_all(&temp);
     }

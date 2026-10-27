@@ -124,16 +124,16 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
       );
     }
     if (fileName.endsWith('.ino') || fileName.endsWith('.cpp') || fileName.endsWith('.c')) {
-      return <GoCode className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      return <GoCode className="w-3.5 h-3.5 text-zinc-200 shrink-0" />;
     }
     if (fileName.endsWith('.h') || fileName.endsWith('.hpp')) {
-      return <FileCode className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
+      return <FileCode className="w-3.5 h-3.5 text-zinc-300 shrink-0" />;
     }
     if (fileName.endsWith('.json')) {
-      return <FileJson className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
+      return <FileJson className="w-3.5 h-3.5 text-zinc-300 shrink-0" />;
     }
     if (fileName.endsWith('.md')) {
-      return <FileText className="w-3.5 h-3.5 text-purple-400 shrink-0" />;
+      return <FileText className="w-3.5 h-3.5 text-zinc-400 shrink-0" />;
     }
     return <GoFile className="w-3.5 h-3.5 text-zinc-400 shrink-0" />;
   };
@@ -151,13 +151,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             if (isFolder) {
               toggleFolder(node.relativePath);
             } else {
-              onSelectFile(node.path || node.relativePath);
+              onSelectFile(node.relativePath);
             }
           }}
           style={{ paddingLeft: `${6 + depth * 14}px` }}
           className={`group flex items-center justify-between py-1 pr-2 rounded cursor-pointer transition-colors ${
             isSelected && !isFolder
-              ? 'bg-[#27272a] text-zinc-100 font-medium'
+              ? 'bg-[#27272a] text-white font-medium'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
           }`}
         >
@@ -294,7 +294,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               onClick={onOpenFolder}
               className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
             >
-              <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+              <FolderOpen className="w-3.5 h-3.5 text-zinc-300" />
             </button>
           )}
         </div>
@@ -324,7 +324,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
           />
           <button
             type="submit"
-            className="p-0.5 text-emerald-400 hover:text-emerald-300 rounded"
+            className="p-0.5 text-zinc-200 hover:text-white rounded"
           >
             <GoCheck className="w-3.5 h-3.5" />
           </button>
