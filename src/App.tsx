@@ -209,6 +209,7 @@ export default function App() {
 
   // --- Selected Component / Active Wire Creation ---
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [wireDraftStart, setWireDraftStart] = useState<{ compId: string; pinName: string } | null>(null);
   const [mouseCanvasPos, setMouseCanvasPos] = useState({ x: 0, y: 0 });
 
@@ -223,6 +224,55 @@ export default function App() {
       color: wire.color,
     });
   }, []);
+
+  // --- Wire Actions: Delete, Color, Routing Mode ---
+  const handleDeleteWire = useCallback((wireId: string) => {
+    setWires((prev) => prev.filter((w) => w.id !== wireId));
+    tauriInvoke('remove_wire', { id: wireId });
+    setSelectedWireId((curr) => (curr === wireId ? null : curr));
+  }, []);
+
+  const handleToggleRoutingMode = useCallback(() => {
+    if (selectedWireId) {
+      setWires((prev) =>
+        prev.map((w) => {
+          if (w.id !== selectedWireId) return w;
+          const currentMode = w.routingMode || wireRoutingMode;
+          const nextMode: 'curve' | 'ortho' = currentMode === 'curve' ? 'ortho' : 'curve';
+          const updated: CircuitWire = { ...w, routingMode: nextMode };
+          syncWireToRust(updated);
+          return updated;
+        })
+      );
+    } else {
+      setWireRoutingMode((m) => (m === 'curve' ? 'ortho' : 'curve'));
+    }
+  }, [selectedWireId, wireRoutingMode, syncWireToRust]);
+
+  const handleApplyWireColor = useCallback(
+    (color: string) => {
+      setCurrentWireColor(color);
+      setCustomColorInput(color);
+      setActiveTool('wire');
+      if (selectedWireId) {
+        setWires((prev) =>
+          prev.map((w) => {
+            if (w.id !== selectedWireId) return w;
+            const updated: CircuitWire = { ...w, color };
+            syncWireToRust(updated);
+            return updated;
+          })
+        );
+      }
+      setShowWireColorMenu(false);
+    },
+    [selectedWireId, syncWireToRust]
+  );
+
+  const selectedWire = wires.find((w) => w.id === selectedWireId);
+  const activeRoutingDisplay: 'curve' | 'ortho' = selectedWire
+    ? (selectedWire.routingMode || wireRoutingMode)
+    : wireRoutingMode;
 
   // --- Pin World Position Calculator with Rotation & Flip ---
   const getPinWorldPos = useCallback(
@@ -624,14 +674,25 @@ export default function App() {
         handleRotateSelected();
       } else if (e.key === 'f' || e.key === 'F') {
         handleFlipSelected();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCompId) {
-        handleDeleteComponent(selectedCompId);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedWireId) {
+          handleDeleteWire(selectedWireId);
+        } else if (selectedCompId) {
+          handleDeleteComponent(selectedCompId);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCompId, handleRotateSelected, handleFlipSelected, handleDeleteComponent]);
+  }, [
+    selectedCompId,
+    selectedWireId,
+    handleRotateSelected,
+    handleFlipSelected,
+    handleDeleteComponent,
+    handleDeleteWire,
+  ]);
 
   // --- Close Menubar Dropdown when Clicking Outside ---
   useEffect(() => {
@@ -686,9 +747,10 @@ export default function App() {
       isPanning.current = true;
       panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
     } else if (e.button === 0) {
-      // Left click on empty canvas deselects component or clears wire draft
-      if (activeTool === 'select') {
+      // Left click on empty canvas deselects component/wire or clears wire draft
+      if (activeTool === 'select' || activeTool === 'move') {
         setSelectedCompId(null);
+        setSelectedWireId(null);
       } else if (activeTool === 'wire') {
         setWireDraftStart(null);
       }
@@ -1061,103 +1123,106 @@ export default function App() {
           </div>
         </header>
 
-        {/* 2. Secondary Action Toolbar (Dedicated Row, Larger Buttons, Premium Run Color) */}
+        {/* 2. Secondary Action Toolbar (Categorized, Clean, Low-Text, Minimal Spacing) */}
         <div className="relative h-10 bg-[#121215] border-b border-[#222226] px-3 flex items-center justify-between select-none z-40 shrink-0">
+          {/* Left Toolbar: Cleanly Categorized Groups */}
           <div className="flex items-center gap-2">
-            
-            {/* Run / Pause (Solid, Vibrant Emerald / Amber - High Quality) */}
-            {isRunning ? (
+            {/* Category 1: Execution & Hardware Control (Run/Flash/Reset) */}
+            <div className="flex items-center gap-1 bg-[#18181b] p-0.5 rounded-md border border-zinc-800/80">
+              {/* Run / Pause */}
+              {isRunning ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon"
+                        onClick={handleRunToggle}
+                        className="h-7 w-7 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded shadow-sm border-0 flex items-center justify-center transition-colors"
+                      >
+                        <PauseIcon className="text-xs" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent className="text-xs">Pause Simulation</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon"
+                        disabled={isCompiling}
+                        onClick={handleRunToggle}
+                        className="h-7 w-7 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded shadow-sm border-0 flex items-center justify-center transition-colors disabled:opacity-60"
+                      >
+                        {isCompiling ? (
+                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <GoPlay className="text-sm ml-0.5" />
+                        )}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent className="text-xs">
+                    {isCompiling
+                      ? 'Compiling sketch...'
+                      : sketchCode !== lastCompiledCode
+                      ? 'Compile & Run Simulation'
+                      : 'Run Simulation (16 MHz)'}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+
+              {/* Quick Action: Upload */}
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
-                      size="icon"
-                      onClick={handleRunToggle}
-                      className="h-8 w-8 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-md shadow-md border-0 flex items-center justify-center transition-colors"
-                    >
-                      <PauseIcon className="text-sm" />
-                    </Button>
-                  }
-                />
-                <TooltipContent className="text-xs">Pause Simulation</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
+                      variant="ghost"
                       size="icon"
                       disabled={isCompiling}
-                      onClick={handleRunToggle}
-                      className="h-8 w-8 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md shadow-md shadow-emerald-950/40 border-0 flex items-center justify-center transition-colors disabled:opacity-60"
+                      onClick={() => handleCompile()}
+                      className="h-7 w-7 text-zinc-300 hover:text-white hover:bg-[#27272a] rounded flex items-center justify-center disabled:opacity-60"
                     >
                       {isCompiling ? (
-                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <div className="w-3 h-3 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
                       ) : (
-                        <GoPlay className="text-base ml-0.5" />
+                        <GoZap className="text-sm text-zinc-300" />
                       )}
                     </Button>
                   }
                 />
-                <TooltipContent className="text-xs">
-                  {isCompiling
-                    ? 'Compiling sketch...'
-                    : sketchCode !== lastCompiledCode
-                    ? 'Compile & Run Simulation'
-                    : 'Run Simulation (16 MHz)'}
-                </TooltipContent>
+                <TooltipContent className="text-xs">Compile & Flash to ATmega328P</TooltipContent>
               </Tooltip>
-            )}
 
-            {/* Quick Action: Upload */}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    disabled={isCompiling}
-                    onClick={() => handleCompile()}
-                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center disabled:opacity-60"
-                  >
-                    {isCompiling ? (
-                      <div className="w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
-                    ) : (
-                      <GoZap className="text-base text-zinc-300" />
-                    )}
-                  </Button>
-                }
-              />
-              <TooltipContent className="text-xs">Compile & Flash to ATmega328P</TooltipContent>
-            </Tooltip>
+              {/* Quick Action: Reset */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setIsRunning(false);
+                        tauriInvoke('reset_simulation');
+                        setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
+                        setStatusMessage('MCU Reset');
+                      }}
+                      className="h-7 w-7 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded flex items-center justify-center"
+                    >
+                      <GoSync className="text-sm" />
+                    </Button>
+                  }
+                />
+                <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
+              </Tooltip>
+            </div>
 
-            {/* Quick Action: Reset */}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setIsRunning(false);
-                      tauriInvoke('reset_simulation');
-                      setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
-                      setStatusMessage('MCU Reset');
-                    }}
-                    className="h-8 w-8 bg-[#18181b] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border-zinc-700/60 rounded-md flex items-center justify-center"
-                  >
-                    <GoSync className="text-base" />
-                  </Button>
-                }
-              />
-              <TooltipContent className="text-xs">Reset MCU Clock</TooltipContent>
-            </Tooltip>
+            {/* Subtle Divider */}
+            <div className="w-[1px] h-4 bg-zinc-800 shrink-0" />
 
-            {/* Minimal Grey Separator between Run/Upload Controls and Mouse Tools */}
-            <div className="w-[1px] h-5 bg-zinc-600/70 mx-2.5 self-center shrink-0" />
-
-            {/* Tool Selection Group - Icon-First, Clean Low-Text Design */}
-            <div className="flex items-center gap-1">
+            {/* Category 2: Canvas Tools (Select, Move, Wire, Eraser) */}
+            <div className="flex items-center gap-0.5 bg-[#18181b] p-0.5 rounded-md border border-zinc-800/80">
               {/* 1. Select Tool */}
               <Tooltip>
                 <TooltipTrigger
@@ -1167,7 +1232,7 @@ export default function App() {
                       onClick={() => setActiveTool('select')}
                       className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                         activeTool === 'select'
-                          ? 'bg-[#27272a] text-zinc-100'
+                          ? 'bg-[#27272a] text-zinc-100 shadow-sm'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
@@ -1187,7 +1252,7 @@ export default function App() {
                       onClick={() => setActiveTool('move')}
                       className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                         activeTool === 'move'
-                          ? 'bg-[#27272a] text-zinc-100'
+                          ? 'bg-[#27272a] text-zinc-100 shadow-sm'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
@@ -1208,14 +1273,18 @@ export default function App() {
                         onClick={() => setActiveTool('wire')}
                         className={`h-7 px-1.5 flex flex-col items-center justify-center rounded-l transition-colors ${
                           activeTool === 'wire'
-                            ? 'bg-[#27272a] text-zinc-100'
+                            ? 'bg-[#27272a] text-zinc-100 shadow-sm'
                             : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                         }`}
                       >
                         <Cable className="w-3.5 h-3.5" />
                         <span
                           className="w-3.5 h-[2px] rounded-full mt-0.5 shadow-sm"
-                          style={{ backgroundColor: currentWireColor }}
+                          style={{
+                            backgroundColor: selectedWire
+                              ? selectedWire.color
+                              : currentWireColor,
+                          }}
                         />
                       </button>
                     }
@@ -1235,22 +1304,28 @@ export default function App() {
                       ? 'bg-[#27272a] text-zinc-100 hover:bg-[#333338]'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                   }`}
-                  title="Choose Wire Color & Style"
+                  title="Choose Wire Color"
                 >
                   <ChevronDown className="w-3 h-3" />
                 </button>
 
-{/* Floating Word-Style Color Picker Popover */}
+                {/* Floating Word-Style Color Picker Popover */}
                 {showWireColorMenu && (
                   <div
                     className="absolute top-full left-0 mt-1 w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50 animate-in fade-in zoom-in-95 duration-100 select-none"
                     onMouseDown={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-between pb-2 border-b border-[#27272a]">
-                      <span className="font-semibold text-xs text-zinc-200">Wire Color</span>
+                      <span className="font-semibold text-xs text-zinc-200">
+                        {selectedWireId ? 'Selected Wire Color' : 'Default Wire Color'}
+                      </span>
                       <span
                         className="w-3.5 h-3.5 rounded-full border border-zinc-700 shadow-sm"
-                        style={{ backgroundColor: currentWireColor }}
+                        style={{
+                          backgroundColor: selectedWire
+                            ? selectedWire.color
+                            : currentWireColor,
+                        }}
                       />
                     </div>
 
@@ -1259,47 +1334,49 @@ export default function App() {
                         Electronic Color Codes
                       </span>
                       <div className="grid grid-cols-6 gap-1.5">
-                        {WIRE_COLORS.map((c) => (
-                          <button
-                            key={c.hex}
-                            type="button"
-                            title={`${c.name} (${c.role})`}
-                            onClick={() => {
-                              setCurrentWireColor(c.hex);
-                              setCustomColorInput(c.hex);
-                              setActiveTool('wire');
-                              setShowWireColorMenu(false);
-                            }}
-                            className={`relative w-8 h-7 rounded flex items-center justify-center transition-all ${
-                              currentWireColor === c.hex
-                                ? 'ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-105'
-                                : 'hover:scale-105 border border-zinc-700/60'
-                            }`}
-                            style={{ backgroundColor: c.hex }}
-                          >
-                            {currentWireColor === c.hex && (
-                              <Check
-                                className={`w-3.5 h-3.5 ${
-                                  c.hex === '#ffffff' || c.hex === '#eab308' || c.hex === '#22c55e'
-                                    ? 'text-zinc-900'
-                                    : 'text-white'
-                                } stroke-[3]`}
-                              />
-                            )}
-                          </button>
-                        ))}
+                        {WIRE_COLORS.map((c) => {
+                          const activeColor = selectedWire ? selectedWire.color : currentWireColor;
+                          const isMatch = activeColor.toLowerCase() === c.hex.toLowerCase();
+                          return (
+                            <button
+                              key={c.hex}
+                              type="button"
+                              title={`${c.name} (${c.role})`}
+                              onClick={() => handleApplyWireColor(c.hex)}
+                              className={`relative w-8 h-7 rounded flex items-center justify-center transition-all ${
+                                isMatch
+                                  ? 'ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-105'
+                                  : 'hover:scale-105 border border-zinc-700/60'
+                              }`}
+                              style={{ backgroundColor: c.hex }}
+                            >
+                              {isMatch && (
+                                <Check
+                                  className={`w-3.5 h-3.5 ${
+                                    c.hex === '#ffffff' || c.hex === '#eab308' || c.hex === '#22c55e'
+                                      ? 'text-zinc-900'
+                                      : 'text-white'
+                                  } stroke-[3]`}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
                     <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between px-2 py-1 bg-[#121215] rounded border border-zinc-800 mb-2">
                       <span>Active:</span>
                       <span className="text-zinc-200 font-medium">
-                        {WIRE_COLORS.find((w) => w.hex.toLowerCase() === currentWireColor.toLowerCase())?.name || 'Custom'} (
-                        {WIRE_COLORS.find((w) => w.hex.toLowerCase() === currentWireColor.toLowerCase())?.role || 'Custom'})
+                        {WIRE_COLORS.find(
+                          (w) =>
+                            w.hex.toLowerCase() ===
+                            (selectedWire ? selectedWire.color : currentWireColor).toLowerCase()
+                        )?.name || 'Custom'}
                       </span>
                     </div>
 
-                    {/* Dark-Themed Custom Hex Color Input (Never opens white native dialog) */}
+                    {/* Dark-Themed Custom Hex Color Input */}
                     <div className="pt-2 border-t border-[#27272a] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span
@@ -1307,6 +1384,8 @@ export default function App() {
                           style={{
                             backgroundColor: /^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)
                               ? customColorInput
+                              : selectedWire
+                              ? selectedWire.color
                               : currentWireColor,
                           }}
                         />
@@ -1318,9 +1397,7 @@ export default function App() {
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)) {
-                                setCurrentWireColor(customColorInput);
-                                setActiveTool('wire');
-                                setShowWireColorMenu(false);
+                                handleApplyWireColor(customColorInput);
                               }
                             }
                           }}
@@ -1333,9 +1410,7 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)) {
-                            setCurrentWireColor(customColorInput);
-                            setActiveTool('wire');
-                            setShowWireColorMenu(false);
+                            handleApplyWireColor(customColorInput);
                           }
                         }}
                         className="h-6 px-2.5 bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 rounded text-[11px] font-medium transition-colors cursor-pointer"
@@ -1346,10 +1421,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-
-          
 
               {/* 4. Eraser Tool */}
               <Tooltip>
@@ -1360,7 +1431,7 @@ export default function App() {
                       onClick={() => setActiveTool('eraser')}
                       className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                         activeTool === 'eraser'
-                          ? 'bg-rose-950/70 text-rose-300 border border-rose-800/80'
+                          ? 'bg-rose-950/70 text-rose-300 border border-rose-800/80 shadow-sm'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
@@ -1370,11 +1441,14 @@ export default function App() {
                 />
                 <TooltipContent className="text-xs">Eraser Tool (E) • Click wire or component to delete</TooltipContent>
               </Tooltip>
+            </div>
 
-              {/* Divider between tools and transform actions */}
-              <div className="w-[1px] h-4 bg-zinc-800 mx-1 shrink-0" />
+            {/* Subtle Divider */}
+            <div className="w-[1px] h-4 bg-zinc-800 shrink-0" />
 
-              {/* 5. Rotate Selected Component */}
+            {/* Category 3: Component Transform (Rotate, Flip) */}
+            <div className="flex items-center gap-0.5 bg-[#18181b] p-0.5 rounded-md border border-zinc-800/80">
+              {/* Rotate Selected Component */}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -1395,7 +1469,7 @@ export default function App() {
                 <TooltipContent className="text-xs">Rotate Component 90° (R)</TooltipContent>
               </Tooltip>
 
-              {/* 6. Flip Selected Component */}
+              {/* Flip Selected Component */}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -1415,38 +1489,54 @@ export default function App() {
                 />
                 <TooltipContent className="text-xs">Flip Component Horizontal (F)</TooltipContent>
               </Tooltip>
+            </div>
 
-              {/* Divider between transforms and routing mode */}
-              <div className="w-[1px] h-4 bg-zinc-800 mx-1 shrink-0" />
+            {/* Subtle Divider */}
+            <div className="w-[1px] h-4 bg-zinc-800 shrink-0" />
 
-              {/* 7. Wire Routing Mode (Curve vs Ortho Diagram) */}
+            {/* Category 4: Wire Routing Mode (Curve vs Ortho Diagram) */}
+            <div className="flex items-center bg-[#18181b] p-0.5 rounded-md border border-zinc-800/80">
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <button
                       type="button"
-                      onClick={() => setWireRoutingMode((m) => (m === 'curve' ? 'ortho' : 'curve'))}
+                      onClick={handleToggleRoutingMode}
                       className={`h-7 px-2 flex items-center gap-1.5 text-xs rounded transition-colors ${
-                        wireRoutingMode === 'ortho'
+                        activeRoutingDisplay === 'ortho'
                           ? 'bg-[#27272a] text-emerald-400 font-medium'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1f1f23]'
                       }`}
                     >
-                      {wireRoutingMode === 'ortho' ? (
+                      {activeRoutingDisplay === 'ortho' ? (
                         <CornerDownRight className="w-3.5 h-3.5 text-emerald-400" />
                       ) : (
                         <Spline className="w-3.5 h-3.5" />
                       )}
-                      <span className="text-[10px] font-mono">{wireRoutingMode === 'ortho' ? 'Ortho' : 'Curve'}</span>
+                      <span className="text-[10px] font-mono">
+                        {activeRoutingDisplay === 'ortho' ? 'Ortho' : 'Curve'}
+                      </span>
                     </button>
                   }
                 />
                 <TooltipContent className="text-xs">
-                  Wire Routing Mode • {wireRoutingMode === 'ortho' ? 'Diagram 90° Right-Angles' : 'Flexible Natural Curves'} (Click to toggle)
+                  {selectedWireId
+                    ? `Selected Wire Style • ${
+                        activeRoutingDisplay === 'ortho'
+                          ? 'Diagram 90° Right-Angles'
+                          : 'Flexible Natural Curves'
+                      } (Click to toggle)`
+                    : `Wire Routing Mode • ${
+                        activeRoutingDisplay === 'ortho'
+                          ? 'Diagram 90° Right-Angles'
+                          : 'Flexible Natural Curves'
+                      } (Click to toggle)`}
                 </TooltipContent>
               </Tooltip>
+            </div>
+          </div>
 
-                {/* Right Status */}
+          {/* Right Status */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-400 font-mono">{projectName}</span>
             <Badge
@@ -1584,6 +1674,7 @@ export default function App() {
                             handleDeleteComponent(c.id);
                           } else {
                             setSelectedCompId(c.id);
+                            setSelectedWireId(null);
                           }
                         },
                       };
@@ -1707,9 +1798,14 @@ export default function App() {
                       }
                       activeTool={activeTool}
                       globalRoutingMode={wireRoutingMode}
+                      selectedWireId={selectedWireId}
                       onWireClick={(wireId) => {
-                        setWires((prev) => prev.filter((w) => w.id !== wireId));
-                        tauriInvoke('remove_wire', { id: wireId });
+                        if (activeTool === 'eraser') {
+                          handleDeleteWire(wireId);
+                        } else {
+                          setSelectedWireId(wireId);
+                          setSelectedCompId(null);
+                        }
                       }}
                       onStartDragWaypoint={handleStartDragWaypoint}
                       onAddAndDragWaypoint={handleAddAndDragWaypoint}

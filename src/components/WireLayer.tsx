@@ -7,6 +7,7 @@ export interface WireLayerProps {
   draggingWire: { fromX: number; fromY: number; toX: number; toY: number; color: string } | null;
   activeTool: 'select' | 'move' | 'wire' | 'eraser';
   globalRoutingMode?: 'curve' | 'ortho';
+  selectedWireId?: string | null;
   onWireClick?: (wireId: string) => void;
   onStartDragWaypoint?: (wireId: string, waypointIndex: number, e: React.MouseEvent) => void;
   onAddAndDragWaypoint?: (
@@ -69,6 +70,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
   draggingWire,
   activeTool,
   globalRoutingMode = 'curve',
+  selectedWireId,
   onWireClick,
   onStartDragWaypoint,
   onAddAndDragWaypoint,
@@ -88,6 +90,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
         const waypoints = wire.waypoints || [];
         const pathData = generateWirePath(p1, waypoints, p2, mode);
         const isHovered = hoveredWireId === wire.id;
+        const isSelected = selectedWireId === wire.id;
         const allPoints = [p1, ...waypoints, p2];
 
         return (
@@ -97,6 +100,20 @@ export const WireLayer: React.FC<WireLayerProps> = ({
             onMouseEnter={() => setHoveredWireId(wire.id)}
             onMouseLeave={() => setHoveredWireId((curr) => (curr === wire.id ? null : curr))}
           >
+            {/* Selection Aura / Glow */}
+            {isSelected && (
+              <path
+                d={pathData}
+                fill="none"
+                stroke="#38bdf8"
+                strokeWidth="7"
+                strokeOpacity="0.45"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none"
+              />
+            )}
+
             {/* Wider transparent hit area for easy clicking & erasing */}
             <path
               d={pathData}
@@ -125,8 +142,14 @@ export const WireLayer: React.FC<WireLayerProps> = ({
             <path
               d={pathData}
               fill="none"
-              stroke={activeTool === 'eraser' && isHovered ? '#f43f5e' : wire.color}
-              strokeWidth={isHovered ? '3.8' : '3.2'}
+              stroke={
+                activeTool === 'eraser' && isHovered
+                  ? '#f43f5e'
+                  : isSelected
+                  ? '#38bdf8'
+                  : wire.color
+              }
+              strokeWidth={isSelected ? '3.8' : isHovered ? '3.6' : '3.2'}
               strokeLinecap="round"
               strokeLinejoin="round"
               className="transition-[stroke,stroke-width] duration-75"
@@ -140,8 +163,8 @@ export const WireLayer: React.FC<WireLayerProps> = ({
             <circle cx={p1.x} cy={p1.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
             <circle cx={p2.x} cy={p2.y} r="3" fill="#cbd5e1" stroke="#334155" strokeWidth="1" />
 
-            {/* Interactive Bend Handles (Waypoints & Segment Midpoints) in Select/Wire mode */}
-            {activeTool !== 'eraser' && isHovered && (
+            {/* Interactive Bend Handles (Waypoints & Segment Midpoints) - Visible on Hover OR Selection */}
+            {activeTool !== 'eraser' && (isHovered || isSelected) && (
               <>
                 {/* 1. Existing Waypoint Handles */}
                 {waypoints.map((wp, wpIdx) => (
