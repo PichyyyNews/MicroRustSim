@@ -1034,7 +1034,7 @@ export default function App() {
                       </div>
                     </aside>
                   </ResizablePanel>
-                  <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+                  <ResizableHandle withHandle />
                 </>
               )}
 
@@ -1226,7 +1226,7 @@ export default function App() {
               {/* Right Sidebar: Component Library Palette */}
               {showPalette && (
                 <>
-                  <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+                  <ResizableHandle withHandle />
                   <ResizablePanel id="palette-panel" defaultSize="22%" minSize="14%" maxSize="40%">
                     <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
                       <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
@@ -1430,7 +1430,7 @@ export default function App() {
           {/* Bottom Resizable Section: Serial Monitor, Logic Waveform & Build Output */}
           {showDrawer && (
             <>
-              <ResizableHandle withHandle className="bg-[#222226] hover:bg-zinc-600 transition-colors" />
+              <ResizableHandle withHandle />
               <ResizablePanel id="bottom-panel" defaultSize="28%" minSize="12%" maxSize="65%">
                 <footer className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden">
                   <Tabs
