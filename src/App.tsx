@@ -1595,9 +1595,9 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleToggleRoutingMode}
-                    className={`h-7 px-2 flex items-center gap-1.5 text-xs rounded transition-colors ${
+                    className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
                       activeRoutingDisplay === 'ortho'
-                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 font-medium'
+                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
                     }`}
                   >
@@ -1606,9 +1606,6 @@ export default function App() {
                     ) : (
                       <Spline className="w-3.5 h-3.5" />
                     )}
-                    <span className="text-[11px] font-mono">
-                      {activeRoutingDisplay === 'ortho' ? 'Ortho' : 'Curve'}
-                    </span>
                   </button>
                 }
               />
