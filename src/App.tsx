@@ -240,9 +240,43 @@ export default function App() {
         const offset = ARDUINO_PINS[pinName];
         if (offset) local = offset;
       } else if (comp.kind === 'breadboard') {
-        w = 460;
-        h = 140;
-        local = { x: 20, y: 20 };
+        w = 540;
+        h = 240;
+        const X0 = 38;
+        const dx = 16;
+        const rowY: Record<string, number> = {
+          a: 72,
+          b: 82,
+          c: 92,
+          d: 102,
+          e: 112,
+          f: 134,
+          g: 144,
+          h: 154,
+          i: 164,
+          j: 174,
+        };
+
+        if (pinName.startsWith('top_plus_')) {
+          const col = parseInt(pinName.replace('top_plus_', ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 26 };
+        } else if (pinName.startsWith('top_minus_')) {
+          const col = parseInt(pinName.replace('top_minus_', ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 39 };
+        } else if (pinName.startsWith('bot_plus_')) {
+          const col = parseInt(pinName.replace('bot_plus_', ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 201 };
+        } else if (pinName.startsWith('bot_minus_')) {
+          const col = parseInt(pinName.replace('bot_minus_', ''), 10) || 1;
+          local = { x: X0 + (col - 1) * dx, y: 223 };
+        } else {
+          const parts = pinName.split('_');
+          if (parts.length === 2 && rowY[parts[0]]) {
+            const row = parts[0];
+            const col = parseInt(parts[1], 10) || 1;
+            local = { x: X0 + (col - 1) * dx, y: rowY[row] };
+          }
+        }
       } else if (comp.kind === 'led') {
         w = 50;
         h = 70;
