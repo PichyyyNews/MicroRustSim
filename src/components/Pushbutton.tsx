@@ -15,82 +15,67 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({
   onPinMouseDown,
 }) => {
   const [isLocalPressed, setIsLocalPressed] = useState(pressed);
-  const [isLocked, setIsLocked] = useState(false);
-  const pressedRef = useRef(false);
+  const pressedRef = useRef(pressed);
+  const downTimeRef = useRef(0);
 
   // Sync with external state (e.g. from Inspector or backend)
   useEffect(() => {
     setIsLocalPressed(pressed);
     pressedRef.current = pressed;
-    if (!pressed) {
-      setIsLocked(false);
-    }
   }, [pressed]);
 
   const activePressed = isLocalPressed || pressed;
 
-  const handleActuationStart = (e: React.MouseEvent | React.PointerEvent) => {
+  // Actuation on Center Round Plunger ONLY
+  const handlePlungerMouseDown = (e: React.MouseEvent) => {
     if (!isInteractive || e.button !== 0) return;
+    // CRITICAL: Stop propagation so outer wrapper does NOT initiate component dragging!
     e.stopPropagation();
     e.preventDefault();
 
-    // If Shift-click: toggle lock mode
-    if (e.shiftKey) {
-      const nextLocked = !isLocked;
-      setIsLocked(nextLocked);
-      setIsLocalPressed(nextLocked);
-      pressedRef.current = nextLocked;
-      onPressChange?.(nextLocked);
-      return;
-    }
+    downTimeRef.current = performance.now();
 
-    // If already locked in pressed state, clicking it unlocks/releases it
-    if (isLocked) {
-      setIsLocked(false);
+    // If already pressed, click toggles it off
+    if (activePressed) {
       setIsLocalPressed(false);
       pressedRef.current = false;
       onPressChange?.(false);
       return;
     }
 
-    // Standard momentary push (press and hold)
+    // Otherwise, turn on
     setIsLocalPressed(true);
     pressedRef.current = true;
     onPressChange?.(true);
 
-    const handleActuationEnd = () => {
-      if (pressedRef.current && !isLocked) {
+    const handleWindowMouseUp = () => {
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+      
+      const holdDuration = performance.now() - downTimeRef.current;
+      // If user pressed and held for more than 200ms, release on mouseup (momentary hold)
+      // If user did a quick tap/click (<200ms), keep it latched so MCU loop does not miss the pulse!
+      if (holdDuration >= 200) {
         setIsLocalPressed(false);
         pressedRef.current = false;
         onPressChange?.(false);
       }
-      window.removeEventListener('pointerup', handleActuationEnd);
-      window.removeEventListener('pointercancel', handleActuationEnd);
-      window.removeEventListener('mouseup', handleActuationEnd);
     };
 
-    window.addEventListener('pointerup', handleActuationEnd);
-    window.addEventListener('pointercancel', handleActuationEnd);
-    window.addEventListener('mouseup', handleActuationEnd);
+    window.addEventListener('mouseup', handleWindowMouseUp);
   };
-
-  useEffect(() => {
-    return () => {
-      if (pressedRef.current && !isLocked) {
-        onPressChange?.(false);
-      }
-    };
-  }, [onPressChange, isLocked]);
 
   return (
     <div
-      className="relative bg-[#18181b] border-2 border-[#3f3f46] rounded-[8px] shadow-md flex items-center justify-center select-none"
+      className="relative bg-[#18181b] border-2 border-[#3f3f46] rounded-[8px] shadow-md flex items-center justify-center select-none cursor-move group hover:border-zinc-500 transition-colors"
       style={{ width: '52px', height: '52px' }}
-      onMouseDown={(e) => {
-        // Prevent canvas component dragging when interacting with button body
-        e.stopPropagation();
-      }}
+      title="Pushbutton • Drag border to move or select"
     >
+      {/* Visual Corner Rivets on the Bezel to emphasize the draggable frame */}
+      <div className="absolute top-1 left-1 w-1 h-1 rounded-full bg-zinc-600/70 pointer-events-none" />
+      <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-zinc-600/70 pointer-events-none" />
+      <div className="absolute bottom-1 left-1 w-1 h-1 rounded-full bg-zinc-600/70 pointer-events-none" />
+      <div className="absolute bottom-1 right-1 w-1 h-1 rounded-full bg-zinc-600/70 pointer-events-none" />
+
       {/* 4 Corner Pins with high-visibility targets (Geometry exactly aligned with (0,0), (52,0), (0,52), (52,52)) */}
       {/* 1a (Top-Left) */}
       <div
@@ -144,36 +129,29 @@ export const Pushbutton: React.FC<PushbuttonProps> = ({
         <div className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
       </div>
 
-      {/* Tactile Pushbutton Actuator (Generous Hit Area & Immediate Tactile Click) */}
-      <div
-        title={
-          activePressed
-            ? isLocked
-              ? 'Pushbutton (LOCKED CLOSED) • Click to release'
-              : 'Pushbutton (CLOSED - 0.0V Active)'
-            : 'Pushbutton (Click & Hold to Actuate | Shift+Click to Lock)'
-        }
-        className={`w-10 h-10 rounded-full bg-[#27272a] border border-[#52525b] flex items-center justify-center shadow-inner cursor-pointer transition-all duration-75 ${
-          activePressed ? 'scale-90 ring-2 ring-amber-500/70' : 'hover:border-zinc-400'
-        }`}
-        onPointerDown={handleActuationStart}
-        onMouseDown={handleActuationStart}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Round Plunger Cap */}
+      {/* Recessed Metal Collar Bezel around the plunger (Visual buffer between drag border and click plunger) */}
+      <div className="w-8 h-8 rounded-full bg-[#121215] border border-zinc-600 flex items-center justify-center shadow-inner pointer-events-none">
+        {/* Tactile Plunger Button (The specific circle for clicking / pressing) */}
         <div
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-75 shadow-md ${
+          title={
             activePressed
-              ? 'bg-[#09090b] shadow-inner scale-95 border border-amber-500/50'
-              : 'bg-gradient-to-b from-[#3f3f46] to-[#27272a] border border-zinc-500/60 hover:brightness-115'
+              ? 'Pushbutton (CLOSED - 0.0V Active) • Click to release'
+              : 'Pushbutton (OPEN - 5.0V) • Click to press'
+          }
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-75 shadow-md cursor-pointer pointer-events-auto ${
+            activePressed
+              ? 'bg-[#09090b] shadow-inner scale-90 border-2 border-amber-500 ring-2 ring-amber-500/60'
+              : 'bg-gradient-to-b from-[#484852] to-[#27272a] border border-zinc-500/80 hover:brightness-125 active:scale-95'
           }`}
+          onMouseDown={handlePlungerMouseDown}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Tactile concave indicator dot */}
           <div
-            className={`w-3 h-3 rounded-full transition-all ${
+            className={`w-2.5 h-2.5 rounded-full transition-all duration-75 ${
               activePressed
-                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)] scale-110'
-                : 'bg-zinc-600/70'
+                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.95)] scale-110'
+                : 'bg-zinc-600/80 group-hover:bg-zinc-500'
             }`}
           />
         </div>

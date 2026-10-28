@@ -3499,7 +3499,7 @@ export default function App() {
                             <Pushbutton
                               id={c.id}
                               pressed={Boolean(c.props?.pressed)}
-                              isInteractive={activeTool !== 'move'}
+                              isInteractive={activeTool !== 'eraser' && activeTool !== 'wire'}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
