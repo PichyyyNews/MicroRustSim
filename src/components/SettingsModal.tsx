@@ -633,7 +633,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="text-[11px] text-zinc-500">High-performance Rust circuit solver crate.</div>
                     </div>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
-                      Built-in v0.2.2
+                      Built-in v0.2.3
                     </span>
                   </div>
                 </div>
