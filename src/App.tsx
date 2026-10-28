@@ -2435,6 +2435,10 @@ export default function App() {
     });
   };
 
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
   // --- Canvas Mouse Handlers (Pan & Wire Drawing) ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     (document.activeElement as HTMLElement)?.blur();
@@ -4669,7 +4673,7 @@ export default function App() {
                 ? components.find((c) => c.id === contextMenu.compId)?.id
                 : undefined
             }
-            onClose={() => setContextMenu(null)}
+            onClose={handleCloseContextMenu}
             onCopy={() => {
               if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
                 handleCopySelectedGroup();
