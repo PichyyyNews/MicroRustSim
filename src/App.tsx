@@ -30,6 +30,11 @@ import {
   Check,
   Eraser,
   RotateCw,
+  RotateCcw,
+  Scissors,
+  Clipboard,
+  Search,
+  Replace,
   FlipHorizontal,
   CornerDownRight,
   Spline,
@@ -78,6 +83,7 @@ import { FileExplorer } from './components/FileExplorer';
 import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
 import { OpenProjectModal } from './components/OpenProjectModal';
+import { SettingsModal } from './components/SettingsModal';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import {
   CircuitComponent,
@@ -209,6 +215,15 @@ export default function App() {
   // --- Menubar Active Menu (File, Edit, View & Window, Settings, About) ---
   const [activeMenu, setActiveMenu] = useState<'file' | 'edit' | 'view' | 'settings' | 'about' | null>(null);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [editorFontSize, setEditorFontSize] = useState(13);
+  const [editorMinimap, setEditorMinimap] = useState(false);
+  const [editorLineNumbers, setEditorLineNumbers] = useState(true);
+  const [editorWordWrap, setEditorWordWrap] = useState(false);
+  const [autoSaveOnRun, setAutoSaveOnRun] = useState(true);
+  const [autoScrollSerial, setAutoScrollSerial] = useState(true);
+  const [canvasGridVisible, setCanvasGridVisible] = useState(true);
+  const editorRef = useRef<any>(null);
   const [canvasHoverInfo, setCanvasHoverInfo] = useState<string>('');
   const menubarRef = useRef<HTMLDivElement>(null);
 
@@ -1287,13 +1302,16 @@ export default function App() {
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
     const el = serialContainerRef.current;
-    if (bottomTab === 'serial' && showTerminal && el) {
+    if (autoScrollSerial && bottomTab === 'serial' && showTerminal && el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [serialLogs, bottomTab, showTerminal]);
+  }, [serialLogs, bottomTab, showTerminal, autoScrollSerial]);
 
   // --- Compile & Upload ---
   const handleCompile = async (): Promise<boolean> => {
+    if (autoSaveOnRun && isDirty) {
+      handleSaveProject();
+    }
     setIsCompiling(true);
     setStatusMessage('Compiling sketch with arduino-cli...');
     setBottomTab('build');
@@ -1656,6 +1674,90 @@ export default function App() {
     handleOpenNativeFolder,
   ]);
 
+  // --- Edit Menu Actions (Undo, Redo, Cut, Copy, Paste, Find, Replace) ---
+  const handleEditUndo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      editorRef.current.trigger('menu', 'undo', null);
+      setStatusMessage('Undo');
+    }
+  }, []);
+
+  const handleEditRedo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      editorRef.current.trigger('menu', 'redo', null);
+      setStatusMessage('Redo');
+    }
+  }, []);
+
+  const handleEditCut = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      document.execCommand('cut');
+      setStatusMessage('Cut to clipboard');
+    } else if (selectedCompId) {
+      handleDeleteComponent(selectedCompId);
+      setStatusMessage('Element deleted');
+    } else if (selectedWireId) {
+      handleDeleteWire(selectedWireId);
+      setStatusMessage('Wire deleted');
+    }
+  }, [selectedCompId, selectedWireId, handleDeleteComponent, handleDeleteWire]);
+
+  const handleEditCopy = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      const selection = editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection());
+      if (selection && selection.length > 0) {
+        navigator.clipboard.writeText(selection);
+        setStatusMessage('Selection copied to clipboard');
+      } else {
+        const full = editorRef.current.getValue();
+        navigator.clipboard.writeText(full);
+        setStatusMessage('Full file copied to clipboard');
+      }
+    } else {
+      navigator.clipboard.writeText(sketchCode);
+      setStatusMessage('Sketch code copied');
+    }
+  }, [sketchCode]);
+
+  const handleEditPaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (editorRef.current && text) {
+        editorRef.current.focus();
+        editorRef.current.trigger('keyboard', 'type', { text });
+        setStatusMessage('Pasted from clipboard');
+      }
+    } catch (err) {
+      console.warn('Paste failed:', err);
+    }
+  }, []);
+
+  const handleEditFind = useCallback(() => {
+    if (!showEditor) setShowEditor(true);
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.getAction('actions.find')?.run();
+      }
+    }, 60);
+    setStatusMessage('Find in editor');
+  }, [showEditor]);
+
+  const handleEditReplace = useCallback(() => {
+    if (!showEditor) setShowEditor(true);
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.getAction('editor.action.startFindReplaceAction')?.run();
+      }
+    }, 60);
+    setStatusMessage('Find & Replace in editor');
+  }, [showEditor]);
+
   // --- Close Menubar Dropdown when Clicking Outside ---
   useEffect(() => {
     const handleMenubarClickOutside = (e: MouseEvent) => {
@@ -1980,41 +2082,35 @@ export default function App() {
 
               {activeMenu === 'edit' && (
                 <div
-                  className="absolute top-full left-0 mt-1 w-52 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
+                  className="absolute top-full left-0 mt-1 w-56 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(sketchCode);
-                      setStatusMessage('Sketch code copied');
+                      handleEditUndo();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    <span>Copy Sketch Code</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+C</span>
+                    <span className="flex items-center gap-2">
+                      <RotateCcw className="w-3.5 h-3.5 text-zinc-400" /> Undo
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+Z</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      if (selectedCompId) {
-                        handleDeleteComponent(selectedCompId);
-                      } else if (selectedWireId) {
-                        handleDeleteWire(selectedWireId);
-                      }
+                      handleEditRedo();
                       setActiveMenu(null);
                     }}
-                    disabled={!selectedCompId && !selectedWireId}
-                    className={`w-full px-3 py-1.5 flex items-center justify-between text-left transition-colors ${
-                      selectedCompId || selectedWireId
-                        ? 'text-zinc-200 hover:bg-zinc-800'
-                        : 'text-zinc-600 cursor-not-allowed'
-                    }`}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    <span>Delete Selected Element</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Del</span>
+                    <span className="flex items-center gap-2">
+                      <RotateCw className="w-3.5 h-3.5 text-zinc-400" /> Redo
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+Y</span>
                   </button>
 
                   <div className="h-px bg-[#27272a] my-1" />
@@ -2022,13 +2118,73 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (components.length > 0) setSelectedCompId(components[0].id);
+                      handleEditCut();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
                   >
-                    <span>Select First Component</span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Tab</span>
+                    <span className="flex items-center gap-2">
+                      <Scissors className="w-3.5 h-3.5 text-zinc-400" /> Cut
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+X</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEditCopy();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GoCopy className="w-3.5 h-3.5 text-zinc-400" /> Copy
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+C</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEditPaste();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Clipboard className="w-3.5 h-3.5 text-zinc-400" /> Paste
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+V</span>
+                  </button>
+
+                  <div className="h-px bg-[#27272a] my-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEditFind();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Search className="w-3.5 h-3.5 text-zinc-400" /> Find
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+F</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEditReplace();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Replace className="w-3.5 h-3.5 text-zinc-400" /> Replace
+                    </span>
+                    <span className="text-[10px] text-zinc-500 font-mono">Ctrl+H</span>
                   </button>
                 </div>
               )}
@@ -2261,65 +2417,14 @@ export default function App() {
               <button
                 type="button"
                 data-tauri-drag-region="false"
-                onClick={() => setActiveMenu(activeMenu === 'settings' ? null : 'settings')}
-                onMouseEnter={() => {
-                  if (activeMenu) setActiveMenu('settings');
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setActiveMenu(null);
                 }}
-                className={`text-xs h-5 px-2 rounded transition-colors ${
-                  activeMenu === 'settings'
-                    ? 'bg-[#1f1f23] text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
-                }`}
+                className="text-xs h-5 px-2 rounded transition-colors text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
               >
                 Settings
               </button>
-
-              {activeMenu === 'settings' && (
-                <div
-                  className="absolute top-full left-0 mt-1 w-60 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg py-1 text-xs z-50 select-none animate-in fade-in duration-75"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                    Hardware Configuration
-                  </div>
-                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
-                    <span>MCU Frequency</span>
-                    <span className="font-mono text-zinc-400">16.0 MHz</span>
-                  </div>
-                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
-                    <span>Core Engine</span>
-                    <span className="font-mono text-zinc-400">ATmega328P</span>
-                  </div>
-
-                  <div className="h-px bg-[#27272a] my-1" />
-                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                    UART Baud Rate
-                  </div>
-                  {[9600, 115200].map((b) => (
-                    <button
-                      key={b}
-                      type="button"
-                      onClick={() => {
-                        setBaudRate(b);
-                        setActiveMenu(null);
-                      }}
-                      className="w-full px-3 py-1 flex items-center justify-between text-zinc-300 hover:bg-zinc-800 text-left transition-colors"
-                    >
-                      <span>{b} baud</span>
-                      {baudRate === b && <GoCheck className="text-zinc-200" />}
-                    </button>
-                  ))}
-
-                  <div className="h-px bg-[#27272a] my-1" />
-                  <div className="px-3 py-1 text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">
-                    Theme
-                  </div>
-                  <div className="px-3 py-1 flex items-center justify-between text-zinc-300">
-                    <span>Monochrome Zinc</span>
-                    <span className="text-[10px] text-zinc-400 font-mono">Active</span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Menubar: About */}
@@ -2917,7 +3022,8 @@ export default function App() {
                             }
                             theme="microrustsim-dark"
                             beforeMount={setupMonacoTheme}
-                            onMount={(_editor, monaco) => {
+                            onMount={(editor, monaco) => {
+                              editorRef.current = editor;
                               monaco.editor.setTheme('microrustsim-dark');
                             }}
                             value={fileContents[activeTabPath] ?? (activeTabPath === 'sketch.ino' ? sketchCode : '')}
@@ -2928,10 +3034,11 @@ export default function App() {
                               </div>
                             }
                             options={{
-                              minimap: { enabled: false },
-                              fontSize: 13,
+                              minimap: { enabled: editorMinimap },
+                              fontSize: editorFontSize,
                               fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
-                              lineNumbers: 'on',
+                              lineNumbers: editorLineNumbers ? 'on' : 'off',
+                              wordWrap: editorWordWrap ? 'on' : 'off',
                               scrollBeyondLastLine: false,
                               automaticLayout: true,
                               padding: { top: 8 },
@@ -2996,7 +3103,7 @@ export default function App() {
                 minSize="25%"
               >
                 <main
-                  className={`h-full w-full relative overflow-hidden canvas-grid bg-[#09090b] ${
+                  className={`h-full w-full relative overflow-hidden ${canvasGridVisible ? 'canvas-grid' : ''} bg-[#09090b] ${
                     activeTool === 'wire' ? 'cursor-crosshair' : 'cursor-default'
                   }`}
                   onMouseDown={handleCanvasMouseDown}
@@ -3661,6 +3768,30 @@ export default function App() {
           onOpen={handleOpenProject}
           onBrowseFolder={handleBrowseNativeFolder}
           recentProjects={recentProjects}
+        />
+
+        {/* Modal Dialog: VS Code-style Settings & Preferences */}
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          editorFontSize={editorFontSize}
+          setEditorFontSize={setEditorFontSize}
+          editorMinimap={editorMinimap}
+          setEditorMinimap={setEditorMinimap}
+          editorLineNumbers={editorLineNumbers}
+          setEditorLineNumbers={setEditorLineNumbers}
+          editorWordWrap={editorWordWrap}
+          setEditorWordWrap={setEditorWordWrap}
+          autoSaveOnRun={autoSaveOnRun}
+          setAutoSaveOnRun={setAutoSaveOnRun}
+          autoScrollSerial={autoScrollSerial}
+          setAutoScrollSerial={setAutoScrollSerial}
+          canvasGridVisible={canvasGridVisible}
+          setCanvasGridVisible={setCanvasGridVisible}
+          wireRoutingMode={wireRoutingMode}
+          setWireRoutingMode={setWireRoutingMode}
+          baudRate={baudRate}
+          setBaudRate={setBaudRate}
         />
 
         {/* Modal Dialog: About MicroRustSim */}
