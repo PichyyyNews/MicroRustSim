@@ -4670,15 +4670,76 @@ export default function App() {
                 : undefined
             }
             onClose={() => setContextMenu(null)}
-            onCopy={handleEditCopy}
-            onCut={handleEditCut}
+            onCopy={() => {
+              if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
+                handleCopySelectedGroup();
+              } else {
+                const targetId = contextMenu.compId || selectedCompId;
+                if (targetId) {
+                  const comp = components.find((c) => c.id === targetId);
+                  if (comp) handleCopyComponent(comp);
+                }
+              }
+            }}
+            onCut={() => {
+              if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
+                handleCopySelectedGroup();
+                handleDeleteSelected();
+              } else {
+                const targetId = contextMenu.compId || selectedCompId;
+                if (targetId) {
+                  const comp = components.find((c) => c.id === targetId);
+                  if (comp) handleCopyComponent(comp);
+                  handleDeleteComponent(targetId);
+                  setStatusMessage(`Cut ${targetId} to clipboard`);
+                }
+              }
+            }}
             onPaste={handlePasteComponent}
-            onDelete={handleDeleteSelected}
-            onRotate={handleRotateSelected}
-            onFlip={handleFlipSelected}
+            onDelete={() => {
+              if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
+                handleDeleteSelected();
+              } else {
+                const targetId = contextMenu.compId || selectedCompId;
+                if (targetId) {
+                  handleDeleteComponent(targetId);
+                }
+              }
+            }}
+            onRotate={() => {
+              if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
+                handleRotateSelected();
+              } else {
+                const targetId = contextMenu.compId || selectedCompId;
+                if (targetId) {
+                  setComponents((prev) =>
+                    prev.map((c) =>
+                      c.id === targetId ? { ...c, rotation: ((c.rotation || 0) + 90) % 360 } : c
+                    )
+                  );
+                  setIsDirty(true);
+                  setStatusMessage(`Rotated ${targetId}`);
+                }
+              }
+            }}
+            onFlip={() => {
+              if (contextMenu.type === 'group' && selectedCompIds.size > 1) {
+                handleFlipSelected();
+              } else {
+                const targetId = contextMenu.compId || selectedCompId;
+                if (targetId) {
+                  setComponents((prev) =>
+                    prev.map((c) => (c.id === targetId ? { ...c, flipped: !c.flipped } : c))
+                  );
+                  setIsDirty(true);
+                  setStatusMessage(`Flipped ${targetId}`);
+                }
+              }
+            }}
             onRename={() => {
-              if (contextMenu.compId) {
-                const comp = components.find((c) => c.id === contextMenu.compId);
+              const targetId = contextMenu.compId || selectedCompId;
+              if (targetId) {
+                const comp = components.find((c) => c.id === targetId);
                 if (comp) {
                   setRenameModalComp({
                     id: comp.id,
@@ -4688,9 +4749,10 @@ export default function App() {
               }
             }}
             onProperties={() => {
-              if (contextMenu.compId) {
-                setSelectedCompId(contextMenu.compId);
-                setSelectedCompIds(new Set([contextMenu.compId]));
+              const targetId = contextMenu.compId || selectedCompId;
+              if (targetId) {
+                setSelectedCompId(targetId);
+                setSelectedCompIds(new Set([targetId]));
                 setShowInspector(true);
               }
             }}
