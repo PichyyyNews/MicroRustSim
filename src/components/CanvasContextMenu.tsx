@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
   GoCopy,
   GoTrash,
@@ -26,7 +26,51 @@ export interface ContextMenuProps {
   onAddText?: () => void;
 }
 
-export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
+interface MenuItemProps {
+  icon: any;
+  label: string;
+  shortcut?: string;
+  onTrigger?: () => void;
+  danger?: boolean;
+}
+
+// Declared outside parent component so React maintains stable DOM nodes across re-renders (prevents hover flickering)
+const MenuItem: React.FC<MenuItemProps> = React.memo(({
+  icon: Icon,
+  label,
+  shortcut,
+  onTrigger,
+  danger = false,
+}) => (
+  <button
+    type="button"
+    onMouseDown={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onTrigger?.();
+    }}
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onTrigger?.();
+    }}
+    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded text-left cursor-pointer transition-colors duration-75 select-none ${
+      danger
+        ? 'text-red-400 hover:text-red-300 hover:bg-red-950/50 active:bg-red-900/60'
+        : 'text-zinc-200 hover:bg-[#27272a] hover:text-white active:bg-[#323236]'
+    }`}
+  >
+    <div className="flex items-center gap-2 pointer-events-none">
+      <Icon className="w-3.5 h-3.5 opacity-80 shrink-0" />
+      <span>{label}</span>
+    </div>
+    {shortcut && <span className="text-[10px] text-zinc-500 font-mono ml-3 pointer-events-none">{shortcut}</span>}
+  </button>
+));
+
+const MenuDivider: React.FC = React.memo(() => <div className="h-px bg-[#27272a] my-1 pointer-events-none" />);
+
+export const CanvasContextMenu: React.FC<ContextMenuProps> = React.memo(({
   x,
   y,
   type,
@@ -61,7 +105,7 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
   const adjustedX = Math.max(10, Math.min(x, window.innerWidth - menuWidth - 10));
   const adjustedY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10));
 
-  const handleItemTrigger = (action?: () => void) => {
+  const handleItemTrigger = useCallback((action?: () => void) => {
     if (hasTriggeredRef.current || !action) return;
     hasTriggeredRef.current = true;
     try {
@@ -69,48 +113,7 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
     } finally {
       onClose();
     }
-  };
-
-  const MenuItem = ({
-    icon: Icon,
-    label,
-    shortcut,
-    onClick,
-    danger = false,
-  }: {
-    icon: any;
-    label: string;
-    shortcut?: string;
-    onClick?: () => void;
-    danger?: boolean;
-  }) => (
-    <button
-      type="button"
-      onMouseDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleItemTrigger(onClick);
-      }}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleItemTrigger(onClick);
-      }}
-      className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded transition-colors text-left cursor-pointer ${
-        danger
-          ? 'text-red-400 hover:text-red-300 hover:bg-red-950/50'
-          : 'text-zinc-200 hover:bg-[#27272a] hover:text-white'
-      }`}
-    >
-      <div className="flex items-center gap-2 pointer-events-none">
-        <Icon className="w-3.5 h-3.5 opacity-80 shrink-0" />
-        <span>{label}</span>
-      </div>
-      {shortcut && <span className="text-[10px] text-zinc-500 font-mono ml-3 pointer-events-none">{shortcut}</span>}
-    </button>
-  );
-
-  const Divider = () => <div className="h-px bg-[#27272a] my-1" />;
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-[99999] select-none">
@@ -139,6 +142,8 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
           top: `${adjustedY}px`,
         }}
         onMouseDown={(e) => e.stopPropagation()}
+        onMouseMove={(e) => e.stopPropagation()}
+        onPointerMove={(e) => e.stopPropagation()}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -151,19 +156,19 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
                 {componentName}
               </div>
             )}
-            {onRename && <MenuItem icon={GoPencil} label="Rename Component" shortcut="F2" onClick={onRename} />}
-            {onCopy && <MenuItem icon={GoCopy} label="Copy" shortcut="Ctrl+C" onClick={onCopy} />}
-            {onCut && <MenuItem icon={Scissors} label="Cut" shortcut="Ctrl+X" onClick={onCut} />}
-            {onPaste && <MenuItem icon={Clipboard} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />}
-            <Divider />
-            {onRotate && <MenuItem icon={GoSync} label="Rotate 90°" shortcut="R" onClick={onRotate} />}
-            {onFlip && <MenuItem icon={FlipHorizontal} label="Flip Horizontal" shortcut="F" onClick={onFlip} />}
-            <Divider />
-            {onDelete && <MenuItem icon={GoTrash} label="Delete" shortcut="Del" onClick={onDelete} danger />}
+            {onRename && <MenuItem icon={GoPencil} label="Rename Component" shortcut="F2" onTrigger={() => handleItemTrigger(onRename)} />}
+            {onCopy && <MenuItem icon={GoCopy} label="Copy" shortcut="Ctrl+C" onTrigger={() => handleItemTrigger(onCopy)} />}
+            {onCut && <MenuItem icon={Scissors} label="Cut" shortcut="Ctrl+X" onTrigger={() => handleItemTrigger(onCut)} />}
+            {onPaste && <MenuItem icon={Clipboard} label="Paste" shortcut="Ctrl+V" onTrigger={() => handleItemTrigger(onPaste)} />}
+            <MenuDivider />
+            {onRotate && <MenuItem icon={GoSync} label="Rotate 90°" shortcut="R" onTrigger={() => handleItemTrigger(onRotate)} />}
+            {onFlip && <MenuItem icon={FlipHorizontal} label="Flip Horizontal" shortcut="F" onTrigger={() => handleItemTrigger(onFlip)} />}
+            <MenuDivider />
+            {onDelete && <MenuItem icon={GoTrash} label="Delete" shortcut="Del" onTrigger={() => handleItemTrigger(onDelete)} danger />}
             {onProperties && (
               <>
-                <Divider />
-                <MenuItem icon={GoGear} label="Properties (Inspect)" onClick={onProperties} />
+                <MenuDivider />
+                <MenuItem icon={GoGear} label="Properties (Inspect)" onTrigger={() => handleItemTrigger(onProperties)} />
               </>
             )}
           </>
@@ -177,14 +182,14 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
                 {selectedCount} items
               </span>
             </div>
-            {onCopy && <MenuItem icon={GoCopy} label="Copy Group" shortcut="Ctrl+C" onClick={onCopy} />}
-            {onCut && <MenuItem icon={Scissors} label="Cut Group" shortcut="Ctrl+X" onClick={onCut} />}
-            {onPaste && <MenuItem icon={Clipboard} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />}
-            <Divider />
-            {onRotate && <MenuItem icon={GoSync} label="Rotate Group 90°" shortcut="R" onClick={onRotate} />}
-            {onFlip && <MenuItem icon={FlipHorizontal} label="Flip Group" shortcut="F" onClick={onFlip} />}
-            <Divider />
-            {onDelete && <MenuItem icon={GoTrash} label="Delete Group" shortcut="Del" onClick={onDelete} danger />}
+            {onCopy && <MenuItem icon={GoCopy} label="Copy Group" shortcut="Ctrl+C" onTrigger={() => handleItemTrigger(onCopy)} />}
+            {onCut && <MenuItem icon={Scissors} label="Cut Group" shortcut="Ctrl+X" onTrigger={() => handleItemTrigger(onCut)} />}
+            {onPaste && <MenuItem icon={Clipboard} label="Paste" shortcut="Ctrl+V" onTrigger={() => handleItemTrigger(onPaste)} />}
+            <MenuDivider />
+            {onRotate && <MenuItem icon={GoSync} label="Rotate Group 90°" shortcut="R" onTrigger={() => handleItemTrigger(onRotate)} />}
+            {onFlip && <MenuItem icon={FlipHorizontal} label="Flip Group" shortcut="F" onTrigger={() => handleItemTrigger(onFlip)} />}
+            <MenuDivider />
+            {onDelete && <MenuItem icon={GoTrash} label="Delete Group" shortcut="Del" onTrigger={() => handleItemTrigger(onDelete)} danger />}
           </>
         )}
 
@@ -193,12 +198,12 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
             <div className="px-2.5 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-[#27272a]/80 mb-1">
               Canvas Actions
             </div>
-            {onPaste && <MenuItem icon={Clipboard} label="Paste Component" shortcut="Ctrl+V" onClick={onPaste} />}
-            <Divider />
-            {onAddText && <MenuItem icon={Type} label="Add Text Label" shortcut="T" onClick={onAddText} />}
+            {onPaste && <MenuItem icon={Clipboard} label="Paste Component" shortcut="Ctrl+V" onTrigger={() => handleItemTrigger(onPaste)} />}
+            <MenuDivider />
+            {onAddText && <MenuItem icon={Type} label="Add Text Label" shortcut="T" onTrigger={() => handleItemTrigger(onAddText)} />}
           </>
         )}
       </div>
     </div>
   );
-};
+});
