@@ -55,7 +55,7 @@ pub fn normalize_pin_name(comp: &str, pin: &str) -> String {
         if p_lower == "3.3v" || p_lower == "3v3" {
             return "3.3V".to_string();
         }
-    } else if c_lower.starts_with("btn") || c_lower.starts_with("sw") || c_lower.starts_with("button") {
+    } else if c_lower.starts_with("btn") || c_lower.starts_with("sw") || c_lower.starts_with("button") || c_lower.starts_with("pushbutton") || c_lower.contains("btn") || c_lower.contains("button") {
         if p_lower == "1" || p_lower == "1.l" || p_lower == "1.r" || p_lower == "1a" || p_lower == "1b" || p_lower == "t1" {
             return "1".to_string();
         }

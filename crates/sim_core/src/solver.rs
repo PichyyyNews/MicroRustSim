@@ -80,7 +80,7 @@ pub fn normalize_pin_alias(comp_id: &str, pin_name: &str) -> (String, bool) {
     }
 
     // 4. Pushbutton
-    if c_lower.starts_with("btn") || c_lower.starts_with("sw") || c_lower.starts_with("button") {
+    if c_lower.starts_with("btn") || c_lower.starts_with("sw") || c_lower.starts_with("button") || c_lower.starts_with("pushbutton") || c_lower.contains("btn") || c_lower.contains("button") {
         if p_lower == "1" || p_lower == "1a" || p_lower == "1b" || p_lower == "1.l" || p_lower == "1.r" || p_lower == "t1" {
             return (format!("{}:1", comp_id), false);
         }

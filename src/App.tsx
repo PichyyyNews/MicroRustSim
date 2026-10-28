@@ -86,6 +86,7 @@ import { OpenProjectModal } from './components/OpenProjectModal';
 import { SettingsModal } from './components/SettingsModal';
 import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
+import { UnsavedChangesModal } from './components/UnsavedChangesModal';
 import {
   CircuitComponent,
   CircuitWire,
@@ -412,6 +413,12 @@ export default function App() {
   const [activeFile, setActiveFile] = useState('sketch.ino');
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [showUnsavedCloseModal, setShowUnsavedCloseModal] = useState(false);
+  const [isSavingOnClose, setIsSavingOnClose] = useState(false);
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('My_Arduino_Lab');
   const [newProjectParentPath, setNewProjectParentPath] = useState('');
@@ -533,6 +540,54 @@ export default function App() {
     setLogicHistory([]);
     setPin2History([]);
     setPinA0History([]);
+  }, []);
+
+  // Initial circuit sync to Rust simulation engine so components (btn, pot, led, r) and wires are immediately active
+  useEffect(() => {
+    tauriInvoke('sync_circuit', {
+      components: components.map((c) => ({ id: c.id, kind: c.kind, props: c.props || {} })),
+      wires: wires.map((w) => ({
+        id: w.id,
+        from_comp: w.fromComp,
+        from_pin: w.fromPin,
+        to_comp: w.toComp,
+        to_pin: w.toPin,
+        color: w.color,
+      })),
+    });
+  }, []);
+
+  // Tauri & Browser window close interception with Unsaved Changes check
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        unlisten = await appWindow.onCloseRequested(async (event) => {
+          if (isDirtyRef.current) {
+            event.preventDefault();
+            setShowUnsavedCloseModal(true);
+          }
+        });
+      } catch (err) {
+        console.debug('Tauri window close listener not active (browser or mock):', err);
+      }
+    })();
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
   const isSpacePressed = useRef(false);
@@ -783,6 +838,38 @@ export default function App() {
     const tree = await tauriInvoke<ProjectFileEntry[]>('read_dir_tree', { path: projectPath });
     if (tree) setProjectFiles(tree);
   }, [projectPath, projectName, sketchCode, fileContents, components, wires, baudRate, exportWokwiDiagram]);
+
+  // Window Close Handlers (Prompting Save / Discard / Cancel on Unsaved Changes)
+  const handleRequestClose = useCallback(() => {
+    if (isDirtyRef.current) {
+      setShowUnsavedCloseModal(true);
+    } else {
+      tauriInvoke('close_window');
+    }
+  }, []);
+
+  const handleCloseSave = useCallback(async () => {
+    setIsSavingOnClose(true);
+    try {
+      await handleSaveProject();
+      setIsSavingOnClose(false);
+      setShowUnsavedCloseModal(false);
+      await tauriInvoke('close_window');
+    } catch (err) {
+      setIsSavingOnClose(false);
+      console.error('Save failed on close:', err);
+    }
+  }, [handleSaveProject]);
+
+  const handleCloseDiscard = useCallback(async () => {
+    setIsDirty(false);
+    setShowUnsavedCloseModal(false);
+    await tauriInvoke('close_window');
+  }, []);
+
+  const handleCloseCancel = useCallback(() => {
+    setShowUnsavedCloseModal(false);
+  }, []);
 
   const handleCreateProject = useCallback(
     async (parentPath: string, name: string, template?: ProjectTemplate) => {
@@ -1166,17 +1253,17 @@ export default function App() {
           local = { x: 76, y: 10 };
         }
       } else if (comp.kind === 'pushbutton') {
-        w = 48;
-        h = 48;
+        w = 52;
+        h = 52;
         const normPin = pinName.toLowerCase();
         if (normPin === '1a' || normPin === '1.l' || normPin === '1_l' || normPin === '1' || normPin === 'tl') {
           local = { x: 0, y: 0 };
         } else if (normPin === '1b' || normPin === '1.r' || normPin === '1_r' || normPin === 'tr') {
-          local = { x: 48, y: 0 };
+          local = { x: 52, y: 0 };
         } else if (normPin === '2a' || normPin === '2.l' || normPin === '2_l' || normPin === '2' || normPin === 'bl') {
-          local = { x: 0, y: 48 };
+          local = { x: 0, y: 52 };
         } else if (normPin === '2b' || normPin === '2.r' || normPin === '2_r' || normPin === 'br') {
-          local = { x: 48, y: 48 };
+          local = { x: 52, y: 52 };
         } else {
           local = { x: 0, y: 0 };
         }
@@ -2555,7 +2642,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      tauriInvoke('close_window');
+                      handleRequestClose();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center gap-2 text-red-400 hover:bg-zinc-800 text-left transition-colors"
@@ -2638,7 +2725,7 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => tauriInvoke('close_window')}
+              onClick={handleRequestClose}
               className="h-full w-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors"
               title="Close"
             >
@@ -3411,12 +3498,18 @@ export default function App() {
                           <div {...wrapperProps}>
                             <Pushbutton
                               id={c.id}
+                              pressed={Boolean(c.props?.pressed)}
                               isInteractive={activeTool !== 'move'}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
                               }}
                               onPressChange={(pressed: boolean) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...item.props, pressed } } : item
+                                  )
+                                );
                                 tauriInvoke('press_button', { id: c.id, pressed });
                               }}
                             />
@@ -3978,6 +4071,16 @@ export default function App() {
           setWireRoutingMode={setWireRoutingMode}
           baudRate={baudRate}
           setBaudRate={setBaudRate}
+        />
+
+        {/* Modal Dialog: Unsaved Changes Confirmation on Close (Save / Discard / Cancel) */}
+        <UnsavedChangesModal
+          isOpen={showUnsavedCloseModal}
+          projectName={projectName}
+          onSave={handleCloseSave}
+          onDiscard={handleCloseDiscard}
+          onCancel={handleCloseCancel}
+          isSaving={isSavingOnClose}
         />
 
         {/* Modal Dialog: About MicroRustSim */}
