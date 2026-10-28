@@ -40,6 +40,7 @@ import {
   Spline,
   SlidersHorizontal,
   FolderOpen,
+  Type,
 } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -87,6 +88,9 @@ import { SettingsModal } from './components/SettingsModal';
 import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
+import { TextLabel } from './components/TextLabel';
+import { CanvasContextMenu } from './components/CanvasContextMenu';
+import { UploadModal } from './components/UploadModal';
 import {
   CircuitComponent,
   CircuitWire,
@@ -150,6 +154,27 @@ const PauseIcon = ({ className }: { className?: string }) => (
     <rect x="9.5" y="2" width="3.5" height="12" rx="1" />
   </svg>
 );
+
+function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number } {
+  switch (kind) {
+    case 'arduino_uno':
+      return { w: 320, h: 220 };
+    case 'breadboard':
+      return { w: 320, h: 140 };
+    case 'led':
+      return { w: 60, h: 60 };
+    case 'resistor':
+      return { w: 60, h: 30 };
+    case 'pushbutton':
+      return { w: 52, h: 52 };
+    case 'potentiometer':
+      return { w: 60, h: 60 };
+    case 'text_label':
+      return { w: 120, h: 40 };
+    default:
+      return { w: 60, h: 60 };
+  }
+}
 
 const DEFAULT_BLINK_CODE = `// MicroRustSim Arduino Uno Blink
 // Genuine cycle-accurate ATmega328P execution
@@ -226,12 +251,27 @@ export default function App() {
   const [autoScrollSerial, setAutoScrollSerial] = useState(true);
   const [canvasGridVisible, setCanvasGridVisible] = useState(true);
   const [clipboardComponent, setClipboardComponent] = useState<CircuitComponent | null>(null);
+  const [clipboardComponents, setClipboardComponents] = useState<CircuitComponent[]>([]);
+  const [selectedCompIds, setSelectedCompIds] = useState<Set<string>>(new Set());
+  const [selectionBox, setSelectionBox] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: 'single' | 'group' | 'canvas';
+    compId?: string;
+  } | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const editorRef = useRef<any>(null);
   const [canvasHoverInfo, setCanvasHoverInfo] = useState<string>('');
   const menubarRef = useRef<HTMLDivElement>(null);
 
-  // --- Active Tool Mode (Select, Move, Wire) & Word-style Color Popup ---
-  const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire' | 'eraser'>('select');
+  // --- Active Tool Mode (Select, Move, Wire, Eraser, Text) & Word-style Color Popup ---
+  const [activeTool, setActiveTool] = useState<'select' | 'move' | 'wire' | 'eraser' | 'text'>('select');
   const [wireRoutingMode, setWireRoutingMode] = useState<'curve' | 'ortho'>('curve');
   const draggedWaypointRef = useRef<{
     wireId: string;
@@ -252,6 +292,11 @@ export default function App() {
   const [showWireColorMenu, setShowWireColorMenu] = useState(false);
   const [customColorInput, setCustomColorInput] = useState('#22C55E');
   const wireMenuRef = useRef<HTMLDivElement>(null);
+  const draggedMultiCompRef = useRef<{
+    startMouseX: number;
+    startMouseY: number;
+    positions: { id: string; x: number; y: number }[];
+  } | null>(null);
   const draggedCompRef = useRef<{
     id: string;
     startMouseX: number;
@@ -1322,20 +1367,48 @@ export default function App() {
     let animId: number;
     let cancelled = false;
     let lastTime = performance.now();
+    let steppingStartTime = 0;
+
+    const resetTiming = () => {
+      lastTime = performance.now();
+      isSteppingRef.current = false;
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        resetTiming();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', resetTiming);
 
     const loop = async () => {
       if (cancelled) return;
 
+      // If window is minimized or hidden, skip heavy IPC stepping
+      if (document.hidden) {
+        lastTime = performance.now();
+        animId = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Watchdog: If an IPC call got delayed or hung during window dragging on Windows
+      if (isSteppingRef.current && performance.now() - steppingStartTime > 150) {
+        isSteppingRef.current = false;
+      }
+
       if (!isSteppingRef.current) {
         isSteppingRef.current = true;
+        steppingStartTime = performance.now();
         try {
           const now = performance.now();
           const elapsedSec = (now - lastTime) / 1000;
           lastTime = now;
 
           // Target 16,000,000 cycles / sec for exact 1:1 real-time match with 16 MHz ATmega328P
-          // Clamp elapsed time between 0.005s and 0.040s to keep it smooth and prevent time skips
-          const clampedElapsed = Math.min(0.040, Math.max(0.005, elapsedSec));
+          // Clamp elapsed time between 0.005s and 0.035s to prevent any stuttering or time jumps
+          const clampedElapsed = Math.min(0.035, Math.max(0.005, elapsedSec));
           const cycles = isRunningRef.current
             ? Math.round(clampedElapsed * 16_000_000)
             : 0;
@@ -1385,6 +1458,8 @@ export default function App() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', resetTiming);
     };
   }, []);
 
@@ -1535,8 +1610,24 @@ export default function App() {
         return;
       }
 
-      // 3. Circuit Component Dragging
-      if (draggedCompRef.current) {
+      // 3. Circuit Component Dragging (Multi & Single)
+      if (draggedMultiCompRef.current) {
+        const rawDx = e.clientX - draggedMultiCompRef.current.startMouseX;
+        const rawDy = e.clientY - draggedMultiCompRef.current.startMouseY;
+        const dx = rawDx / zoom;
+        const dy = rawDy / zoom;
+
+        setComponents((prev) =>
+          prev.map((item) => {
+            const init = draggedMultiCompRef.current!.positions.find((p) => p.id === item.id);
+            if (init) {
+              return { ...item, x: Math.round(init.x + dx), y: Math.round(init.y + dy) };
+            }
+            return item;
+          })
+        );
+        setIsDirty(true);
+      } else if (draggedCompRef.current) {
         const rawDx = e.clientX - draggedCompRef.current.startMouseX;
         const rawDy = e.clientY - draggedCompRef.current.startMouseY;
 
@@ -1574,6 +1665,9 @@ export default function App() {
           syncWireToRust(wire);
         }
       }
+      if (draggedMultiCompRef.current) {
+        draggedMultiCompRef.current = null;
+      }
       if (draggedCompRef.current) {
         draggedCompRef.current = null;
       }
@@ -1598,9 +1692,45 @@ export default function App() {
     if (selectedCompId === id) {
       setSelectedCompId(null);
     }
+    setSelectedCompIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, [wires, selectedCompId]);
 
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedCompIds.size > 0) {
+      const ids = new Set(selectedCompIds);
+      setComponents((prev) => prev.filter((c) => !ids.has(c.id)));
+      const attachedWires = wires.filter((w) => ids.has(w.fromComp) || ids.has(w.toComp));
+      for (const w of attachedWires) {
+        tauriInvoke('remove_wire', { id: w.id });
+      }
+      setWires((prev) => prev.filter((w) => !ids.has(w.fromComp) && !ids.has(w.toComp)));
+      setSelectedCompIds(new Set());
+      setSelectedCompId(null);
+      setIsDirty(true);
+      setStatusMessage(`Deleted ${ids.size} component(s)`);
+      return;
+    }
+    if (selectedCompId) {
+      handleDeleteComponent(selectedCompId);
+    }
+  }, [selectedCompIds, selectedCompId, wires, handleDeleteComponent]);
+
   const handleRotateSelected = useCallback(() => {
+    if (selectedCompIds.size > 0) {
+      setComponents((prev) =>
+        prev.map((c) =>
+          selectedCompIds.has(c.id)
+            ? { ...c, rotation: (((c.rotation || 0) + 90) % 360) }
+            : c
+        )
+      );
+      setIsDirty(true);
+      return;
+    }
     if (!selectedCompId) return;
     setComponents((prev) =>
       prev.map((c) => {
@@ -1609,9 +1739,19 @@ export default function App() {
         return { ...c, rotation: nextRot };
       })
     );
-  }, [selectedCompId]);
+    setIsDirty(true);
+  }, [selectedCompId, selectedCompIds]);
 
   const handleFlipSelected = useCallback(() => {
+    if (selectedCompIds.size > 0) {
+      setComponents((prev) =>
+        prev.map((c) =>
+          selectedCompIds.has(c.id) ? { ...c, flipped: !c.flipped } : c
+        )
+      );
+      setIsDirty(true);
+      return;
+    }
     if (!selectedCompId) return;
     setComponents((prev) =>
       prev.map((c) => {
@@ -1619,15 +1759,70 @@ export default function App() {
         return { ...c, flipped: !c.flipped };
       })
     );
-  }, [selectedCompId]);
+    setIsDirty(true);
+  }, [selectedCompId, selectedCompIds]);
 
   // --- Component Copy & Paste Helpers ---
   const handleCopyComponent = useCallback((comp: CircuitComponent) => {
     setClipboardComponent({ ...comp });
+    setClipboardComponents([{ ...comp }]);
     setStatusMessage(`Copied ${comp.kind} to clipboard`);
   }, []);
 
+  const handleCopySelectedGroup = useCallback(() => {
+    if (selectedCompIds.size === 0) return;
+    const comps = components.filter((c) => selectedCompIds.has(c.id));
+    if (comps.length === 1) {
+      handleCopyComponent(comps[0]);
+    } else {
+      setClipboardComponents(comps.map((c) => ({ ...c })));
+      setClipboardComponent(comps[0]);
+      setStatusMessage(`Copied ${comps.length} components to clipboard`);
+    }
+  }, [selectedCompIds, components, handleCopyComponent]);
+
   const handlePasteComponent = useCallback(() => {
+    if (clipboardComponents.length > 1) {
+      const newComps: CircuitComponent[] = [];
+      const newIds = new Set<string>();
+
+      for (const comp of clipboardComponents) {
+        const baseKind = comp.kind;
+        const prefix =
+          baseKind === 'arduino_uno'
+            ? 'uno'
+            : baseKind === 'breadboard'
+            ? 'bb'
+            : baseKind === 'led'
+            ? 'led'
+            : baseKind === 'resistor'
+            ? 'r'
+            : baseKind === 'pushbutton'
+            ? 'btn'
+            : baseKind === 'potentiometer'
+            ? 'pot'
+            : 'label';
+        const newId = `${prefix}_${Math.random().toString(36).substring(2, 6)}`;
+        const newComp: CircuitComponent = {
+          ...comp,
+          id: newId,
+          x: comp.x + 30,
+          y: comp.y + 30,
+          props: { ...(comp.props || {}) },
+        };
+        newComps.push(newComp);
+        newIds.add(newId);
+      }
+
+      setComponents((prev) => [...prev, ...newComps]);
+      setSelectedCompIds(newIds);
+      setSelectedCompId(null);
+      setSelectedWireId(null);
+      setIsDirty(true);
+      setStatusMessage(`Pasted ${newComps.length} components`);
+      return;
+    }
+
     if (!clipboardComponent) return;
     const baseKind = clipboardComponent.kind;
     const prefix =
@@ -1641,7 +1836,9 @@ export default function App() {
         ? 'r'
         : baseKind === 'pushbutton'
         ? 'btn'
-        : 'pot';
+        : baseKind === 'potentiometer'
+        ? 'pot'
+        : 'label';
     const newId = `${prefix}_${Date.now().toString().slice(-4)}`;
     const newComp: CircuitComponent = {
       ...clipboardComponent,
@@ -1653,6 +1850,7 @@ export default function App() {
 
     setComponents((prev) => [...prev, newComp]);
     setSelectedCompId(newId);
+    setSelectedCompIds(new Set([newId]));
     setSelectedWireId(null);
     setIsDirty(true);
     setStatusMessage(`Pasted ${newComp.kind} (${newId})`);
@@ -1667,7 +1865,7 @@ export default function App() {
     } else if (newComp.kind === 'potentiometer') {
       tauriInvoke('add_potentiometer', { id: newId });
     }
-  }, [clipboardComponent]);
+  }, [clipboardComponents, clipboardComponent]);
 
   const handleAddComponentByType = useCallback(
     (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot') => {
@@ -1827,22 +2025,38 @@ export default function App() {
 
       // Component Copy / Paste / Duplicate on Canvas
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-        if (selectedCompId) {
+        if (selectedCompIds.size > 1) {
+          e.preventDefault();
+          handleCopySelectedGroup();
+          return;
+        } else if (selectedCompId) {
           e.preventDefault();
           const comp = components.find((c) => c.id === selectedCompId);
           if (comp) handleCopyComponent(comp);
           return;
         }
       }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) {
+        if (selectedCompIds.size > 0 || selectedCompId) {
+          e.preventDefault();
+          handleEditCut();
+          return;
+        }
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-        if (clipboardComponent) {
+        if (clipboardComponent || clipboardComponents.length > 0) {
           e.preventDefault();
           handlePasteComponent();
           return;
         }
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
-        if (selectedCompId) {
+        if (selectedCompIds.size > 1) {
+          e.preventDefault();
+          handleCopySelectedGroup();
+          setTimeout(() => handlePasteComponent(), 10);
+          return;
+        } else if (selectedCompId) {
           e.preventDefault();
           const comp = components.find((c) => c.id === selectedCompId);
           if (comp) {
@@ -1861,6 +2075,8 @@ export default function App() {
         setActiveTool('wire');
       } else if (e.key === 'e' || e.key === 'E') {
         setActiveTool('eraser');
+      } else if (e.key === 't' || e.key === 'T') {
+        setActiveTool('text');
       } else if (e.key === 'r' || e.key === 'R') {
         handleRotateSelected();
       } else if (e.key === 'f' || e.key === 'F') {
@@ -1868,8 +2084,8 @@ export default function App() {
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedWireId) {
           handleDeleteWire(selectedWireId);
-        } else if (selectedCompId) {
-          handleDeleteComponent(selectedCompId);
+        } else if (selectedCompIds.size > 0 || selectedCompId) {
+          handleDeleteSelected();
         }
       }
     };
@@ -1878,14 +2094,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     selectedCompId,
+    selectedCompIds,
     selectedWireId,
     components,
     clipboardComponent,
+    clipboardComponents,
     handleCopyComponent,
+    handleCopySelectedGroup,
     handlePasteComponent,
     handleRotateSelected,
     handleFlipSelected,
     handleDeleteComponent,
+    handleDeleteSelected,
     handleDeleteWire,
     handleSaveProject,
     handleOpenNativeFolder,
@@ -1913,6 +2133,10 @@ export default function App() {
       editorRef.current.focus();
       document.execCommand('cut');
       setStatusMessage('Cut to clipboard');
+    } else if (selectedCompIds.size > 0) {
+      handleCopySelectedGroup();
+      handleDeleteSelected();
+      setStatusMessage(`Cut ${selectedCompIds.size} component(s) to clipboard`);
     } else if (selectedCompId) {
       const comp = components.find((c) => c.id === selectedCompId);
       if (comp) handleCopyComponent(comp);
@@ -1922,9 +2146,13 @@ export default function App() {
       handleDeleteWire(selectedWireId);
       setStatusMessage('Wire deleted');
     }
-  }, [selectedCompId, selectedWireId, components, handleCopyComponent, handleDeleteComponent, handleDeleteWire]);
+  }, [selectedCompId, selectedCompIds, selectedWireId, components, handleCopyComponent, handleCopySelectedGroup, handleDeleteComponent, handleDeleteSelected, handleDeleteWire]);
 
   const handleEditCopy = useCallback(() => {
+    if (selectedCompIds.size > 1) {
+      handleCopySelectedGroup();
+      return;
+    }
     if (selectedCompId) {
       const comp = components.find((c) => c.id === selectedCompId);
       if (comp) {
@@ -1947,7 +2175,7 @@ export default function App() {
       navigator.clipboard.writeText(sketchCode);
       setStatusMessage('Sketch code copied');
     }
-  }, [selectedCompId, components, handleCopyComponent, sketchCode]);
+  }, [selectedCompId, selectedCompIds, components, handleCopyComponent, handleCopySelectedGroup, sketchCode]);
 
   const handleEditPaste = useCallback(async () => {
     const activeEl = document.activeElement;
@@ -2018,35 +2246,134 @@ export default function App() {
 
   // --- Component Click & Drag Handler ---
   const handleComponentMouseDown = (compId: string, e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only primary mouse button
+    if (e.button !== 0) return; // Only primary mouse button for dragging
     e.stopPropagation();
 
-    setSelectedCompId(compId);
+    // Check if part of existing multi-selection
+    const isAlreadyInMulti = selectedCompIds.has(compId) && selectedCompIds.size > 1;
+
+    if (!isAlreadyInMulti) {
+      if (e.shiftKey) {
+        const next = new Set(selectedCompIds);
+        next.add(compId);
+        setSelectedCompIds(next);
+        setSelectedCompId(next.size === 1 ? compId : null);
+      } else {
+        setSelectedCompId(compId);
+        setSelectedCompIds(new Set([compId]));
+      }
+    }
 
     if (activeTool === 'move' || activeTool === 'select') {
-      const comp = components.find((c) => c.id === compId);
-      if (comp) {
-        draggedCompRef.current = {
-          id: compId,
+      if (isAlreadyInMulti) {
+        draggedMultiCompRef.current = {
           startMouseX: e.clientX,
           startMouseY: e.clientY,
-          startCompX: comp.x,
-          startCompY: comp.y,
+          positions: components
+            .filter((c) => selectedCompIds.has(c.id))
+            .map((c) => ({ id: c.id, x: c.x, y: c.y })),
         };
+      } else {
+        const comp = components.find((c) => c.id === compId);
+        if (comp) {
+          draggedCompRef.current = {
+            id: compId,
+            startMouseX: e.clientX,
+            startMouseY: e.clientY,
+            startCompX: comp.x,
+            startCompY: comp.y,
+          };
+        }
       }
+    }
+  };
+
+  const handleComponentContextMenu = (compId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (selectedCompIds.has(compId) && selectedCompIds.size > 1) {
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: 'group',
+      });
+    } else {
+      setSelectedCompId(compId);
+      setSelectedCompIds(new Set([compId]));
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: 'single',
+        compId,
+      });
     }
   };
 
   // --- Canvas Mouse Handlers (Pan & Wire Drawing) ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.button === 2 || isSpacePressed.current || activeTool === 'move') {
+    // 3. Canvas Panning moved strictly to Middle Mouse Button (button === 1), Space+Drag, or Move tool (Requirement 3)
+    if (e.button === 1 || (isSpacePressed.current && e.button === 0) || (activeTool === 'move' && e.button === 0)) {
       isPanning.current = true;
       panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-    } else if (e.button === 0) {
-      // Left click on empty canvas deselects component/wire or clears wire draft
+      return;
+    }
+
+    // 1. Canvas Context Menu on Right Click (button === 2)
+    if (e.button === 2) {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: 'canvas',
+      });
+      return;
+    }
+
+    // Left Click on Empty Canvas (button === 0)
+    if (e.button === 0) {
+      if (activeTool === 'text') {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const worldX = Math.round((e.clientX - rect.left - pan.x) / zoom / 10) * 10;
+        const worldY = Math.round((e.clientY - rect.top - pan.y) / zoom / 10) * 10;
+        const newTextId = `label_${Date.now().toString().slice(-4)}`;
+        const newTextComp: CircuitComponent = {
+          id: newTextId,
+          kind: 'text_label',
+          x: worldX,
+          y: worldY,
+          props: {
+            text: 'Label',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 16,
+            color: '#f4f4f5',
+            bold: false,
+            italic: false,
+            underline: false,
+          },
+        };
+        setComponents((prev) => [...prev, newTextComp]);
+        setSelectedCompId(newTextId);
+        setSelectedCompIds(new Set([newTextId]));
+        setActiveTool('select');
+        setIsDirty(true);
+        setStatusMessage('Added Text Label');
+        return;
+      }
+
       if (activeTool === 'select') {
-        setSelectedCompId(null);
-        setSelectedWireId(null);
+        // Start rubber-band selection box (Requirement 2)
+        setSelectionBox({
+          startX: e.clientX,
+          startY: e.clientY,
+          currentX: e.clientX,
+          currentY: e.clientY,
+        });
+        if (!e.shiftKey) {
+          setSelectedCompId(null);
+          setSelectedCompIds(new Set());
+          setSelectedWireId(null);
+        }
       } else if (activeTool === 'wire') {
         setWireDraftStart(null);
       }
@@ -2063,10 +2390,48 @@ export default function App() {
       x: (e.clientX - rect.left - pan.x) / zoom,
       y: (e.clientY - rect.top - pan.y) / zoom,
     });
+
+    // Update Rubber-Band Multi-Selection Box (Requirement 2)
+    if (selectionBox) {
+      setSelectionBox((prev) => (prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null));
+
+      const sX = Math.min(selectionBox.startX, e.clientX);
+      const sY = Math.min(selectionBox.startY, e.clientY);
+      const eX = Math.max(selectionBox.startX, e.clientX);
+      const eY = Math.max(selectionBox.startY, e.clientY);
+
+      const wX1 = (sX - rect.left - pan.x) / zoom;
+      const wY1 = (sY - rect.top - pan.y) / zoom;
+      const wX2 = (eX - rect.left - pan.x) / zoom;
+      const wY2 = (eY - rect.top - pan.y) / zoom;
+
+      const matching = new Set<string>();
+      for (const comp of components) {
+        const dims = getComponentBoundingSize(comp.kind);
+        const cx1 = comp.x;
+        const cy1 = comp.y;
+        const cx2 = comp.x + dims.w;
+        const cy2 = comp.y + dims.h;
+
+        if (cx1 < wX2 && cx2 > wX1 && cy1 < wY2 && cy2 > wY1) {
+          matching.add(comp.id);
+        }
+      }
+
+      setSelectedCompIds(matching);
+      if (matching.size === 1) {
+        setSelectedCompId(Array.from(matching)[0]);
+      } else {
+        setSelectedCompId(null);
+      }
+    }
   };
 
   const handleCanvasMouseUp = () => {
     isPanning.current = false;
+    if (selectionBox) {
+      setSelectionBox(null);
+    }
   };
 
   const handleCanvasWheel = (e: React.WheelEvent) => {
@@ -2431,7 +2796,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Menubar: View & Window (Consolidated) */}
+            {/* Menubar: View */}
             <div className="relative">
               <button
                 type="button"
@@ -2446,7 +2811,7 @@ export default function App() {
                     : 'text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]'
                 }`}
               >
-                View & Window
+                View
               </button>
 
               {activeMenu === 'view' && (
@@ -2786,26 +3151,43 @@ export default function App() {
                 </Tooltip>
               )}
 
-              {/* Quick Action: Upload */}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      disabled={isCompiling}
-                      onClick={() => handleCompile()}
-                      className="h-7 w-7 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded flex items-center justify-center transition-colors disabled:opacity-40"
-                    >
-                      {isCompiling ? (
-                        <div className="w-3 h-3 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
-                      ) : (
-                        <GoZap className="text-sm" />
-                      )}
-                    </button>
-                  }
-                />
-                <TooltipContent className="text-xs">Compile & Flash to ATmega328P</TooltipContent>
-              </Tooltip>
+              {/* Quick Action: Upload Split Button */}
+              <div className="flex items-center">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        disabled={isCompiling}
+                        onClick={() => handleCompile()}
+                        className="h-7 px-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded-l flex items-center justify-center transition-colors disabled:opacity-40"
+                      >
+                        {isCompiling ? (
+                          <div className="w-3 h-3 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
+                        ) : (
+                          <GoZap className="text-sm" />
+                        )}
+                      </button>
+                    }
+                  />
+                  <TooltipContent className="text-xs">Compile & Flash Sketch</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        onClick={() => setShowUploadModal(true)}
+                        className="h-7 px-1 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded-r flex items-center justify-center transition-colors border-l border-[#27272a]/80"
+                      >
+                        <ChevronDown className="w-2.5 h-2.5" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent className="text-xs">Upload Target (Select Board & COM Port)</TooltipContent>
+                </Tooltip>
+              </div>
 
               {/* Quick Action: Reset */}
               <Tooltip>
@@ -3058,6 +3440,26 @@ export default function App() {
                 />
                 <TooltipContent className="text-xs">Eraser Tool (E) • Click wire or component to delete</TooltipContent>
               </Tooltip>
+
+              {/* 5. Text Label Tool */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => setActiveTool('text')}
+                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                        activeTool === 'text'
+                          ? 'bg-[#27272a] text-zinc-100'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                      }`}
+                    >
+                      <Type className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent className="text-xs">Text Label Tool (T) • Click canvas to place text</TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Subtle Divider */}
@@ -3071,10 +3473,10 @@ export default function App() {
                   render={
                     <button
                       type="button"
-                      disabled={!selectedCompId}
+                      disabled={!selectedCompId && selectedCompIds.size === 0}
                       onClick={handleRotateSelected}
                       className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
-                        selectedCompId
+                        selectedCompId || selectedCompIds.size > 0
                           ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
                           : 'text-zinc-600 cursor-not-allowed opacity-30'
                       }`}
@@ -3092,10 +3494,10 @@ export default function App() {
                   render={
                     <button
                       type="button"
-                      disabled={!selectedCompId}
+                      disabled={!selectedCompId && selectedCompIds.size === 0}
                       onClick={handleFlipSelected}
                       className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
-                        selectedCompId
+                        selectedCompId || selectedCompIds.size > 0
                           ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
                           : 'text-zinc-600 cursor-not-allowed opacity-30'
                       }`}
@@ -3394,7 +3796,7 @@ export default function App() {
                   >
                     {/* Circuit Components */}
                     {components.map((c) => {
-                      const isSelected = selectedCompId === c.id;
+                      const isSelected = selectedCompId === c.id || selectedCompIds.has(c.id);
                       const outlineClass = isSelected
                         ? 'outline outline-1 outline-white/85 ring-1 ring-white/40 shadow-sm shadow-white/5 rounded'
                         : activeTool === 'select'
@@ -3424,13 +3826,17 @@ export default function App() {
                         onMouseEnter: () => setCanvasHoverInfo(getComponentHoverInfo(c)),
                         onMouseLeave: () => setCanvasHoverInfo(''),
                         onMouseDown: (e: React.MouseEvent) => handleComponentMouseDown(c.id, e),
+                        onContextMenu: (e: React.MouseEvent) => handleComponentContextMenu(c.id, e),
                         onClick: (e: React.MouseEvent) => {
                           e.stopPropagation();
                           if (activeTool === 'eraser') {
                             handleDeleteComponent(c.id);
                           } else {
-                            setSelectedCompId(c.id);
-                            setSelectedWireId(null);
+                            if (!e.shiftKey) {
+                              setSelectedCompId(c.id);
+                              setSelectedCompIds(new Set([c.id]));
+                              setSelectedWireId(null);
+                            }
                           }
                         },
                       };
@@ -3541,6 +3947,29 @@ export default function App() {
                         );
                       }
 
+                      if (c.kind === 'text_label') {
+                        return (
+                          <div {...wrapperProps}>
+                            <TextLabel
+                              id={c.id}
+                              text={c.props.text}
+                              color={c.props.color}
+                              fontFamily={c.props.fontFamily}
+                              fontSize={c.props.fontSize}
+                              bold={c.props.bold}
+                              italic={c.props.italic}
+                              underline={c.props.underline}
+                              isSelected={isSelected}
+                              onTextChange={(newText) => {
+                                handleUpdateComponent(c.id, {
+                                  props: { ...c.props, text: newText },
+                                });
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
                       return null;
                     })}
 
@@ -3607,6 +4036,19 @@ export default function App() {
                   <div className="absolute bottom-3 left-3 z-30 pointer-events-none select-none px-2.5 py-1 rounded bg-[#0c0d10]/85 border border-[#222226]/60 backdrop-blur-sm text-[11px] font-mono text-zinc-500 tracking-wide transition-opacity">
                     {canvasHoverInfo || `Canvas • (${Math.round(mouseCanvasPos.x)}, ${Math.round(mouseCanvasPos.y)}) • ${Math.round(zoom * 100)}%`}
                   </div>
+
+                  {/* Rubber-band Multi-Selection Box */}
+                  {selectionBox && (
+                    <div
+                      className="fixed border border-zinc-400 bg-zinc-500/15 pointer-events-none rounded-xs z-30"
+                      style={{
+                        left: `${Math.min(selectionBox.startX, selectionBox.currentX)}px`,
+                        top: `${Math.min(selectionBox.startY, selectionBox.currentY)}px`,
+                        width: `${Math.abs(selectionBox.currentX - selectionBox.startX)}px`,
+                        height: `${Math.abs(selectionBox.currentY - selectionBox.startY)}px`,
+                      }}
+                    />
+                  )}
                 </main>
               </ResizablePanel>
 
@@ -3977,6 +4419,41 @@ export default function App() {
                               Potentiometer
                             </span>
                           </button>
+
+                          {/* 7. Text Label */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `label_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                {
+                                  id,
+                                  kind: 'text_label',
+                                  x: 300,
+                                  y: 60,
+                                  props: {
+                                    text: 'Circuit Note',
+                                    fontFamily: 'Inter, sans-serif',
+                                    fontSize: 16,
+                                    color: '#f4f4f5',
+                                    bold: false,
+                                    italic: false,
+                                    underline: false,
+                                  },
+                                },
+                              ]);
+                              setSelectedCompId(id);
+                              setSelectedCompIds(new Set([id]));
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <Type className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" />
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Text Label
+                            </span>
+                          </button>
                         </div>
                       </ScrollArea>
                     </aside>
@@ -4081,6 +4558,78 @@ export default function App() {
           onDiscard={handleCloseDiscard}
           onCancel={handleCloseCancel}
           isSaving={isSavingOnClose}
+        />
+
+        {/* Canvas & Component Context Menu */}
+        {contextMenu && (
+          <CanvasContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            type={contextMenu.type}
+            selectedCount={selectedCompIds.size}
+            componentName={
+              contextMenu.compId
+                ? components.find((c) => c.id === contextMenu.compId)?.id
+                : undefined
+            }
+            onClose={() => setContextMenu(null)}
+            onCopy={handleEditCopy}
+            onCut={handleEditCut}
+            onPaste={handlePasteComponent}
+            onDelete={handleDeleteSelected}
+            onRotate={handleRotateSelected}
+            onFlip={handleFlipSelected}
+            onRename={() => {
+              if (contextMenu.compId) {
+                const comp = components.find((c) => c.id === contextMenu.compId);
+                if (comp) {
+                  const currentName = comp.props?.name || comp.props?.text || comp.id;
+                  const newName = window.prompt('Rename Component:', currentName);
+                  if (newName && newName.trim()) {
+                    handleUpdateComponent(comp.id, {
+                      props: { ...comp.props, name: newName.trim(), text: newName.trim() },
+                    });
+                  }
+                }
+              }
+            }}
+            onProperties={() => {
+              if (contextMenu.compId) {
+                setSelectedCompId(contextMenu.compId);
+                setSelectedCompIds(new Set([contextMenu.compId]));
+                setShowInspector(true);
+              }
+            }}
+          />
+        )}
+
+        {/* Upload Target Configuration Modal */}
+        <UploadModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          components={components}
+          files={projectFiles}
+          currentSketchCode={sketchCode}
+          isCompiling={isCompiling}
+          onUpload={async (targetBoardId, comPort, fileName) => {
+            let codeToFlash = sketchCode;
+            if (fileName !== 'sketch.ino' && fileContents[fileName]) {
+              codeToFlash = fileContents[fileName];
+            }
+            setStatusMessage(`Flashing ${fileName} to ${targetBoardId} (${comPort})...`);
+            setSerialLogs((prev) => `${prev.trimEnd()}\n[Upload] Flashing ${fileName} to ${comPort} (${targetBoardId})...\n`);
+            return await handleCompile();
+          }}
+          onUpdateBoardPort={(boardId, newPort, linkedFile) => {
+            handleUpdateComponent(boardId, {
+              props: {
+                ...components.find((c) => c.id === boardId)?.props,
+                comPort: newPort,
+                port: newPort,
+                ...(linkedFile ? { linkedFile } : {}),
+              },
+            });
+          }}
         />
 
         {/* Modal Dialog: About MicroRustSim */}

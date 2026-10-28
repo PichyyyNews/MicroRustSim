@@ -14,7 +14,7 @@ export interface WireLayerProps {
   wires: CircuitWire[];
   getPinWorldPos: (compId: string, pinName: string) => { x: number; y: number } | null;
   draggingWire: { fromX: number; fromY: number; toX: number; toY: number; color: string } | null;
-  activeTool: 'select' | 'move' | 'wire' | 'eraser';
+  activeTool: 'select' | 'move' | 'wire' | 'eraser' | 'text';
   globalRoutingMode?: 'curve' | 'ortho';
   selectedWireId?: string | null;
   onWireClick?: (wireId: string) => void;

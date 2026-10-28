@@ -567,7 +567,23 @@ pub fn run() {
                         match c.kind.as_str() {
                             "led" => {
                                 let color = c.props.get("color").and_then(|v| v.as_str()).unwrap_or("red");
-                                engine.leds.insert(c.id.clone(), components::LedComponent::new(c.id, color));
+                                let vf = c.props.get("vf")
+                                    .or_else(|| c.props.get("forwardVoltage"))
+                                    .or_else(|| c.props.get("forward_voltage"))
+                                    .and_then(|v| {
+                                        if let Some(f) = v.as_f64() {
+                                            Some(f as f32)
+                                        } else if let Some(s) = v.as_str() {
+                                            s.parse::<f32>().ok()
+                                        } else {
+                                            None
+                                        }
+                                    });
+                                let mut led_comp = components::LedComponent::new(c.id.clone(), color);
+                                if let Some(vf_val) = vf {
+                                    led_comp.custom_forward_voltage = Some(vf_val);
+                                }
+                                engine.leds.insert(c.id.clone(), led_comp);
                             }
                             "resistor" => {
                                 let ohms = c.props.get("ohms")

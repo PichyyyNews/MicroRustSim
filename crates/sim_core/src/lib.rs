@@ -357,6 +357,8 @@ pub mod components {
         pub color: String, // "red", "green", "blue", "yellow", "white"
         pub is_lit: bool,
         pub brightness: f32, // 0.0 to 1.0
+        #[serde(default)]
+        pub custom_forward_voltage: Option<f32>,
     }
 
     impl LedComponent {
@@ -366,10 +368,14 @@ pub mod components {
                 color: color.into(),
                 is_lit: false,
                 brightness: 0.0,
+                custom_forward_voltage: None,
             }
         }
 
         pub fn forward_voltage(&self) -> f32 {
+            if let Some(vf) = self.custom_forward_voltage {
+                return vf;
+            }
             let c = self.color.to_lowercase();
             match c.as_str() {
                 "red" | "#ef4444" => 1.8,

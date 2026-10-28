@@ -4,7 +4,8 @@ export type ComponentKind =
   | 'led' 
   | 'resistor' 
   | 'pushbutton' 
-  | 'potentiometer';
+  | 'potentiometer'
+  | 'text_label';
 
 export interface CircuitComponent {
   id: string;

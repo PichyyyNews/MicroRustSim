@@ -495,7 +495,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
 
                   {/* LED */}
                   {selectedComp.kind === 'led' && (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500">Color</span>
                         <div className="flex items-center gap-1.5">
@@ -523,11 +523,51 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between py-0.5">
-                        <span className="text-zinc-500">Forward Drop (Vf)</span>
-                        <span className="font-mono text-zinc-300">
-                          {selectedComp.props.vf || 2.0} V
-                        </span>
+                      {/* Interactive Forward Drop (Vf) */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Forward Drop (Vf)</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0.5"
+                              max="5.0"
+                              step="0.1"
+                              value={selectedComp.props.vf ?? 2.0}
+                              onChange={(e) => {
+                                const vfVal = Math.max(0.5, Math.min(5.0, parseFloat(e.target.value) || 2.0));
+                                onUpdateComponent(selectedComp.id, {
+                                  props: { ...selectedComp.props, vf: vfVal },
+                                });
+                              }}
+                              className="w-16 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                            />
+                            <span className="text-zinc-400 font-mono text-[11px]">V</span>
+                          </div>
+                        </div>
+
+                        {/* Quick Vf Presets */}
+                        <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono">
+                          <span className="text-zinc-500 mr-0.5">Presets:</span>
+                          {[1.8, 2.0, 2.2, 3.0, 3.2].map((presetVf) => (
+                            <button
+                              key={presetVf}
+                              type="button"
+                              onClick={() =>
+                                onUpdateComponent(selectedComp.id, {
+                                  props: { ...selectedComp.props, vf: presetVf },
+                                })
+                              }
+                              className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                (selectedComp.props.vf ?? 2.0) === presetVf
+                                  ? 'bg-zinc-800 border-zinc-500 text-white font-medium'
+                                  : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {presetVf.toFixed(1)}V
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between py-0.5">
@@ -537,9 +577,165 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     </div>
                   )}
 
+                  {/* Text Label Controls */}
+                  {selectedComp.kind === 'text_label' && (
+                    <div className="space-y-3">
+                      {/* Text Input */}
+                      <div className="space-y-1">
+                        <span className="text-zinc-500">Label Text</span>
+                        <input
+                          type="text"
+                          value={selectedComp.props.text ?? 'Text Label'}
+                          onChange={(e) =>
+                            onUpdateComponent(selectedComp.id, {
+                              props: { ...selectedComp.props, text: e.target.value },
+                            })
+                          }
+                          className="w-full h-7 px-2 bg-[#18181b] border border-[#27272a] rounded text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                        />
+                      </div>
+
+                      {/* Font Family */}
+                      <div className="space-y-1">
+                        <span className="text-zinc-500">Font Family</span>
+                        <select
+                          value={selectedComp.props.fontFamily ?? 'Inter, sans-serif'}
+                          onChange={(e) =>
+                            onUpdateComponent(selectedComp.id, {
+                              props: { ...selectedComp.props, fontFamily: e.target.value },
+                            })
+                          }
+                          className="w-full h-7 px-2 bg-[#18181b] border border-[#27272a] rounded text-xs text-zinc-200 focus:border-zinc-500 outline-none"
+                        >
+                          <option value="Inter, -apple-system, sans-serif">Sans-Serif (System)</option>
+                          <option value="Consolas, 'Courier New', monospace">Monospace (Code)</option>
+                          <option value="'Segoe UI', Tahoma, sans-serif">Segoe UI</option>
+                          <option value="Arial, sans-serif">Arial</option>
+                          <option value="Georgia, 'Times New Roman', serif">Serif</option>
+                        </select>
+                      </div>
+
+                      {/* Font Size & Styles */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-500">Size & Style</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="10"
+                            max="72"
+                            value={selectedComp.props.fontSize ?? 16}
+                            onChange={(e) =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: {
+                                  ...selectedComp.props,
+                                  fontSize: Math.max(8, parseInt(e.target.value, 10) || 14),
+                                },
+                              })
+                            }
+                            className="w-12 h-6 px-1 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                          />
+                          <span className="text-zinc-500 text-[10px]">px</span>
+
+                          {/* Bold */}
+                          <button
+                            type="button"
+                            title="Bold"
+                            onClick={() =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...selectedComp.props, bold: !selectedComp.props.bold },
+                              })
+                            }
+                            className={`w-6 h-6 rounded border font-bold text-xs transition-colors ${
+                              selectedComp.props.bold
+                                ? 'bg-zinc-800 border-zinc-500 text-white'
+                                : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            B
+                          </button>
+
+                          {/* Italic */}
+                          <button
+                            type="button"
+                            title="Italic"
+                            onClick={() =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...selectedComp.props, italic: !selectedComp.props.italic },
+                              })
+                            }
+                            className={`w-6 h-6 rounded border italic text-xs transition-colors ${
+                              selectedComp.props.italic
+                                ? 'bg-zinc-800 border-zinc-500 text-white'
+                                : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            I
+                          </button>
+
+                          {/* Underline */}
+                          <button
+                            type="button"
+                            title="Underline"
+                            onClick={() =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...selectedComp.props, underline: !selectedComp.props.underline },
+                              })
+                            }
+                            className={`w-6 h-6 rounded border underline text-xs transition-colors ${
+                              selectedComp.props.underline
+                                ? 'bg-zinc-800 border-zinc-500 text-white'
+                                : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                          >
+                            U
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Text Color Swatches */}
+                      <div className="space-y-1">
+                        <span className="text-zinc-500">Text Color</span>
+                        <div className="flex items-center gap-1.5">
+                          {['#f4f4f5', '#a1a1aa', '#10b981', '#3b82f6', '#ef4444', '#eab308'].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() =>
+                                onUpdateComponent(selectedComp.id, {
+                                  props: { ...selectedComp.props, color: c },
+                                })
+                              }
+                              className={`w-5 h-5 rounded-full border transition-transform hover:scale-115 ${
+                                (selectedComp.props.color || '#f4f4f5') === c
+                                  ? 'border-white scale-110'
+                                  : 'border-transparent'
+                              }`}
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Arduino Uno */}
                   {selectedComp.kind === 'arduino_uno' && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-500">Port (COM)</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={selectedComp.props.comPort || selectedComp.props.port || 'COM1'}
+                            onChange={(e) =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...selectedComp.props, comPort: e.target.value },
+                              })
+                            }
+                            className="w-20 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                          />
+                        </div>
+                      </div>
                       <div className="flex justify-between py-0.5">
                         <span className="text-zinc-500">Processor</span>
                         <span className="font-mono text-zinc-200">ATmega328P @ 16 MHz</span>
