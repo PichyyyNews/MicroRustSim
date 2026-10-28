@@ -167,3 +167,21 @@ body {
 .monaco-editor .margin {
   background-color: #121215 !important;
 }
+
+/* Monaco Editor Find Widget & Hover Fix: Prevent tooltip hover flicker */
+.monaco-editor .monaco-hover {
+  pointer-events: none !important;
+}
+
+.monaco-editor .find-widget {
+  z-index: 50 !important;
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+.monaco-editor .find-widget .button,
+.monaco-editor .find-widget .button.close-button {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}

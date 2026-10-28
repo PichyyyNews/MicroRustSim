@@ -84,6 +84,7 @@ import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
 import { OpenProjectModal } from './components/OpenProjectModal';
 import { SettingsModal } from './components/SettingsModal';
+import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import {
   CircuitComponent,
@@ -223,6 +224,7 @@ export default function App() {
   const [autoSaveOnRun, setAutoSaveOnRun] = useState(true);
   const [autoScrollSerial, setAutoScrollSerial] = useState(true);
   const [canvasGridVisible, setCanvasGridVisible] = useState(true);
+  const [clipboardComponent, setClipboardComponent] = useState<CircuitComponent | null>(null);
   const editorRef = useRef<any>(null);
   const [canvasHoverInfo, setCanvasHoverInfo] = useState<string>('');
   const menubarRef = useRef<HTMLDivElement>(null);
@@ -1532,6 +1534,102 @@ export default function App() {
     );
   }, [selectedCompId]);
 
+  // --- Component Copy & Paste Helpers ---
+  const handleCopyComponent = useCallback((comp: CircuitComponent) => {
+    setClipboardComponent({ ...comp });
+    setStatusMessage(`Copied ${comp.kind} to clipboard`);
+  }, []);
+
+  const handlePasteComponent = useCallback(() => {
+    if (!clipboardComponent) return;
+    const baseKind = clipboardComponent.kind;
+    const prefix =
+      baseKind === 'arduino_uno'
+        ? 'uno'
+        : baseKind === 'breadboard'
+        ? 'bb'
+        : baseKind === 'led'
+        ? 'led'
+        : baseKind === 'resistor'
+        ? 'r'
+        : baseKind === 'pushbutton'
+        ? 'btn'
+        : 'pot';
+    const newId = `${prefix}_${Date.now().toString().slice(-4)}`;
+    const newComp: CircuitComponent = {
+      ...clipboardComponent,
+      id: newId,
+      x: clipboardComponent.x + 30,
+      y: clipboardComponent.y + 30,
+      props: { ...(clipboardComponent.props || {}) },
+    };
+
+    setComponents((prev) => [...prev, newComp]);
+    setSelectedCompId(newId);
+    setSelectedWireId(null);
+    setIsDirty(true);
+    setStatusMessage(`Pasted ${newComp.kind} (${newId})`);
+
+    // Sync to backend engine
+    if (newComp.kind === 'led') {
+      tauriInvoke('add_led', { id: newId, color: newComp.props?.color || '#ef4444' });
+    } else if (newComp.kind === 'resistor') {
+      tauriInvoke('add_resistor', { id: newId, ohms: newComp.props?.ohms || 220 });
+    } else if (newComp.kind === 'pushbutton') {
+      tauriInvoke('add_button', { id: newId });
+    } else if (newComp.kind === 'potentiometer') {
+      tauriInvoke('add_potentiometer', { id: newId });
+    }
+  }, [clipboardComponent]);
+
+  const handleAddComponentByType = useCallback(
+    (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot') => {
+      if (type === 'uno') {
+        const id = `uno_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'arduino_uno', x: 100, y: 100, props: {} }]);
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Arduino Uno');
+      } else if (type === 'bb') {
+        const id = `bb_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'breadboard', x: 300, y: 100, props: {} }]);
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Breadboard');
+      } else if (type === 'led') {
+        const id = `led_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'led', x: 500, y: 80, props: { color: '#ef4444', vf: 2.0 } }]);
+        tauriInvoke('add_led', { id, color: '#ef4444' });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Red LED');
+      } else if (type === 'resistor') {
+        const id = `r_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'resistor', x: 580, y: 80, props: { ohms: 220 } }]);
+        tauriInvoke('add_resistor', { id, ohms: 220 });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Resistor (220Ω)');
+      } else if (type === 'btn') {
+        const id = `btn_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'pushbutton', x: 680, y: 80, props: {} }]);
+        tauriInvoke('add_button', { id });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Pushbutton');
+      } else if (type === 'pot') {
+        const id = `pot_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'potentiometer', x: 760, y: 80, props: { value: 0.5 } }]);
+        tauriInvoke('add_potentiometer', { id });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Potentiometer');
+      }
+      setIsDirty(true);
+    },
+    [components.length]
+  );
+
   // --- Canva-Style Segment & Waypoint Drag Handlers ---
   const handleStartDragSegment = useCallback(
     (
@@ -1640,6 +1738,34 @@ export default function App() {
         return;
       }
 
+      // Component Copy / Paste / Duplicate on Canvas
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        if (selectedCompId) {
+          e.preventDefault();
+          const comp = components.find((c) => c.id === selectedCompId);
+          if (comp) handleCopyComponent(comp);
+          return;
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+        if (clipboardComponent) {
+          e.preventDefault();
+          handlePasteComponent();
+          return;
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+        if (selectedCompId) {
+          e.preventDefault();
+          const comp = components.find((c) => c.id === selectedCompId);
+          if (comp) {
+            handleCopyComponent(comp);
+            setTimeout(() => handlePasteComponent(), 10);
+          }
+          return;
+        }
+      }
+
       if (e.key === 'v' || e.key === 'V') {
         setActiveTool('select');
       } else if (e.key === 'm' || e.key === 'M') {
@@ -1666,6 +1792,10 @@ export default function App() {
   }, [
     selectedCompId,
     selectedWireId,
+    components,
+    clipboardComponent,
+    handleCopyComponent,
+    handlePasteComponent,
     handleRotateSelected,
     handleFlipSelected,
     handleDeleteComponent,
@@ -1697,15 +1827,24 @@ export default function App() {
       document.execCommand('cut');
       setStatusMessage('Cut to clipboard');
     } else if (selectedCompId) {
+      const comp = components.find((c) => c.id === selectedCompId);
+      if (comp) handleCopyComponent(comp);
       handleDeleteComponent(selectedCompId);
-      setStatusMessage('Element deleted');
+      setStatusMessage('Component cut to clipboard');
     } else if (selectedWireId) {
       handleDeleteWire(selectedWireId);
       setStatusMessage('Wire deleted');
     }
-  }, [selectedCompId, selectedWireId, handleDeleteComponent, handleDeleteWire]);
+  }, [selectedCompId, selectedWireId, components, handleCopyComponent, handleDeleteComponent, handleDeleteWire]);
 
   const handleEditCopy = useCallback(() => {
+    if (selectedCompId) {
+      const comp = components.find((c) => c.id === selectedCompId);
+      if (comp) {
+        handleCopyComponent(comp);
+        return;
+      }
+    }
     if (editorRef.current) {
       editorRef.current.focus();
       const selection = editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection());
@@ -1721,9 +1860,15 @@ export default function App() {
       navigator.clipboard.writeText(sketchCode);
       setStatusMessage('Sketch code copied');
     }
-  }, [sketchCode]);
+  }, [selectedCompId, components, handleCopyComponent, sketchCode]);
 
   const handleEditPaste = useCallback(async () => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (clipboardComponent && !isEditorActive) {
+      handlePasteComponent();
+      return;
+    }
     try {
       const text = await navigator.clipboard.readText();
       if (editorRef.current && text) {
@@ -1734,7 +1879,7 @@ export default function App() {
     } catch (err) {
       console.warn('Paste failed:', err);
     }
-  }, []);
+  }, [clipboardComponent, handlePasteComponent]);
 
   const handleEditFind = useCallback(() => {
     if (!showEditor) setShowEditor(true);
@@ -1845,8 +1990,17 @@ export default function App() {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // Exponential smooth zoom factor based on deltaY
-      const zoomFactor = Math.pow(0.996, e.deltaY);
+      // Normalize wheel delta across physical notched mice, high-DPI mice, and laptop touchpads
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) {
+        delta *= 16;
+      } else if (e.deltaMode === 2) {
+        delta *= 40;
+      }
+
+      // Clamp delta per event to prevent jarring warp/jumps on notched scroll wheels
+      const clampedDelta = Math.max(-25, Math.min(25, delta));
+      const zoomFactor = Math.pow(0.997, clampedDelta);
 
       setZoom((prevZoom) => {
         const nextZoom = Math.min(3.5, Math.max(0.25, prevZoom * zoomFactor));
@@ -2905,6 +3059,38 @@ export default function App() {
                     } (Click to toggle)`}
               </TooltipContent>
             </Tooltip>
+          </div>
+
+          {/* Right Toolbar: VS Code-Style Command Search Bar directly above Components Palette */}
+          <div className="flex items-center gap-2">
+            <CommandPaletteSearch
+              isRunning={isRunning}
+              isCompiling={isCompiling}
+              onRunToggle={handleRunToggle}
+              onCompile={() => handleCompile()}
+              onReset={() => {
+                setIsRunning(false);
+                tauriInvoke('reset_simulation');
+                setLitLeds(new Set());
+                setLedBrightness({});
+                setCircuitFaults([]);
+                setLogicHistory([]);
+                setPin2History([]);
+                setPinA0History([]);
+                setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
+                setStatusMessage('MCU Reset');
+              }}
+              onAddComponent={handleAddComponentByType}
+              onToggleEditor={() => setShowEditor((prev) => !prev)}
+              onToggleExplorer={() => setShowExplorer((prev) => !prev)}
+              onTogglePalette={() => setShowPalette((prev) => !prev)}
+              onSwitchTab={(tab) => setBottomTab(tab)}
+              onOpenSettings={() => setShowSettingsModal(true)}
+              onSaveProject={handleSaveProject}
+              onOpenFolder={handleOpenNativeFolder}
+              onNewProject={() => setShowNewProjectModal(true)}
+              onSelectTool={(tool: 'select' | 'move' | 'wire' | 'eraser') => setActiveTool(tool)}
+            />
           </div>
         </div>
 

@@ -144,13 +144,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs select-none"
-      onClick={onClose}
+      className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center select-none"
     >
       <div
         ref={modalBoxRef}
-        onClick={(e) => e.stopPropagation()}
-        className="w-[840px] h-[580px] max-w-[94vw] max-h-[92vh] bg-[#121215] border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden outline-none ring-0 will-change-transform"
+        className="pointer-events-auto w-[840px] h-[580px] max-w-[94vw] max-h-[92vh] bg-[#141417]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden outline-none ring-0 will-change-transform"
         style={{ transform: 'translate3d(0px, 0px, 0px)' }}
       >
         {/* Draggable Header */}
