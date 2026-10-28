@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   GoX,
   GoClock,
+  GoAlert,
 } from 'react-icons/go';
 import {
   FolderOpen,
@@ -13,7 +14,7 @@ import { RecentProject } from '../types';
 export interface OpenProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpen: (path: string) => void;
+  onOpen: (path: string) => Promise<void> | void;
   onBrowseFolder: () => Promise<string | null>;
   recentProjects: RecentProject[];
 }
@@ -26,6 +27,8 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
   recentProjects,
 }) => {
   const [projectPathInput, setProjectPathInput] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
 
   // 0-Latency Dragging via Direct DOM Transform
   const modalBoxRef = useRef<HTMLDivElement>(null);
@@ -39,6 +42,8 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
       if (modalBoxRef.current) {
         modalBoxRef.current.style.transform = 'translate3d(0px, 0px, 0px)';
       }
+      setErrorMessage(null);
+      setIsOpening(false);
     }
   }, [isOpen]);
 
@@ -86,17 +91,52 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
   };
 
   const handleBrowse = async () => {
-    const selected = await onBrowseFolder();
-    if (selected) {
-      setProjectPathInput(selected);
-      onOpen(selected);
+    try {
+      const selected = await onBrowseFolder();
+      if (selected) {
+        setProjectPathInput(selected);
+        setErrorMessage(null);
+        setIsOpening(true);
+        await onOpen(selected);
+      }
+    } catch (err: any) {
+      const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
+      setErrorMessage(`ไม่สามารถเปิดโฟลเดอร์นี้ได้: ${rawMsg}`);
+    } finally {
+      setIsOpening(false);
     }
   };
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (projectPathInput.trim()) {
-      onOpen(projectPathInput.trim());
+    const trimmed = projectPathInput.trim();
+    if (!trimmed) {
+      setErrorMessage('กรุณาระบุที่อยู่โฟลเดอร์โปรเจกต์ (Please specify a project directory)');
+      return;
+    }
+    setErrorMessage(null);
+    setIsOpening(true);
+    try {
+      await onOpen(trimmed);
+    } catch (err: any) {
+      const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
+      setErrorMessage(`ไม่สามารถเปิดไดเรกทอรีนี้ได้: ${rawMsg}`);
+    } finally {
+      setIsOpening(false);
+    }
+  };
+
+  const handleSelectRecent = async (path: string) => {
+    setProjectPathInput(path);
+    setErrorMessage(null);
+    setIsOpening(true);
+    try {
+      await onOpen(path);
+    } catch (err: any) {
+      const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
+      setErrorMessage(`ไม่พบโฟลเดอร์โปรเจกต์: ${rawMsg}`);
+    } finally {
+      setIsOpening(false);
     }
   };
 
@@ -139,9 +179,16 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
             <div className="flex gap-1.5">
               <Input
                 value={projectPathInput}
-                onChange={(e) => setProjectPathInput(e.target.value)}
+                onChange={(e) => {
+                  setProjectPathInput(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 placeholder="e.g. C:/MicroRustSim/Projects/Traffic_Light"
-                className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs flex-1 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:border-zinc-500 rounded-md"
+                className={`bg-[#121215] text-zinc-100 font-mono text-xs flex-1 focus:outline-none focus:ring-0 focus-visible:ring-0 rounded-md transition-colors ${
+                  errorMessage
+                    ? 'border-red-500/70 focus-visible:border-red-500'
+                    : 'border-zinc-800 focus-visible:border-zinc-500'
+                }`}
               />
               <Button
                 type="button"
@@ -157,6 +204,25 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
             </div>
           </div>
 
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-2.5 bg-red-950/35 border border-red-500/35 rounded-lg flex items-start gap-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+              <GoAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex-1 text-red-200 leading-relaxed">
+                <span className="font-semibold text-red-300 text-[11px] block">ไม่สามารถเปิดโปรเจกต์ได้</span>
+                <span className="text-[11px] text-red-200/90 mt-0.5 block select-text font-sans">{errorMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-red-400 hover:text-red-200 p-0.5 rounded hover:bg-red-900/40 transition-colors shrink-0"
+                title="ปิดการแจ้งเตือน"
+              >
+                <GoX className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {recentProjects.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
@@ -167,10 +233,7 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
                 {recentProjects.map((rec) => (
                   <div
                     key={rec.path}
-                    onClick={() => {
-                      setProjectPathInput(rec.path);
-                      onOpen(rec.path);
-                    }}
+                    onClick={() => handleSelectRecent(rec.path)}
                     className="px-3 py-2 hover:bg-zinc-800/50 cursor-pointer flex items-center justify-between transition-colors group"
                   >
                     <span className="font-medium text-zinc-200 text-xs group-hover:text-white truncate">
@@ -191,6 +254,7 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
               variant="outline"
               size="sm"
               onClick={onClose}
+              disabled={isOpening}
               className="border-zinc-800 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs rounded-md"
             >
               Cancel
@@ -198,9 +262,17 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
             <Button
               type="submit"
               size="sm"
-              className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3.5 shadow-none transition-colors rounded-md"
+              disabled={isOpening}
+              className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3.5 shadow-none transition-colors rounded-md disabled:opacity-50 flex items-center gap-1.5"
             >
-              Open Project
+              {isOpening ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                  <span>Opening...</span>
+                </>
+              ) : (
+                <span>Open Project</span>
+              )}
             </Button>
           </div>
         </form>

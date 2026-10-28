@@ -103,6 +103,35 @@ async function tauriInvoke<T>(cmd: string, args: Record<string, any> = {}): Prom
   }
 }
 
+async function tauriInvokeStrict<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<T>(cmd, args);
+  } catch (err: any) {
+    if (typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window)) {
+      console.warn(`[Tauri Mock Preview] Simulated ${cmd}`, args);
+      if (cmd === 'create_project_dir') {
+        const name = args.name || 'Project';
+        if (name.toLowerCase() === 'exists' || name.toLowerCase() === 'duplicate') {
+          throw new Error(`Directory already exists: ./${name}`);
+        }
+        return {
+          name,
+          path: `./${name}`,
+          sketch_code: args.sketch || '',
+          diagram_json: args.diagram || '',
+          metadata_json: '{}',
+          files: [
+            { name: 'sketch.ino', path: `./${name}/sketch.ino`, relative_path: 'sketch.ino', is_dir: false },
+            { name: 'config.h', path: `./${name}/config.h`, relative_path: 'config.h', is_dir: false },
+          ],
+        } as unknown as T;
+      }
+    }
+    throw err;
+  }
+}
+
 function stripAnsi(text: string): string {
   return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 }
@@ -746,41 +775,47 @@ export default function App() {
       const sketch = template ? template.sketch : sketchCode;
       const config = template ? template.config : undefined;
 
-      const res = await tauriInvoke<ProjectData>('create_project_dir', {
-        parentPath: parentPath || '.',
-        name,
-        sketch,
-        diagram: diag,
-        config,
-      });
-      if (res) {
-        setProjectName(res.name);
-        setProjectPath(res.path);
-        setSketchCode(res.sketch_code);
-        setProjectFiles(res.files);
-        if (res.diagram_json) {
-          importWokwiDiagram(res.diagram_json);
-        }
-        setOpenTabs([
-          { path: 'sketch.ino', name: 'sketch.ino' },
-          { path: 'config.h', name: 'config.h' },
-        ]);
-        setActiveTabPath('sketch.ino');
-        setActiveFile('sketch.ino');
-        setFileContents({
-          'sketch.ino': res.sketch_code,
-          'config.h': config || '#pragma once\n\n#define LED_PIN 13\n#define SYSTEM_BAUD 9600\n',
-          'diagram.json': res.diagram_json,
-          'project.json': res.metadata_json,
+      try {
+        const res = await tauriInvokeStrict<ProjectData>('create_project_dir', {
+          parentPath: parentPath || '.',
+          name,
+          sketch,
+          diagram: diag,
+          config,
         });
-        setIsDirty(false);
-        setStatusMessage(`Project created: ${res.name}`);
-        setShowNewProjectModal(false);
-        loadRecentProjects();
-        tauriInvoke('save_user_setting', {
-          key: 'last_opened_project_path',
-          value: res.path,
-        }).catch((err) => console.warn('Failed to remember last project:', err));
+        if (res) {
+          setProjectName(res.name);
+          setProjectPath(res.path);
+          setSketchCode(res.sketch_code);
+          setProjectFiles(res.files);
+          if (res.diagram_json) {
+            importWokwiDiagram(res.diagram_json);
+          }
+          setOpenTabs([
+            { path: 'sketch.ino', name: 'sketch.ino' },
+            { path: 'config.h', name: 'config.h' },
+          ]);
+          setActiveTabPath('sketch.ino');
+          setActiveFile('sketch.ino');
+          setFileContents({
+            'sketch.ino': res.sketch_code,
+            'config.h': config || '#pragma once\n\n#define LED_PIN 13\n#define SYSTEM_BAUD 9600\n',
+            'diagram.json': res.diagram_json,
+            'project.json': res.metadata_json,
+          });
+          setIsDirty(false);
+          setStatusMessage(`Project created: ${res.name}`);
+          setShowNewProjectModal(false);
+          loadRecentProjects();
+          tauriInvoke('save_user_setting', {
+            key: 'last_opened_project_path',
+            value: res.path,
+          }).catch((err) => console.warn('Failed to remember last project:', err));
+        }
+      } catch (err: any) {
+        const msg = typeof err === 'string' ? err : err?.message || 'Failed to create project';
+        setStatusMessage(`Error creating project: ${msg}`);
+        throw err;
       }
     },
     [components, wires, sketchCode, exportWokwiDiagram, importWokwiDiagram, loadRecentProjects]
@@ -799,7 +834,7 @@ export default function App() {
   const handleOpenProject = useCallback(
     async (dirPath: string) => {
       try {
-        const res = await tauriInvoke<ProjectData>('open_project_dir', { path: dirPath });
+        const res = await tauriInvokeStrict<ProjectData>('open_project_dir', { path: dirPath });
         if (res) {
           setProjectName(res.name);
           setProjectPath(res.path);
@@ -837,8 +872,11 @@ export default function App() {
             value: res.path,
           }).catch((err) => console.warn('Failed to remember last project:', err));
         }
-      } catch (err) {
+      } catch (err: any) {
+        const msg = typeof err === 'string' ? err : err?.message || 'Failed to open project';
         console.warn('Failed to open project at path:', dirPath, err);
+        setStatusMessage(`Error opening project: ${msg}`);
+        throw err;
       }
     },
     [importWokwiDiagram, loadRecentProjects]
@@ -885,14 +923,20 @@ export default function App() {
   const handleCreateFile = useCallback(
     async (fileName: string, isDir?: boolean) => {
       if (!projectPath) return;
-      await tauriInvoke('create_project_dir_entry', {
-        dirPath: projectPath,
-        relativePath: fileName,
-        isDir: !!isDir,
-      });
-      await handleRefreshFiles();
-      if (!isDir) {
-        handleOpenFileTab(fileName);
+      try {
+        await tauriInvokeStrict('create_project_dir_entry', {
+          dirPath: projectPath,
+          relativePath: fileName,
+          isDir: !!isDir,
+        });
+        await handleRefreshFiles();
+        if (!isDir) {
+          handleOpenFileTab(fileName);
+        }
+        setStatusMessage(`Created ${isDir ? 'folder' : 'file'}: ${fileName}`);
+      } catch (err: any) {
+        const msg = typeof err === 'string' ? err : err?.message || 'Failed to create file/folder';
+        setStatusMessage(`Error creating ${isDir ? 'folder' : 'file'}: ${msg}`);
       }
     },
     [projectPath, handleRefreshFiles, handleOpenFileTab]

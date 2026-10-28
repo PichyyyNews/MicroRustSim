@@ -5,6 +5,7 @@ import {
   GoFileDirectory,
   GoCheck,
   GoCpu,
+  GoAlert,
 } from 'react-icons/go';
 import {
   FolderOpen,
@@ -305,7 +306,7 @@ void loop() {
 export interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (parentPath: string, name: string, template: ProjectTemplate) => void;
+  onCreate: (parentPath: string, name: string, template: ProjectTemplate) => Promise<void> | void;
   onBrowseFolder: () => Promise<string | null>;
 }
 
@@ -318,6 +319,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState('blink');
   const [projectName, setProjectName] = useState('My_Arduino_Lab');
   const [parentPath, setParentPath] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 0-Latency Dragging via Direct DOM Transform
   const modalBoxRef = useRef<HTMLDivElement>(null);
@@ -331,6 +334,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       if (modalBoxRef.current) {
         modalBoxRef.current.style.transform = 'translate3d(0px, 0px, 0px)';
       }
+      setErrorMessage(null);
+      setIsSubmitting(false);
     }
   }, [isOpen]);
 
@@ -387,10 +392,40 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
   };
 
-  const handleFormSubmit = (e?: React.FormEvent) => {
+  const handleFormSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (projectName.trim()) {
-      onCreate(parentPath.trim() || '.', projectName.trim(), selectedTemplate);
+    const trimmedName = projectName.trim();
+    if (!trimmedName) {
+      setErrorMessage('กรุณาระบุชื่อโปรเจกต์ (Project name cannot be empty)');
+      return;
+    }
+
+    const ILLEGAL_CHARS = /[\\/:*?"<>|]/;
+    if (ILLEGAL_CHARS.test(trimmedName)) {
+      setErrorMessage('ชื่อโปรเจกต์ต้องไม่มีอักขระพิเศษ: \\ / : * ? " < > |');
+      return;
+    }
+
+    if (/[. ]$/.test(trimmedName)) {
+      setErrorMessage('ชื่อโปรเจกต์ต้องไม่ลงท้ายด้วยเครื่องหมายจุดหรือช่องว่าง');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+    try {
+      await onCreate(parentPath.trim() || '.', trimmedName, selectedTemplate);
+    } catch (err: any) {
+      const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
+      if (rawMsg.includes('already exists') || rawMsg.includes('Directory already exists')) {
+        setErrorMessage(`โฟลเดอร์โปรเจกต์ "${trimmedName}" มีอยู่แล้วในไดเรกทอรีนี้ กรุณาเปลี่ยนชื่อใหม่`);
+      } else if (rawMsg.toLowerCase().includes('permission') || rawMsg.toLowerCase().includes('access is denied')) {
+        setErrorMessage('ไม่มีสิทธิ์เข้าถึงหรือบันทึกไฟล์ในไดเรกทอรีนี้ (Permission Denied)');
+      } else {
+        setErrorMessage(`เกิดข้อผิดพลาดในการสร้างโปรเจกต์: ${rawMsg}`);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -477,9 +512,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               </label>
               <Input
                 value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                onChange={(e) => {
+                  setProjectName(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 placeholder="e.g. Traffic_Light_Lab"
-                className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:border-zinc-500 rounded-md"
+                className={`bg-[#121215] text-zinc-100 font-mono text-xs focus:outline-none focus:ring-0 focus-visible:ring-0 rounded-md transition-colors ${
+                  errorMessage
+                    ? 'border-red-500/70 focus-visible:border-red-500'
+                    : 'border-zinc-800 focus-visible:border-zinc-500'
+                }`}
               />
             </div>
 
@@ -490,7 +532,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               <div className="flex gap-1.5">
                 <Input
                   value={parentPath}
-                  onChange={(e) => setParentPath(e.target.value)}
+                  onChange={(e) => {
+                    setParentPath(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
                   placeholder="e.g. C:/Projects (or click Browse...)"
                   className="bg-[#121215] border-zinc-800 text-zinc-100 font-mono text-xs flex-1 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:border-zinc-500 rounded-md"
                 />
@@ -510,6 +555,25 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 Destination: <span className="text-zinc-300 font-mono">{parentPath ? `${parentPath}/${projectName}` : `./${projectName}`}</span>
               </span>
             </div>
+
+            {/* Error & Duplicate Condition Alert Banner */}
+            {errorMessage && (
+              <div className="p-2.5 bg-red-950/35 border border-red-500/35 rounded-lg flex items-start gap-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+                <GoAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1 text-red-200 leading-relaxed">
+                  <div className="font-semibold text-red-300 text-[11px]">ไม่สามารถสร้างโปรเจกต์ได้</div>
+                  <div className="text-[11px] text-red-200/90 mt-0.5 select-text font-sans">{errorMessage}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  className="text-red-400 hover:text-red-200 p-0.5 rounded hover:bg-red-900/40 transition-colors shrink-0"
+                  title="ปิดการแจ้งเตือน"
+                >
+                  <GoX className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Action Footer */}
@@ -523,6 +587,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={onClose}
+                disabled={isSubmitting}
                 className="border-zinc-800 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs rounded-md"
               >
                 Cancel
@@ -530,9 +595,17 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               <Button
                 type="submit"
                 size="sm"
-                className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3.5 shadow-none transition-colors rounded-md"
+                disabled={isSubmitting}
+                className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3.5 shadow-none transition-colors rounded-md disabled:opacity-50 flex items-center gap-1.5"
               >
-                Create Project
+                {isSubmitting ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-zinc-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <span>Create Project</span>
+                )}
               </Button>
             </div>
           </div>
