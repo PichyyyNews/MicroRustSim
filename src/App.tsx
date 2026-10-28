@@ -3279,18 +3279,12 @@ export default function App() {
                                   size="icon-xs"
                                   onClick={handleCopyTerminalLogs}
                                   title={copiedTerminal ? 'Copied to clipboard!' : 'Copy output logs'}
-                                  className="h-5 px-2 flex items-center gap-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded transition-colors text-[11px]"
+                                  className="h-5 w-5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors flex items-center justify-center"
                                 >
                                   {copiedTerminal ? (
-                                    <>
-                                      <GoCheck className="w-3.5 h-3.5 text-zinc-200" />
-                                      <span className="text-[10px] text-zinc-300">Copied</span>
-                                    </>
+                                    <GoCheck className="w-3.5 h-3.5 text-zinc-200" />
                                   ) : (
-                                    <>
-                                      <GoCopy className="w-3.5 h-3.5 text-zinc-400" />
-                                      <span className="text-[10px] text-zinc-400">Copy</span>
-                                    </>
+                                    <GoCopy className="w-3.5 h-3.5 text-zinc-400" />
                                   )}
                                 </Button>
 
