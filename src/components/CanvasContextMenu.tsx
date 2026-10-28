@@ -101,6 +101,10 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
       {/* Invisible backdrop to cleanly dismiss on click outside */}
       <div
         className="fixed inset-0 bg-transparent"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
@@ -120,6 +124,7 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
           top: `${adjustedY}px`,
         }}
         onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();

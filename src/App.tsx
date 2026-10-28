@@ -2360,8 +2360,8 @@ export default function App() {
   // --- Component Click & Drag Handler ---
   const handleComponentMouseDown = (compId: string, e: React.MouseEvent) => {
     (document.activeElement as HTMLElement)?.blur();
-    if (e.button !== 0) return; // Only primary mouse button for dragging
     e.stopPropagation();
+    if (e.button !== 0) return; // Only primary mouse button for dragging
 
     // Check if part of existing multi-selection
     const isAlreadyInMulti = selectedCompIds.has(compId) && selectedCompIds.size > 1;
@@ -2447,15 +2447,8 @@ export default function App() {
       return;
     }
 
-    // 1. Canvas Context Menu on Right Click (button === 2)
-    if (e.button === 2) {
-      e.preventDefault();
-      e.stopPropagation();
-      setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
-        type: 'canvas',
-      });
+    // Ignore right click on mousedown (handled strictly by onContextMenu event)
+    if (e.button !== 0) {
       return;
     }
 
