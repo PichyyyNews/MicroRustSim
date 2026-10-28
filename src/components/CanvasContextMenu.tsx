@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   GoCopy,
   GoTrash,
@@ -43,6 +43,8 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
   onProperties,
   onAddText,
 }) => {
+  const hasTriggeredRef = useRef(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -58,6 +60,16 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
   const menuHeight = type === 'group' ? 220 : type === 'single' ? 280 : 160;
   const adjustedX = Math.max(10, Math.min(x, window.innerWidth - menuWidth - 10));
   const adjustedY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10));
+
+  const handleItemTrigger = (action?: () => void) => {
+    if (hasTriggeredRef.current || !action) return;
+    hasTriggeredRef.current = true;
+    try {
+      action();
+    } finally {
+      onClose();
+    }
+  };
 
   const MenuItem = ({
     icon: Icon,
@@ -77,14 +89,12 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onClick?.();
-        onClose();
+        handleItemTrigger(onClick);
       }}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onClick?.();
-        onClose();
+        handleItemTrigger(onClick);
       }}
       className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded transition-colors text-left cursor-pointer ${
         danger
@@ -184,6 +194,7 @@ export const CanvasContextMenu: React.FC<ContextMenuProps> = ({
               Canvas Actions
             </div>
             {onPaste && <MenuItem icon={Clipboard} label="Paste Component" shortcut="Ctrl+V" onClick={onPaste} />}
+            <Divider />
             {onAddText && <MenuItem icon={Type} label="Add Text Label" shortcut="T" onClick={onAddText} />}
           </>
         )}

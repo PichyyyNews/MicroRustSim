@@ -92,6 +92,7 @@ import { TextLabel } from './components/TextLabel';
 import { CanvasContextMenu } from './components/CanvasContextMenu';
 import { UploadModal } from './components/UploadModal';
 import { RenameModal } from './components/RenameModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   CircuitComponent,
   CircuitWire,
@@ -1839,10 +1840,15 @@ export default function App() {
 
   // --- Component Copy & Paste Helpers ---
   const handleCopyComponent = useCallback((comp: CircuitComponent) => {
-    setClipboardComponent({ ...comp });
-    setClipboardComponents([{ ...comp }]);
-    clipboardCompRef.current = { ...comp };
-    clipboardComponentsRef.current = [{ ...comp }];
+    if (!comp) return;
+    const cloned: CircuitComponent = {
+      ...comp,
+      props: { ...(comp.props || {}) },
+    };
+    setClipboardComponent(cloned);
+    setClipboardComponents([cloned]);
+    clipboardCompRef.current = cloned;
+    clipboardComponentsRef.current = [cloned];
     setStatusMessage(`Copied ${comp.kind} (${comp.id}) to clipboard`);
   }, []);
 
@@ -1852,16 +1858,76 @@ export default function App() {
     if (comps.length === 1) {
       handleCopyComponent(comps[0]);
     } else if (comps.length > 1) {
-      const cloned = comps.map((c) => ({ ...c }));
+      const cloned = comps.map((c) => ({
+        ...c,
+        props: { ...(c.props || {}) },
+      }));
       setClipboardComponents(cloned);
-      setClipboardComponent(comps[0]);
-      clipboardCompRef.current = comps[0];
+      setClipboardComponent(cloned[0]);
+      clipboardCompRef.current = cloned[0];
       clipboardComponentsRef.current = cloned;
       setStatusMessage(`Copied ${comps.length} components to clipboard`);
     }
   }, [selectedCompIds, components, handleCopyComponent]);
 
   const handlePasteComponent = useCallback(() => {
+    const sanitizeForPaste = (source: CircuitComponent, offset: { x: number; y: number }): CircuitComponent => {
+      const baseKind = source.kind || 'resistor';
+      const prefix =
+        baseKind === 'arduino_uno'
+          ? 'uno'
+          : baseKind === 'breadboard'
+          ? 'bb'
+          : baseKind === 'led'
+          ? 'led'
+          : baseKind === 'resistor'
+          ? 'r'
+          : baseKind === 'pushbutton'
+          ? 'btn'
+          : baseKind === 'potentiometer'
+          ? 'pot'
+          : 'label';
+      const newId = `${prefix}_${Date.now().toString(36).slice(-4)}${Math.random().toString(36).slice(2, 6)}`;
+      const rawProps = source.props ? { ...source.props } : {};
+      const sanitizedProps: Record<string, any> = { ...rawProps };
+
+      if (baseKind === 'led') {
+        sanitizedProps.color = sanitizedProps.color || '#ef4444';
+        sanitizedProps.vf = typeof sanitizedProps.vf === 'number' ? sanitizedProps.vf : 2.0;
+      } else if (baseKind === 'resistor') {
+        sanitizedProps.ohms = typeof sanitizedProps.ohms === 'number' ? sanitizedProps.ohms : (parseInt(sanitizedProps.ohms, 10) || 220);
+      } else if (baseKind === 'pushbutton') {
+        sanitizedProps.pressed = false;
+      } else if (baseKind === 'potentiometer') {
+        sanitizedProps.value = typeof sanitizedProps.value === 'number' ? Math.max(0, Math.min(1, sanitizedProps.value)) : 0.5;
+      } else if (baseKind === 'text_label') {
+        sanitizedProps.text = sanitizedProps.text || 'Label';
+        sanitizedProps.fontFamily = sanitizedProps.fontFamily || 'Inter, sans-serif';
+        sanitizedProps.fontSize = typeof sanitizedProps.fontSize === 'number' ? sanitizedProps.fontSize : 16;
+        sanitizedProps.color = sanitizedProps.color || '#f4f4f5';
+        sanitizedProps.bold = Boolean(sanitizedProps.bold);
+        sanitizedProps.italic = Boolean(sanitizedProps.italic);
+        sanitizedProps.underline = Boolean(sanitizedProps.underline);
+      } else if (baseKind === 'arduino_uno') {
+        sanitizedProps.comPort = sanitizedProps.comPort || sanitizedProps.port || 'COM1';
+        sanitizedProps.port = sanitizedProps.comPort;
+      }
+
+      const posX = typeof source.x === 'number' && !isNaN(source.x) ? source.x : 100;
+      const posY = typeof source.y === 'number' && !isNaN(source.y) ? source.y : 100;
+
+      return {
+        ...source,
+        id: newId,
+        kind: baseKind,
+        x: posX + offset.x,
+        y: posY + offset.y,
+        rotation: source.rotation || 0,
+        flipped: Boolean(source.flipped),
+        props: sanitizedProps,
+      };
+    };
+
     const multi = clipboardComponentsRef.current.length > 1
       ? clipboardComponentsRef.current
       : clipboardComponents.length > 1
@@ -1873,31 +1939,9 @@ export default function App() {
       const newIds = new Set<string>();
 
       for (const comp of multi) {
-        const baseKind = comp.kind;
-        const prefix =
-          baseKind === 'arduino_uno'
-            ? 'uno'
-            : baseKind === 'breadboard'
-            ? 'bb'
-            : baseKind === 'led'
-            ? 'led'
-            : baseKind === 'resistor'
-            ? 'r'
-            : baseKind === 'pushbutton'
-            ? 'btn'
-            : baseKind === 'potentiometer'
-            ? 'pot'
-            : 'label';
-        const newId = `${prefix}_${Math.random().toString(36).substring(2, 7)}`;
-        const newComp: CircuitComponent = {
-          ...comp,
-          id: newId,
-          x: comp.x + 40,
-          y: comp.y + 40,
-          props: { ...(comp.props || {}) },
-        };
+        const newComp = sanitizeForPaste(comp, { x: 40, y: 40 });
         newComps.push(newComp);
-        newIds.add(newId);
+        newIds.add(newComp.id);
       }
 
       setComponents((prev) => [...prev, ...newComps]);
@@ -1925,46 +1969,24 @@ export default function App() {
     const single = clipboardCompRef.current || clipboardComponent;
     if (!single) return;
 
-    const baseKind = single.kind;
-    const prefix =
-      baseKind === 'arduino_uno'
-        ? 'uno'
-        : baseKind === 'breadboard'
-        ? 'bb'
-        : baseKind === 'led'
-        ? 'led'
-        : baseKind === 'resistor'
-        ? 'r'
-        : baseKind === 'pushbutton'
-        ? 'btn'
-        : baseKind === 'potentiometer'
-        ? 'pot'
-        : 'label';
-    const newId = `${prefix}_${Math.random().toString(36).substring(2, 7)}`;
-    const newComp: CircuitComponent = {
-      ...single,
-      id: newId,
-      x: single.x + 40,
-      y: single.y + 40,
-      props: { ...(single.props || {}) },
-    };
+    const newComp = sanitizeForPaste(single, { x: 40, y: 40 });
 
     setComponents((prev) => [...prev, newComp]);
-    setSelectedCompId(newId);
-    setSelectedCompIds(new Set([newId]));
+    setSelectedCompId(newComp.id);
+    setSelectedCompIds(new Set([newComp.id]));
     setSelectedWireId(null);
     setIsDirty(true);
-    setStatusMessage(`Pasted ${newComp.kind} (${newId})`);
+    setStatusMessage(`Pasted ${newComp.kind} (${newComp.id})`);
 
     // Sync to backend engine
     if (newComp.kind === 'led') {
-      tauriInvoke('add_led', { id: newId, color: newComp.props?.color || '#ef4444' });
+      tauriInvoke('add_led', { id: newComp.id, color: newComp.props?.color || '#ef4444' });
     } else if (newComp.kind === 'resistor') {
-      tauriInvoke('add_resistor', { id: newId, ohms: newComp.props?.ohms || 220 });
+      tauriInvoke('add_resistor', { id: newComp.id, ohms: newComp.props?.ohms || 220 });
     } else if (newComp.kind === 'pushbutton') {
-      tauriInvoke('add_button', { id: newId });
+      tauriInvoke('add_button', { id: newComp.id });
     } else if (newComp.kind === 'potentiometer') {
-      tauriInvoke('add_potentiometer', { id: newId });
+      tauriInvoke('add_potentiometer', { id: newComp.id });
     }
   }, [clipboardComponents, clipboardComponent]);
 
@@ -2638,24 +2660,28 @@ export default function App() {
       case 'breadboard':
         return `Half Breadboard • 30 Terminal Rows (A-J) • Dual Power Rails`;
       case 'potentiometer': {
-        const val = c.props.value ?? 0.5;
+        const val = typeof c.props?.value === 'number' ? c.props.value : 0.5;
         const v = (val * 5.0).toFixed(2);
         const adc = Math.round(val * 1023);
         return `Potentiometer (${c.id}) • Wiper: ${v}V (${adc} ADC / ${Math.round(val * 100)}%) • 10 kΩ`;
       }
       case 'pushbutton': {
-        const state = c.props.pressed ? 'CLOSED (0.0V GND Active)' : 'OPEN (5.0V Pull-up)';
+        const state = c.props?.pressed ? 'CLOSED (0.0V GND Active)' : 'OPEN (5.0V Pull-up)';
         return `Pushbutton (${c.id}) • State: ${state}`;
       }
       case 'resistor': {
-        const ohms = c.props.ohms || 220;
+        const ohms = typeof c.props?.ohms === 'number' ? c.props.ohms : 220;
         const str = ohms >= 1000 ? `${ohms / 1000} kΩ` : `${ohms} Ω`;
         return `Resistor (${c.id}) • Resistance: ${str} • 0.25W 5%`;
       }
       case 'led': {
-        const color = c.props.color || 'red';
-        const vf = c.props.vf || 2.0;
+        const color = c.props?.color || 'red';
+        const vf = typeof c.props?.vf === 'number' ? c.props.vf : 2.0;
         return `LED (${c.id}) • Color: ${color} • Forward Drop: ${vf}V`;
+      }
+      case 'text_label': {
+        const text = c.props?.text || 'Label';
+        return `Text Label (${c.id}) • "${text}"`;
       }
       default:
         return `${c.kind} (${c.id})`;
@@ -4009,7 +4035,7 @@ export default function App() {
                           <div {...wrapperProps}>
                             <Led
                               id={c.id}
-                              color={(c.props.color as any) || 'red'}
+                              color={(c.props?.color as any) || 'red'}
                               isLit={litLeds.has(c.id)}
                               brightness={ledBrightness[c.id]}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
@@ -4025,7 +4051,7 @@ export default function App() {
                         return (
                           <div {...wrapperProps}>
                             <Resistor
-                              ohms={c.props.ohms || 220}
+                              ohms={c.props?.ohms || 220}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
@@ -4049,7 +4075,7 @@ export default function App() {
                               onPressChange={(pressed: boolean) => {
                                 setComponents((prev) =>
                                   prev.map((item) =>
-                                    item.id === c.id ? { ...item, props: { ...item.props, pressed } } : item
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), pressed } } : item
                                   )
                                 );
                                 tauriInvoke('press_button', { id: c.id, pressed });
@@ -4064,12 +4090,12 @@ export default function App() {
                           <div {...wrapperProps}>
                             <Potentiometer
                               id={c.id}
-                              value={c.props.value ?? 0.5}
+                              value={c.props?.value ?? 0.5}
                               isInteractive={activeTool !== 'move'}
                               onValueChange={(val: number) => {
                                 setComponents((prev) =>
                                   prev.map((item) =>
-                                    item.id === c.id ? { ...item, props: { ...item.props, value: val } } : item
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), value: val } } : item
                                   )
                                 );
                                 tauriInvoke('set_potentiometer', { id: c.id, value: val });
@@ -4088,17 +4114,17 @@ export default function App() {
                           <div {...wrapperProps}>
                             <TextLabel
                               id={c.id}
-                              text={c.props.text}
-                              color={c.props.color}
-                              fontFamily={c.props.fontFamily}
-                              fontSize={c.props.fontSize}
-                              bold={c.props.bold}
-                              italic={c.props.italic}
-                              underline={c.props.underline}
+                              text={c.props?.text}
+                              color={c.props?.color}
+                              fontFamily={c.props?.fontFamily}
+                              fontSize={c.props?.fontSize}
+                              bold={c.props?.bold}
+                              italic={c.props?.italic}
+                              underline={c.props?.underline}
                               isSelected={isSelected}
                               onTextChange={(newText) => {
                                 handleUpdateComponent(c.id, {
-                                  props: { ...c.props, text: newText },
+                                  props: { ...(c.props || {}), text: newText },
                                 });
                               }}
                             />
@@ -4567,22 +4593,24 @@ export default function App() {
                       defaultSize={showPalette ? (layoutConfig.rightInspectorSplit ?? 55) : 100}
                       minSize="20%"
                     >
-                      <PropertyInspector
-                        selectedCompId={selectedCompId}
-                        selectedWireId={selectedWireId}
-                        components={components}
-                        wires={wires}
-                        litLeds={litLeds}
-                        ledBrightness={ledBrightness}
-                        onUpdateComponent={handleUpdateComponent}
-                        onUpdateWire={handleUpdateWire}
-                        onDeleteComponent={handleDeleteComponent}
-                        onDeleteWire={handleDeleteWire}
-                        onButtonPress={(id, pressed) => {
-                          tauriInvoke('press_button', { id, pressed });
-                        }}
-                        onClose={() => toggleInspector()}
-                      />
+                      <ErrorBoundary fallbackTitle="Property Inspector Error">
+                        <PropertyInspector
+                          selectedCompId={selectedCompId}
+                          selectedWireId={selectedWireId}
+                          components={components}
+                          wires={wires}
+                          litLeds={litLeds}
+                          ledBrightness={ledBrightness}
+                          onUpdateComponent={handleUpdateComponent}
+                          onUpdateWire={handleUpdateWire}
+                          onDeleteComponent={handleDeleteComponent}
+                          onDeleteWire={handleDeleteWire}
+                          onButtonPress={(id, pressed) => {
+                            tauriInvoke('press_button', { id, pressed });
+                          }}
+                          onClose={() => toggleInspector()}
+                        />
+                      </ErrorBoundary>
                     </ResizablePanel>
                   )}
                 </ResizablePanelGroup>

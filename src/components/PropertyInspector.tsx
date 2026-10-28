@@ -47,10 +47,11 @@ const RESISTOR_COLOR_CODES: Record<number, { name: string; hex: string }> = {
 };
 
 function getResistorBands(ohms: number): [string, string, string, string] {
-  const val = Math.max(1, Math.round(ohms));
+  const safeOhms = typeof ohms === 'number' && !isNaN(ohms) && ohms > 0 ? ohms : 220;
+  const val = Math.max(1, Math.round(safeOhms));
   const s = val.toString();
   const d1 = parseInt(s[0], 10) || 1;
-  const d2 = s.length > 1 ? parseInt(s[1], 10) : 0;
+  const d2 = s.length > 1 ? (parseInt(s[1], 10) || 0) : 0;
   const multiplier = Math.max(0, s.length - 2);
 
   const b1 = RESISTOR_COLOR_CODES[d1]?.hex || '#8b4513';
@@ -293,7 +294,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                 <div className="pt-2 space-y-2.5 text-xs">
                   {/* Potentiometer */}
                   {selectedComp.kind === 'potentiometer' && (() => {
-                    const wiperVal = selectedComp.props.value ?? 0.5;
+                    const wiperVal = typeof selectedComp.props?.value === 'number' ? selectedComp.props.value : 0.5;
                     const voltage = (wiperVal * 5.0).toFixed(2);
                     const adcRaw = Math.round(wiperVal * 1023);
                     const percent = Math.round(wiperVal * 100);
@@ -318,7 +319,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             onChange={(e) => {
                               const val = parseFloat(e.target.value);
                               onUpdateComponent(selectedComp.id, {
-                                props: { ...selectedComp.props, value: val },
+                                props: { ...(selectedComp.props || {}), value: val },
                               });
                             }}
                             className="w-full accent-white h-1.5 bg-[#1f1f23] rounded cursor-pointer"
@@ -338,7 +339,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               type="button"
                               onClick={() =>
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, value: v },
+                                  props: { ...(selectedComp.props || {}), value: v },
                                 })
                               }
                               className={`py-0.5 rounded border transition-colors ${
@@ -367,12 +368,12 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         <span className="text-zinc-500">Switch State</span>
                         <span
                           className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                            isInspectorButtonPressed || selectedComp.props.pressed
+                            isInspectorButtonPressed || Boolean(selectedComp.props?.pressed)
                               ? 'bg-amber-950/40 text-amber-300 font-semibold'
                               : 'bg-zinc-800/60 text-zinc-400'
                           }`}
                         >
-                          {isInspectorButtonPressed || selectedComp.props.pressed
+                          {isInspectorButtonPressed || Boolean(selectedComp.props?.pressed)
                             ? 'CLOSED (0V GND)'
                             : 'OPEN (5V Pull-up)'}
                         </span>
@@ -385,14 +386,14 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                           setIsInspectorButtonPressed(true);
                           onButtonPress?.(selectedComp.id, true);
                           onUpdateComponent(selectedComp.id, {
-                            props: { ...selectedComp.props, pressed: true },
+                            props: { ...(selectedComp.props || {}), pressed: true },
                           });
                         }}
                         onMouseUp={() => {
                           setIsInspectorButtonPressed(false);
                           onButtonPress?.(selectedComp.id, false);
                           onUpdateComponent(selectedComp.id, {
-                            props: { ...selectedComp.props, pressed: false },
+                            props: { ...(selectedComp.props || {}), pressed: false },
                           });
                         }}
                         onMouseLeave={() => {
@@ -400,7 +401,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             setIsInspectorButtonPressed(false);
                             onButtonPress?.(selectedComp.id, false);
                             onUpdateComponent(selectedComp.id, {
-                              props: { ...selectedComp.props, pressed: false },
+                              props: { ...(selectedComp.props || {}), pressed: false },
                             });
                           }
                         }}
@@ -431,7 +432,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
 
                   {/* Resistor */}
                   {selectedComp.kind === 'resistor' && (() => {
-                    const currentOhms = selectedComp.props.ohms || 220;
+                    const currentOhms = typeof selectedComp.props?.ohms === 'number' ? selectedComp.props.ohms : (parseInt(selectedComp.props?.ohms, 10) || 220);
                     const bands = getResistorBands(currentOhms);
 
                     return (
@@ -447,7 +448,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               onChange={(e) => {
                                 const ohms = Math.max(1, parseInt(e.target.value, 10) || 1);
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, ohms },
+                                  props: { ...(selectedComp.props || {}), ohms },
                                 });
                               }}
                               className="w-20 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded font-mono text-xs text-zinc-200 outline-none text-right"
@@ -476,7 +477,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               type="button"
                               onClick={() =>
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, ohms: preset },
+                                  props: { ...(selectedComp.props || {}), ohms: preset },
                                 })
                               }
                               className={`px-1.5 py-0.5 rounded border transition-colors ${
@@ -500,7 +501,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         <span className="text-zinc-500">Color</span>
                         <div className="flex items-center gap-1.5">
                           {LED_PRESET_COLORS.map((p) => {
-                            const isSelected = selectedComp.props.color === p.hex;
+                            const isSelected = (selectedComp.props?.color || '#ef4444') === p.hex;
                             return (
                               <button
                                 key={p.name}
@@ -508,7 +509,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                                 title={`${p.name} (Vf: ${p.vf}V)`}
                                 onClick={() =>
                                   onUpdateComponent(selectedComp.id, {
-                                    props: { ...selectedComp.props, color: p.hex, vf: p.vf },
+                                    props: { ...(selectedComp.props || {}), color: p.hex, vf: p.vf },
                                   })
                                 }
                                 className={`w-5 h-5 rounded-full flex items-center justify-center border transition-transform hover:scale-115 ${
@@ -533,11 +534,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               min="0.5"
                               max="5.0"
                               step="0.1"
-                              value={selectedComp.props.vf ?? 2.0}
+                              value={selectedComp.props?.vf ?? 2.0}
                               onChange={(e) => {
                                 const vfVal = Math.max(0.5, Math.min(5.0, parseFloat(e.target.value) || 2.0));
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, vf: vfVal },
+                                  props: { ...(selectedComp.props || {}), vf: vfVal },
                                 });
                               }}
                               className="w-16 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
@@ -555,11 +556,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               type="button"
                               onClick={() =>
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, vf: presetVf },
+                                  props: { ...(selectedComp.props || {}), vf: presetVf },
                                 })
                               }
                               className={`px-1.5 py-0.5 rounded border transition-colors ${
-                                (selectedComp.props.vf ?? 2.0) === presetVf
+                                (selectedComp.props?.vf ?? 2.0) === presetVf
                                   ? 'bg-zinc-800 border-zinc-500 text-white font-medium'
                                   : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
                               }`}
@@ -585,10 +586,10 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         <span className="text-zinc-500">Label Text</span>
                         <input
                           type="text"
-                          value={selectedComp.props.text ?? 'Text Label'}
+                          value={selectedComp.props?.text ?? 'Text Label'}
                           onChange={(e) =>
                             onUpdateComponent(selectedComp.id, {
-                              props: { ...selectedComp.props, text: e.target.value },
+                              props: { ...(selectedComp.props || {}), text: e.target.value },
                             })
                           }
                           className="w-full h-7 px-2 bg-[#18181b] border border-[#27272a] rounded text-xs text-zinc-100 focus:border-zinc-500 outline-none"
@@ -599,10 +600,10 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                       <div className="space-y-1">
                         <span className="text-zinc-500">Font Family</span>
                         <select
-                          value={selectedComp.props.fontFamily ?? 'Inter, sans-serif'}
+                          value={selectedComp.props?.fontFamily ?? 'Inter, sans-serif'}
                           onChange={(e) =>
                             onUpdateComponent(selectedComp.id, {
-                              props: { ...selectedComp.props, fontFamily: e.target.value },
+                              props: { ...(selectedComp.props || {}), fontFamily: e.target.value },
                             })
                           }
                           className="w-full h-7 px-2 bg-[#18181b] border border-[#27272a] rounded text-xs text-zinc-200 focus:border-zinc-500 outline-none"
@@ -623,11 +624,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             type="number"
                             min="10"
                             max="72"
-                            value={selectedComp.props.fontSize ?? 16}
+                            value={selectedComp.props?.fontSize ?? 16}
                             onChange={(e) =>
                               onUpdateComponent(selectedComp.id, {
                                 props: {
-                                  ...selectedComp.props,
+                                  ...(selectedComp.props || {}),
                                   fontSize: Math.max(8, parseInt(e.target.value, 10) || 14),
                                 },
                               })
@@ -642,11 +643,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             title="Bold"
                             onClick={() =>
                               onUpdateComponent(selectedComp.id, {
-                                props: { ...selectedComp.props, bold: !selectedComp.props.bold },
+                                props: { ...(selectedComp.props || {}), bold: !selectedComp.props?.bold },
                               })
                             }
                             className={`w-6 h-6 rounded border font-bold text-xs transition-colors ${
-                              selectedComp.props.bold
+                              selectedComp.props?.bold
                                 ? 'bg-zinc-800 border-zinc-500 text-white'
                                 : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
                             }`}
@@ -660,11 +661,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             title="Italic"
                             onClick={() =>
                               onUpdateComponent(selectedComp.id, {
-                                props: { ...selectedComp.props, italic: !selectedComp.props.italic },
+                                props: { ...(selectedComp.props || {}), italic: !selectedComp.props?.italic },
                               })
                             }
                             className={`w-6 h-6 rounded border italic text-xs transition-colors ${
-                              selectedComp.props.italic
+                              selectedComp.props?.italic
                                 ? 'bg-zinc-800 border-zinc-500 text-white'
                                 : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
                             }`}
@@ -678,11 +679,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             title="Underline"
                             onClick={() =>
                               onUpdateComponent(selectedComp.id, {
-                                props: { ...selectedComp.props, underline: !selectedComp.props.underline },
+                                props: { ...(selectedComp.props || {}), underline: !selectedComp.props?.underline },
                               })
                             }
                             className={`w-6 h-6 rounded border underline text-xs transition-colors ${
-                              selectedComp.props.underline
+                              selectedComp.props?.underline
                                 ? 'bg-zinc-800 border-zinc-500 text-white'
                                 : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
                             }`}
@@ -702,11 +703,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               type="button"
                               onClick={() =>
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...selectedComp.props, color: c },
+                                  props: { ...(selectedComp.props || {}), color: c },
                                 })
                               }
                               className={`w-5 h-5 rounded-full border transition-transform hover:scale-115 ${
-                                (selectedComp.props.color || '#f4f4f5') === c
+                                (selectedComp.props?.color || '#f4f4f5') === c
                                   ? 'border-white scale-110'
                                   : 'border-transparent'
                               }`}
@@ -726,10 +727,10 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         <div className="flex items-center gap-1">
                           <input
                             type="text"
-                            value={selectedComp.props.comPort || selectedComp.props.port || 'COM1'}
+                            value={selectedComp.props?.comPort || selectedComp.props?.port || 'COM1'}
                             onChange={(e) =>
                               onUpdateComponent(selectedComp.id, {
-                                props: { ...selectedComp.props, comPort: e.target.value },
+                                props: { ...(selectedComp.props || {}), comPort: e.target.value },
                               })
                             }
                             className="w-20 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
@@ -805,7 +806,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                       <div className="flex justify-between py-0.5">
                         <span className="font-mono text-zinc-400">Pin 2 (Wiper/SIG):</span>
                         <span className="font-mono text-zinc-100 font-semibold">
-                          {((selectedComp.props.value ?? 0.5) * 5.0).toFixed(2)} V
+                          {(((selectedComp.props?.value ?? 0.5)) * 5.0).toFixed(2)} V
                         </span>
                       </div>
                       <div className="flex justify-between py-0.5">
@@ -824,7 +825,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                       <div className="flex justify-between py-0.5">
                         <span className="font-mono text-zinc-400">Pin 2a / 2b:</span>
                         <span className="font-mono text-zinc-100">
-                          {isInspectorButtonPressed || selectedComp.props.pressed
+                          {isInspectorButtonPressed || Boolean(selectedComp.props?.pressed)
                             ? '0.00 V (Active LOW)'
                             : '5.00 V (Pull-up Active)'}
                         </span>
@@ -864,7 +865,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     <div className="flex justify-between py-0.5">
                       <span className="font-mono text-zinc-400">Impedance:</span>
                       <span className="font-mono text-zinc-300">
-                        {selectedComp.props.ohms || 220} Ω
+                        {selectedComp.props?.ohms || 220} Ω
                       </span>
                     </div>
                   )}
