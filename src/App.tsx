@@ -91,6 +91,7 @@ import { UnsavedChangesModal } from './components/UnsavedChangesModal';
 import { TextLabel } from './components/TextLabel';
 import { CanvasContextMenu } from './components/CanvasContextMenu';
 import { UploadModal } from './components/UploadModal';
+import { RenameModal } from './components/RenameModal';
 import {
   CircuitComponent,
   CircuitWire,
@@ -259,6 +260,14 @@ export default function App() {
     currentX: number;
     currentY: number;
   } | null>(null);
+  const selectionBoxRef = useRef<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+    rectLeft: number;
+    rectTop: number;
+  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -266,6 +275,9 @@ export default function App() {
     compId?: string;
   } | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [renameModalComp, setRenameModalComp] = useState<{ id: string; name: string } | null>(null);
+  const clipboardCompRef = useRef<CircuitComponent | null>(null);
+  const clipboardComponentsRef = useRef<CircuitComponent[]>([]);
   const editorRef = useRef<any>(null);
   const [canvasHoverInfo, setCanvasHoverInfo] = useState<string>('');
   const menubarRef = useRef<HTMLDivElement>(null);
@@ -532,6 +544,11 @@ export default function App() {
     { id: 'btn1', kind: 'pushbutton', x: 690, y: 60, props: {} },
     { id: 'pot1', kind: 'potentiometer', x: 790, y: 50, props: { value: 0.5 } },
   ]);
+
+  const componentsRef = useRef<CircuitComponent[]>(components);
+  useEffect(() => {
+    componentsRef.current = components;
+  }, [components]);
 
   // --- Wires on Canvas ---
   const [wires, setWires] = useState<CircuitWire[]>([
@@ -1645,6 +1662,53 @@ export default function App() {
           prev.map((item) => (item.id === compId ? { ...item, x: newX, y: newY } : item))
         );
         setIsDirty(true);
+        return;
+      }
+
+      // 4. Rubber-Band Multi-Selection Dragging
+      if (selectionBoxRef.current) {
+        const box = selectionBoxRef.current;
+        box.currentX = e.clientX;
+        box.currentY = e.clientY;
+        setSelectionBox({
+          startX: box.startX,
+          startY: box.startY,
+          currentX: box.currentX,
+          currentY: box.currentY,
+        });
+
+        const sX = Math.min(box.startX, box.currentX);
+        const sY = Math.min(box.startY, box.currentY);
+        const eX = Math.max(box.startX, box.currentX);
+        const eY = Math.max(box.startY, box.currentY);
+
+        const wX1 = (sX - box.rectLeft - pan.x) / zoom;
+        const wY1 = (sY - box.rectTop - pan.y) / zoom;
+        const wX2 = (eX - box.rectLeft - pan.x) / zoom;
+        const wY2 = (eY - box.rectTop - pan.y) / zoom;
+
+        // If dragged more than 4px, calculate intersection
+        if (Math.hypot(box.currentX - box.startX, box.currentY - box.startY) > 4) {
+          const matching = new Set<string>();
+          for (const comp of componentsRef.current) {
+            const dims = getComponentBoundingSize(comp.kind);
+            const cx1 = comp.x;
+            const cy1 = comp.y;
+            const cx2 = comp.x + dims.w;
+            const cy2 = comp.y + dims.h;
+
+            if (cx1 < wX2 && cx2 > wX1 && cy1 < wY2 && cy2 > wY1) {
+              matching.add(comp.id);
+            }
+          }
+          setSelectedCompIds(matching);
+          if (matching.size === 1) {
+            setSelectedCompId(Array.from(matching)[0]);
+          } else {
+            setSelectedCompId(null);
+          }
+        }
+        return;
       }
     };
 
@@ -1671,6 +1735,17 @@ export default function App() {
       if (draggedCompRef.current) {
         draggedCompRef.current = null;
       }
+      if (selectionBoxRef.current) {
+        const box = selectionBoxRef.current;
+        const dist = Math.hypot(box.currentX - box.startX, box.currentY - box.startY);
+        selectionBoxRef.current = null;
+        setSelectionBox(null);
+        if (dist < 4) {
+          setSelectedCompId(null);
+          setSelectedCompIds(new Set());
+          setSelectedWireId(null);
+        }
+      }
     };
 
     window.addEventListener('mousemove', handleWindowMouseMove);
@@ -1679,7 +1754,7 @@ export default function App() {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [zoom, syncWireToRust]);
+  }, [zoom, pan, syncWireToRust]);
 
   // --- Component Management & Transform Handlers ---
   const handleDeleteComponent = useCallback((id: string) => {
@@ -1766,7 +1841,9 @@ export default function App() {
   const handleCopyComponent = useCallback((comp: CircuitComponent) => {
     setClipboardComponent({ ...comp });
     setClipboardComponents([{ ...comp }]);
-    setStatusMessage(`Copied ${comp.kind} to clipboard`);
+    clipboardCompRef.current = { ...comp };
+    clipboardComponentsRef.current = [{ ...comp }];
+    setStatusMessage(`Copied ${comp.kind} (${comp.id}) to clipboard`);
   }, []);
 
   const handleCopySelectedGroup = useCallback(() => {
@@ -1774,19 +1851,28 @@ export default function App() {
     const comps = components.filter((c) => selectedCompIds.has(c.id));
     if (comps.length === 1) {
       handleCopyComponent(comps[0]);
-    } else {
-      setClipboardComponents(comps.map((c) => ({ ...c })));
+    } else if (comps.length > 1) {
+      const cloned = comps.map((c) => ({ ...c }));
+      setClipboardComponents(cloned);
       setClipboardComponent(comps[0]);
+      clipboardCompRef.current = comps[0];
+      clipboardComponentsRef.current = cloned;
       setStatusMessage(`Copied ${comps.length} components to clipboard`);
     }
   }, [selectedCompIds, components, handleCopyComponent]);
 
   const handlePasteComponent = useCallback(() => {
-    if (clipboardComponents.length > 1) {
+    const multi = clipboardComponentsRef.current.length > 1
+      ? clipboardComponentsRef.current
+      : clipboardComponents.length > 1
+      ? clipboardComponents
+      : null;
+
+    if (multi && multi.length > 1) {
       const newComps: CircuitComponent[] = [];
       const newIds = new Set<string>();
 
-      for (const comp of clipboardComponents) {
+      for (const comp of multi) {
         const baseKind = comp.kind;
         const prefix =
           baseKind === 'arduino_uno'
@@ -1802,12 +1888,12 @@ export default function App() {
             : baseKind === 'potentiometer'
             ? 'pot'
             : 'label';
-        const newId = `${prefix}_${Math.random().toString(36).substring(2, 6)}`;
+        const newId = `${prefix}_${Math.random().toString(36).substring(2, 7)}`;
         const newComp: CircuitComponent = {
           ...comp,
           id: newId,
-          x: comp.x + 30,
-          y: comp.y + 30,
+          x: comp.x + 40,
+          y: comp.y + 40,
           props: { ...(comp.props || {}) },
         };
         newComps.push(newComp);
@@ -1820,11 +1906,26 @@ export default function App() {
       setSelectedWireId(null);
       setIsDirty(true);
       setStatusMessage(`Pasted ${newComps.length} components`);
+
+      // Sync to backend engine
+      for (const comp of newComps) {
+        if (comp.kind === 'led') {
+          tauriInvoke('add_led', { id: comp.id, color: comp.props?.color || '#ef4444' });
+        } else if (comp.kind === 'resistor') {
+          tauriInvoke('add_resistor', { id: comp.id, ohms: comp.props?.ohms || 220 });
+        } else if (comp.kind === 'pushbutton') {
+          tauriInvoke('add_button', { id: comp.id });
+        } else if (comp.kind === 'potentiometer') {
+          tauriInvoke('add_potentiometer', { id: comp.id });
+        }
+      }
       return;
     }
 
-    if (!clipboardComponent) return;
-    const baseKind = clipboardComponent.kind;
+    const single = clipboardCompRef.current || clipboardComponent;
+    if (!single) return;
+
+    const baseKind = single.kind;
     const prefix =
       baseKind === 'arduino_uno'
         ? 'uno'
@@ -1839,13 +1940,13 @@ export default function App() {
         : baseKind === 'potentiometer'
         ? 'pot'
         : 'label';
-    const newId = `${prefix}_${Date.now().toString().slice(-4)}`;
+    const newId = `${prefix}_${Math.random().toString(36).substring(2, 7)}`;
     const newComp: CircuitComponent = {
-      ...clipboardComponent,
+      ...single,
       id: newId,
-      x: clipboardComponent.x + 30,
-      y: clipboardComponent.y + 30,
-      props: { ...(clipboardComponent.props || {}) },
+      x: single.x + 40,
+      y: single.y + 40,
+      props: { ...(single.props || {}) },
     };
 
     setComponents((prev) => [...prev, newComp]);
@@ -2081,6 +2182,18 @@ export default function App() {
         handleRotateSelected();
       } else if (e.key === 'f' || e.key === 'F') {
         handleFlipSelected();
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        const targetId = selectedCompId || (selectedCompIds.size === 1 ? Array.from(selectedCompIds)[0] : null);
+        if (targetId) {
+          const comp = components.find((c) => c.id === targetId);
+          if (comp) {
+            setRenameModalComp({
+              id: comp.id,
+              name: comp.props?.name || comp.props?.text || comp.id,
+            });
+          }
+        }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedWireId) {
           handleDeleteWire(selectedWireId);
@@ -2246,6 +2359,7 @@ export default function App() {
 
   // --- Component Click & Drag Handler ---
   const handleComponentMouseDown = (compId: string, e: React.MouseEvent) => {
+    (document.activeElement as HTMLElement)?.blur();
     if (e.button !== 0) return; // Only primary mouse button for dragging
     e.stopPropagation();
 
@@ -2310,8 +2424,22 @@ export default function App() {
     }
   };
 
+  // --- Canvas Context Menu Handler ---
+  const handleCanvasContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: 'canvas',
+    });
+  };
+
   // --- Canvas Mouse Handlers (Pan & Wire Drawing) ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    (document.activeElement as HTMLElement)?.blur();
+    (e.currentTarget as HTMLElement)?.focus?.();
+
     // 3. Canvas Panning moved strictly to Middle Mouse Button (button === 1), Space+Drag, or Move tool (Requirement 3)
     if (e.button === 1 || (isSpacePressed.current && e.button === 0) || (activeTool === 'move' && e.button === 0)) {
       isPanning.current = true;
@@ -2322,6 +2450,7 @@ export default function App() {
     // 1. Canvas Context Menu on Right Click (button === 2)
     if (e.button === 2) {
       e.preventDefault();
+      e.stopPropagation();
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
@@ -2363,6 +2492,15 @@ export default function App() {
 
       if (activeTool === 'select') {
         // Start rubber-band selection box (Requirement 2)
+        const rect = e.currentTarget.getBoundingClientRect();
+        selectionBoxRef.current = {
+          startX: e.clientX,
+          startY: e.clientY,
+          currentX: e.clientX,
+          currentY: e.clientY,
+          rectLeft: rect.left,
+          rectTop: rect.top,
+        };
         setSelectionBox({
           startX: e.clientX,
           startY: e.clientY,
@@ -3778,14 +3916,15 @@ export default function App() {
                 minSize="25%"
               >
                 <main
-                  className={`h-full w-full relative overflow-hidden ${canvasGridVisible ? 'canvas-grid' : ''} bg-[#09090b] ${
+                  tabIndex={-1}
+                  className={`h-full w-full relative overflow-hidden outline-none ${canvasGridVisible ? 'canvas-grid' : ''} bg-[#09090b] ${
                     activeTool === 'wire' ? 'cursor-crosshair' : 'cursor-default'
                   }`}
                   onMouseDown={handleCanvasMouseDown}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseUp={handleCanvasMouseUp}
                   onWheel={handleCanvasWheel}
-                  onContextMenu={(e) => e.preventDefault()}
+                  onContextMenu={handleCanvasContextMenu}
                 >
                   {/* Viewport Transform Container */}
                   <div
@@ -4583,13 +4722,10 @@ export default function App() {
               if (contextMenu.compId) {
                 const comp = components.find((c) => c.id === contextMenu.compId);
                 if (comp) {
-                  const currentName = comp.props?.name || comp.props?.text || comp.id;
-                  const newName = window.prompt('Rename Component:', currentName);
-                  if (newName && newName.trim()) {
-                    handleUpdateComponent(comp.id, {
-                      props: { ...comp.props, name: newName.trim(), text: newName.trim() },
-                    });
-                  }
+                  setRenameModalComp({
+                    id: comp.id,
+                    name: comp.props?.name || comp.props?.text || comp.id,
+                  });
                 }
               }
             }}
@@ -4600,8 +4736,58 @@ export default function App() {
                 setShowInspector(true);
               }
             }}
+            onAddText={() => {
+              const rect = document.querySelector('main')?.getBoundingClientRect();
+              const left = rect?.left || 0;
+              const top = rect?.top || 0;
+              const clickX = contextMenu ? contextMenu.x : 200;
+              const clickY = contextMenu ? contextMenu.y : 200;
+              const worldX = Math.round((clickX - left - pan.x) / zoom / 10) * 10;
+              const worldY = Math.round((clickY - top - pan.y) / zoom / 10) * 10;
+              const newTextId = `label_${Date.now().toString().slice(-4)}`;
+              const newTextComp: CircuitComponent = {
+                id: newTextId,
+                kind: 'text_label',
+                x: worldX,
+                y: worldY,
+                props: {
+                  text: 'Label',
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: 16,
+                  color: '#f4f4f5',
+                  bold: false,
+                  italic: false,
+                  underline: false,
+                },
+              };
+              setComponents((prev) => [...prev, newTextComp]);
+              setSelectedCompId(newTextId);
+              setSelectedCompIds(new Set([newTextId]));
+              setIsDirty(true);
+              setStatusMessage('Added Text Label');
+            }}
           />
         )}
+
+        {/* Rename Component Modal */}
+        <RenameModal
+          isOpen={Boolean(renameModalComp)}
+          currentName={renameModalComp?.name || ''}
+          componentId={renameModalComp?.id || ''}
+          onSave={(newName) => {
+            if (renameModalComp) {
+              handleUpdateComponent(renameModalComp.id, {
+                props: {
+                  ...components.find((c) => c.id === renameModalComp.id)?.props,
+                  name: newName,
+                  text: newName,
+                },
+              });
+              setStatusMessage(`Renamed to "${newName}"`);
+            }
+          }}
+          onClose={() => setRenameModalComp(null)}
+        />
 
         {/* Upload Target Configuration Modal */}
         <UploadModal
