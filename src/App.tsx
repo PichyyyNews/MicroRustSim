@@ -440,6 +440,11 @@ export default function App() {
     { id: 'w1', fromComp: 'uno1', fromPin: '13', toComp: 'led1', toPin: 'anode', color: '#22c55e' },
     { id: 'w2', fromComp: 'led1', fromPin: 'cathode', toComp: 'r1', toPin: '1', color: '#eab308' },
     { id: 'w3', fromComp: 'r1', fromPin: '2', toComp: 'uno1', toPin: 'GND', color: '#18181b' },
+    { id: 'w4', fromComp: 'uno1', fromPin: '2', toComp: 'btn1', toPin: '1a', color: '#f59e0b' },
+    { id: 'w5', fromComp: 'btn1', fromPin: '2a', toComp: 'uno1', toPin: 'GND.1', color: '#18181b' },
+    { id: 'w6', fromComp: 'uno1', fromPin: '5V', toComp: 'pot1', toPin: '1', color: '#ef4444' },
+    { id: 'w7', fromComp: 'pot1', fromPin: '2', toComp: 'uno1', toPin: 'A0', color: '#3b82f6' },
+    { id: 'w8', fromComp: 'pot1', fromPin: '3', toComp: 'uno1', toPin: 'GND.2', color: '#18181b' },
   ]);
 
   // --- Selected Component / Active Wire Creation ---
@@ -477,6 +482,38 @@ export default function App() {
       isDigital: false,
     },
   ], [logicHistory, pin2History, pinA0History]);
+
+  const handleClearWaveform = useCallback(() => {
+    setLogicHistory([]);
+    setPin2History([]);
+    setPinA0History([]);
+  }, []);
+
+  const isSpacePressed = useRef(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.code === 'Space' &&
+        !e.repeat &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        isSpacePressed.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        isSpacePressed.current = false;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // --- Synchronize Wire to Rust Core ---
   const syncWireToRust = useCallback(async (wire: CircuitWire) => {
@@ -1136,14 +1173,26 @@ export default function App() {
   useEffect(() => {
     let animId: number;
     let cancelled = false;
+    let lastTime = performance.now();
 
     const loop = async () => {
       if (cancelled) return;
 
-      if (isRunningRef.current && !isSteppingRef.current) {
+      if (!isSteppingRef.current) {
         isSteppingRef.current = true;
         try {
-          const res = await tauriInvoke<StepResult>('step_simulation', { cycles: 266666 });
+          const now = performance.now();
+          const elapsedSec = (now - lastTime) / 1000;
+          lastTime = now;
+
+          // Target 16,000,000 cycles / sec for exact 1:1 real-time match with 16 MHz ATmega328P
+          // Clamp elapsed time between 0.005s and 0.040s to keep it smooth and prevent time skips
+          const clampedElapsed = Math.min(0.040, Math.max(0.005, elapsedSec));
+          const cycles = isRunningRef.current
+            ? Math.round(clampedElapsed * 16_000_000)
+            : 0;
+
+          const res = await tauriInvoke<StepResult>('step_simulation', { cycles });
 
           if (!cancelled && res) {
             setPin13State(res.pin13);
@@ -1154,22 +1203,22 @@ export default function App() {
               setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
             }
 
-            const t = res.millis;
+            const t = isRunningRef.current ? res.millis : now;
             const v13 = res.mcu_pin_voltages?.['13'] ?? (res.pin13 ? 5.0 : 0.0);
-            const v2 = res.mcu_pin_voltages?.['2'] ?? 5.0;
-            const vA0 = res.mcu_pin_voltages?.['A0'] ?? 0.0;
+            const v2 = res.mcu_pin_voltages?.['2'] ?? (res.pin_voltages?.['btn1:1a'] ?? 5.0);
+            const vA0 = res.mcu_pin_voltages?.['A0'] ?? res.pin_voltages?.['pot1:2'] ?? 0.0;
 
             setLogicHistory((prev) => {
               const next = [...prev, [t, v13] as [number, number]];
-              return next.slice(-250);
+              return next.slice(-300);
             });
             setPin2History((prev) => {
               const next = [...prev, [t, v2] as [number, number]];
-              return next.slice(-250);
+              return next.slice(-300);
             });
             setPinA0History((prev) => {
               const next = [...prev, [t, vA0] as [number, number]];
-              return next.slice(-250);
+              return next.slice(-300);
             });
           }
         } catch (err) {
@@ -1612,12 +1661,12 @@ export default function App() {
 
   // --- Canvas Mouse Handlers (Pan & Wire Drawing) ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.button === 2) {
+    if (e.button === 1 || e.button === 2 || isSpacePressed.current || activeTool === 'move') {
       isPanning.current = true;
       panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
     } else if (e.button === 0) {
       // Left click on empty canvas deselects component/wire or clears wire draft
-      if (activeTool === 'select' || activeTool === 'move') {
+      if (activeTool === 'select') {
         setSelectedCompId(null);
         setSelectedWireId(null);
       } else if (activeTool === 'wire') {
@@ -1643,8 +1692,32 @@ export default function App() {
   };
 
   const handleCanvasWheel = (e: React.WheelEvent) => {
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom((z) => Math.min(3.0, Math.max(0.3, z * factor)));
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      // Touchpad pinch-to-zoom OR Ctrl + Mouse Wheel: zoom centered at mouse cursor
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Exponential smooth zoom factor based on deltaY
+      const zoomFactor = Math.pow(0.996, e.deltaY);
+
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(3.5, Math.max(0.25, prevZoom * zoomFactor));
+        // Keep the point under the cursor stationary
+        setPan((prevPan) => ({
+          x: mouseX - (mouseX - prevPan.x) * (nextZoom / prevZoom),
+          y: mouseY - (mouseY - prevPan.y) * (nextZoom / prevZoom),
+        }));
+        return nextZoom;
+      });
+    } else {
+      // Touchpad two-finger swipe (or mouse scroll wheel) = smooth PAN
+      setPan((prevPan) => ({
+        x: prevPan.x - e.deltaX,
+        y: prevPan.y - e.deltaY,
+      }));
+    }
   };
 
   // --- Pin Click to Start / Finish Wire ---
@@ -3246,7 +3319,11 @@ export default function App() {
 
                             {/* Tab Content: High-DPI Crisp Waveform */}
                             <TabsContent value="waveform" className="flex-1 overflow-hidden p-1 m-0">
-                              <LogicWaveform history={logicHistory} channels={waveformChannels} />
+                              <LogicWaveform
+                                history={logicHistory}
+                                channels={waveformChannels}
+                                onClear={handleClearWaveform}
+                              />
                             </TabsContent>
 
                             {/* Tab Content: Build Output */}

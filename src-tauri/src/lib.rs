@@ -399,6 +399,37 @@ pub fn run() {
             to: PinId::new("uno1", "GND"),
             color: "#000000".to_string(),
         });
+        engine.add_wire(Wire {
+            id: "w4".to_string(),
+            from: PinId::new("uno1", "2"),
+            to: PinId::new("btn1", "1a"),
+            color: "#f59e0b".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w5".to_string(),
+            from: PinId::new("btn1", "2a"),
+            to: PinId::new("uno1", "GND.1"),
+            color: "#000000".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w6".to_string(),
+            from: PinId::new("uno1", "5V"),
+            to: PinId::new("pot1", "1"),
+            color: "#ef4444".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w7".to_string(),
+            from: PinId::new("pot1", "2"),
+            to: PinId::new("uno1", "A0"),
+            color: "#3b82f6".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w8".to_string(),
+            from: PinId::new("pot1", "3"),
+            to: PinId::new("uno1", "GND.2"),
+            color: "#000000".to_string(),
+        });
+        engine.mcu.set_pin_mode_pullup("2");
 
         // Preload blink hex
         let _ = engine.mcu.load_hex(&BuiltinSketches::blink_hex());
@@ -443,6 +474,8 @@ pub fn run() {
                 SimCommand::Step { cycles, reply } => {
                     if is_running {
                         engine.step_cycles(cycles);
+                    } else {
+                        engine.resolve_electrical_nets();
                     }
                     let pin13 = engine.mcu.get_pin_state("13") == LogicState::High;
                     let lit_leds: Vec<String> = engine
@@ -743,6 +776,37 @@ mod tests {
             to: PinId::new("uno1", "GND"),
             color: "#000000".to_string(),
         });
+        engine.add_wire(Wire {
+            id: "w4".to_string(),
+            from: PinId::new("uno1", "2"),
+            to: PinId::new("btn1", "1a"),
+            color: "#f59e0b".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w5".to_string(),
+            from: PinId::new("btn1", "2a"),
+            to: PinId::new("uno1", "GND.1"),
+            color: "#000000".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w6".to_string(),
+            from: PinId::new("uno1", "5V"),
+            to: PinId::new("pot1", "1"),
+            color: "#ef4444".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w7".to_string(),
+            from: PinId::new("pot1", "2"),
+            to: PinId::new("uno1", "A0"),
+            color: "#3b82f6".to_string(),
+        });
+        engine.add_wire(Wire {
+            id: "w8".to_string(),
+            from: PinId::new("pot1", "3"),
+            to: PinId::new("uno1", "GND.2"),
+            color: "#000000".to_string(),
+        });
+        engine.mcu.set_pin_mode_pullup("2");
 
         engine.resolve_electrical_nets();
 

@@ -216,7 +216,7 @@ impl McuCore for ArduinoUnoCore {
             if self.runtime.remaining_budget() < 500_000 {
                 self.runtime.reset_budget();
             }
-            let step = remaining.min(1);
+            let step = remaining.min(32);
             self.board.run_cycles(self.backend.as_ref(), &mut self.runtime, step);
             let ucsra = self.board.read_data(self.backend.as_ref(), 0xc0);
             if (ucsra & 0x40) != 0 {
