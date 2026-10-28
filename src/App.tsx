@@ -4558,41 +4558,6 @@ export default function App() {
                               Potentiometer
                             </span>
                           </button>
-
-                          {/* 7. Text Label */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const id = `label_${components.length + 1}`;
-                              setComponents((prev) => [
-                                ...prev,
-                                {
-                                  id,
-                                  kind: 'text_label',
-                                  x: 300,
-                                  y: 60,
-                                  props: {
-                                    text: 'Circuit Note',
-                                    fontFamily: 'Inter, sans-serif',
-                                    fontSize: 16,
-                                    color: '#f4f4f5',
-                                    bold: false,
-                                    italic: false,
-                                    underline: false,
-                                  },
-                                },
-                              ]);
-                              setSelectedCompId(id);
-                              setSelectedCompIds(new Set([id]));
-                              setSelectedWireId(null);
-                            }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
-                          >
-                            <Type className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" />
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
-                              Text Label
-                            </span>
-                          </button>
                         </div>
                       </ScrollArea>
                     </aside>
