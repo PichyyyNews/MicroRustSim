@@ -5020,23 +5020,23 @@ export default function App() {
         {/* Modal Dialog: About MicroRustSim */}
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs animate-in fade-in duration-100">
-            <div className="w-[360px] bg-[#121215] border border-[#27272a] rounded-lg shadow-2xl p-5 select-none text-zinc-300">
+            <div className="w-[380px] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl p-5 select-none text-zinc-300">
               <div className="flex items-center justify-between pb-3 border-b border-[#222226]">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded bg-[#1e1e24] border border-zinc-700 flex items-center justify-center p-1">
+                  <div className="w-8 h-8 rounded-xl bg-[#1c1c20] border border-zinc-700/80 flex items-center justify-center p-1.5 shadow-xs">
                     <img src="/logo.png" alt="MicroRustSim" className="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.3 • Cycle-Accurate Simulator</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.4 • Cycle-Accurate Simulator</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowAboutModal(false)}
-                  className="text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-[#1a1a1e] transition-colors"
+                  className="text-zinc-500 hover:text-zinc-200 p-1.5 rounded-full hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
-                  <GoX className="w-4 h-4" />
+                  <GoX className="w-3.5 h-3.5" />
                 </button>
               </div>
 
