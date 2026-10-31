@@ -639,8 +639,9 @@ export default function App() {
     setWaveformVersion((v) => v + 1);
   }, []);
 
-  // Initial circuit sync to Rust simulation engine so components (btn, pot, led, r) and wires are immediately active
+  // Initial circuit & power realism sync to Rust simulation engine so components and physics are immediately active
   useEffect(() => {
+    tauriInvoke('set_power_realism_config', { config: powerConfig }).catch(console.error);
     tauriInvoke('sync_circuit', {
       components: components.map((c) => ({ id: c.id, kind: c.kind, props: c.props || {} })),
       wires: wires.map((w) => ({
@@ -1501,67 +1502,23 @@ export default function App() {
               return next.slice(-300);
             });
 
-            // Dynamic real-time telemetry recording for all enabled channels (LED 1-4, switches, etc.)
+            // Genuine physical electrical telemetry recording for all enabled channels (LEDs, Pots, Buttons, Resistors, MCU)
             channelConfigsRef.current.forEach((cfg) => {
               if (!cfg.enabled) return;
               let v = 0.0;
               if (cfg.kind === 'mcu') {
-                v = res.mcu_pin_voltages?.[cfg.targetId] ?? (cfg.targetId === '13' ? (res.pin13 ? (res.mcu_pin_voltages?.['13'] ?? 5.0) : 0.0) : 0.0);
+                v = res.mcu_pin_voltages?.[cfg.targetId] ?? 0.0;
               } else if (cfg.kind === 'led') {
-                const anodeV = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`];
-                if (anodeV !== undefined) {
-                  v = anodeV;
-                } else {
-                  const ledWire = wiresRef.current?.find(
-                    (w) => w.fromComp === cfg.targetId || w.toComp === cfg.targetId
-                  );
-                  const mcuPin = ledWire
-                    ? (ledWire.fromComp === cfg.targetId ? ledWire.toPin : ledWire.fromPin)
-                    : undefined;
-                  if (mcuPin && res.mcu_pin_voltages?.[mcuPin] !== undefined) {
-                    v = res.mcu_pin_voltages[mcuPin];
-                  } else {
-                    const b = res.led_brightness?.[cfg.targetId];
-                    v = b !== undefined ? (b / 255.0) * (res.mcu_pin_voltages?.['13'] ?? 5.0) : (res.lit_leds?.includes(cfg.targetId) ? 2.0 : 0.0);
-                  }
-                }
+                // Read physical anode voltage directly from MNA netlist
+                v = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
               } else if (cfg.kind === 'pushbutton') {
-                const btnWire = wiresRef.current?.find(
-                  (w) => w.fromComp === cfg.targetId || w.toComp === cfg.targetId
-                );
-                const mcuPin = btnWire
-                  ? (btnWire.fromComp === cfg.targetId ? btnWire.toPin : btnWire.fromPin)
-                  : undefined;
-                if (mcuPin && res.mcu_pin_voltages?.[mcuPin] !== undefined) {
-                  v = res.mcu_pin_voltages[mcuPin];
-                } else {
-                  v = res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 5.0;
-                }
+                // Read physical terminal voltage directly from MNA netlist
+                v = res.pin_voltages?.[`${cfg.targetId}:1`] ?? res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
               } else if (cfg.kind === 'potentiometer') {
-                const potComp = componentsRef.current.find((c) => c.id === cfg.targetId);
-                const potVal = potComp?.props?.value ?? 0.5;
-
-                // Find if pot wiper is wired to MCU
-                const potWire = wiresRef.current?.find(
-                  (w) =>
-                    (w.fromComp === cfg.targetId && (w.fromPin === '2' || w.fromPin === 'sig' || w.fromPin === 'wiper')) ||
-                    (w.toComp === cfg.targetId && (w.toPin === '2' || w.toPin === 'sig' || w.toPin === 'wiper'))
-                );
-                const wiredPin = potWire
-                  ? (potWire.fromComp === cfg.targetId ? potWire.toPin : potWire.fromPin)
-                  : undefined;
-
-                const mnaVolt = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:sig`];
-                const mcuVolt = wiredPin ? res.mcu_pin_voltages?.[wiredPin] : undefined;
-
-                if (mcuVolt !== undefined) {
-                  v = mcuVolt;
-                } else if (mnaVolt !== undefined && mnaVolt > 0.001) {
-                  v = mnaVolt;
-                } else {
-                  v = potVal * (res.mcu_pin_voltages?.['5V'] ?? 5.0);
-                }
+                // Read physical wiper (terminal 2) voltage directly from MNA netlist without artificial clamps or fallbacks
+                v = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:sig`] ?? 0.0;
               } else if (cfg.kind === 'resistor') {
+                // Differential voltage drop across the physical resistor element: |V1 - V2|
                 const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
                 const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
                 v = Math.abs(v1 - v2);
@@ -4476,6 +4433,9 @@ export default function App() {
                                 onTogglePowerMode={() => {
                                   const nextMode = powerConfig.mode === 'ideal' ? 'realistic' : 'ideal';
                                   handleUpdatePowerConfig({ ...powerConfig, mode: nextMode });
+                                }}
+                                onSetPowerMode={(m) => {
+                                  handleUpdatePowerConfig({ ...powerConfig, mode: m });
                                 }}
                                 branchCurrents={branchCurrents}
                               />

@@ -57,6 +57,7 @@ interface LogicWaveformProps {
   onOpenChannelConfig?: () => void;
   powerConfig?: PowerRealismConfig;
   onTogglePowerMode?: () => void;
+  onSetPowerMode?: (mode: 'ideal' | 'realistic') => void;
   branchCurrents?: Record<string, number>;
 }
 
@@ -73,6 +74,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   onOpenChannelConfig,
   powerConfig,
   onTogglePowerMode,
+  onSetPowerMode,
   branchCurrents,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -384,7 +386,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             const clampedT = Math.max(tStart, t);
             const x = leftGutter + ((clampedT - tStart) / tRange) * plotWidth;
             const norm = Math.min(ch.maxVal, Math.max(0.0, v)) / (ch.maxVal || 5.0);
-            const y = Math.round(innerBottom - norm * innerHeight);
+            // Continuous subpixel vertical coordinate preserves physical noise & ripple waveforms without quantizing
+            const y = innerBottom - norm * innerHeight;
 
             if (!started) {
               ctx.moveTo(x, y);
@@ -481,7 +484,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           const clampedT = Math.max(tStart, t);
           const x = leftGutter + ((clampedT - tStart) / tRange) * plotWidth;
           const norm = Math.min(ch.maxVal, Math.max(0.0, v)) / (ch.maxVal || 5.0);
-          const y = Math.round(y0 - norm * (y0 - y5));
+          // Continuous subpixel vertical coordinate preserves physical noise & ripple waveforms without quantizing
+          const y = y0 - norm * (y0 - y5);
 
           if (!started) {
             ctx.moveTo(x, y);
@@ -836,21 +840,35 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             <span>{isPaused ? 'Resume' : 'Inspect'}</span>
           </button>
 
-          {/* Quick Power Supply Physics Toggle */}
-          {powerConfig && onTogglePowerMode && (
-            <button
-              type="button"
-              onClick={onTogglePowerMode}
-              title={`Power Realism Mode: ${powerConfig.mode === 'realistic' ? 'Realistic Lab (Sag, Ripple, Noise Active)' : 'Ideal (Pure 5.000V)'}. Click to toggle.`}
-              className={`h-6 px-2.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
-                powerConfig.mode === 'realistic'
-                  ? 'bg-[#27272a] border-zinc-500 text-white shadow-xs font-semibold'
-                  : 'bg-[#18181b] hover:bg-zinc-800 border-zinc-700/80 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Zap className={`w-2.5 h-2.5 ${powerConfig.mode === 'realistic' ? 'text-white' : 'text-zinc-500'}`} />
-              <span className="capitalize">{powerConfig.mode === 'realistic' ? 'Realistic (Lab)' : 'Ideal (5V)'}</span>
-            </button>
+          {/* Clear Unambiguous Segmented Power Supply Physics Selector */}
+          {powerConfig && (
+            <div className="flex items-center bg-[#121215] border border-zinc-800 rounded-full p-0.5 shrink-0 text-[10px]">
+              <button
+                type="button"
+                onClick={() => onSetPowerMode ? onSetPowerMode('ideal') : (powerConfig.mode === 'realistic' && onTogglePowerMode?.())}
+                title="Ideal Mode: Steady regulated 5.000 V reference"
+                className={`h-5 px-2 rounded-full transition-colors font-medium cursor-pointer ${
+                  powerConfig.mode === 'ideal'
+                    ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Ideal (5V)
+              </button>
+              <button
+                type="button"
+                onClick={() => onSetPowerMode ? onSetPowerMode('realistic') : (powerConfig.mode === 'ideal' && onTogglePowerMode?.())}
+                title="Realistic Mode: Physical MNA internal resistance sag, 100 Hz ripple & deterministic noise"
+                className={`h-5 px-2 rounded-full transition-colors font-medium flex items-center gap-1 cursor-pointer ${
+                  powerConfig.mode === 'realistic'
+                    ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Zap className={`w-2.5 h-2.5 ${powerConfig.mode === 'realistic' ? 'text-zinc-950 fill-zinc-950' : 'text-zinc-400'}`} />
+                <span>Realistic</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -867,9 +885,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
               activeCh && activeCh.history.length > 0
                 ? activeCh.history[activeCh.history.length - 1][1]
                 : activeComp?.kind === 'potentiometer'
-                ? activeComp.props?.value !== undefined
-                  ? activeComp.props.value * 5.0
-                  : electricalMetrics.vPinA0
+                ? electricalMetrics.vPinA0
                 : activeComp?.kind === 'resistor'
                 ? electricalMetrics.vResistor
                 : electricalMetrics.vPin13;
