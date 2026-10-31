@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   SlidersHorizontal,
   Lightbulb,
@@ -8,12 +8,15 @@ import {
   Check,
   X,
   Search,
-  Sparkles,
   RotateCcw,
   Palette,
   Layers,
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { CircuitComponent, CircuitWire } from '../types';
 
@@ -26,7 +29,10 @@ export interface WaveformChannelConfig {
   enabled: boolean;
   pinConnection?: string;
   wireColor?: string;
+  compDetails?: string;
 }
+
+export type ChannelCategory = 'all' | 'led' | 'input' | 'mcu' | 'passive';
 
 interface ChannelConfigModalProps {
   isOpen: boolean;
@@ -40,7 +46,7 @@ interface ChannelConfigModalProps {
 // Curated 8 Dark Zinc-compatible vibrant channel colors
 export const CHANNEL_PALETTE = [
   '#38bdf8', // Sky (Potentiometer / Analog)
-  '#10b981', // Emerald (LED 1 / Pin 13)
+  '#10b981', // Emerald (LED 1 / Output)
   '#f59e0b', // Amber (Button 1 / Input)
   '#f43f5e', // Rose (LED 2 / Alert)
   '#a855f7', // Purple (MCU Pin / Clock)
@@ -73,10 +79,8 @@ export function buildDiagramChannels(
 
   diagramComps.forEach((comp) => {
     const channelId = `ch_${comp.id}`;
-    // Find all wires connected to this component
     const compWires = wires.filter((w) => w.fromComp === comp.id || w.toComp === comp.id);
 
-    // Find wire connected to MCU
     const mcuWire = compWires.find(
       (w) =>
         (w.fromComp === comp.id && (w.toComp === mcuId || w.toComp.toLowerCase().includes('uno'))) ||
@@ -85,9 +89,9 @@ export function buildDiagramChannels(
 
     let pinConn = '';
     let wireColor: string | undefined = undefined;
+    let compDetails = '';
 
     if (comp.kind === 'potentiometer') {
-      // Find wiper wire (pin 2)
       const wiperWire = compWires.find(
         (w) =>
           (w.fromComp === comp.id && (w.fromPin === '2' || w.fromPin === 'sig' || w.fromPin === 'wiper')) ||
@@ -95,15 +99,16 @@ export function buildDiagramChannels(
       );
       if (wiperWire) {
         const mcuPin = wiperWire.fromComp === comp.id ? wiperWire.toPin : wiperWire.fromPin;
-        pinConn = `Wiper (Pin 2) → MCU Pin ${mcuPin}`;
+        pinConn = `Pin 2 (Wiper) → MCU Pin ${mcuPin}`;
         wireColor = wiperWire.color;
       } else if (mcuWire) {
         const mcuPin = mcuWire.fromComp === comp.id ? mcuWire.toPin : mcuWire.fromPin;
         pinConn = `Connected → MCU Pin ${mcuPin}`;
         wireColor = mcuWire.color;
       } else {
-        pinConn = '3-Pin Potentiometer Divider';
+        pinConn = '3-Pin Voltage Divider';
       }
+      compDetails = '10 kΩ Rotary Knob (0.00 – 5.00 V)';
     } else if (comp.kind === 'led') {
       const anodeWire = compWires.find(
         (w) =>
@@ -119,18 +124,21 @@ export function buildDiagramChannels(
         pinConn = `Connected → MCU Pin ${mcuPin}`;
         wireColor = mcuWire.color;
       } else {
-        pinConn = 'LED Output';
+        pinConn = 'Digital Output';
       }
+      compDetails = `${comp.props?.color || 'Red'} LED (Forward Vf ~ 2.0 V)`;
     } else if (comp.kind === 'pushbutton') {
       if (mcuWire) {
         const mcuPin = mcuWire.fromComp === comp.id ? mcuWire.toPin : mcuWire.fromPin;
         pinConn = `Pin 1a → MCU Pin ${mcuPin}`;
         wireColor = mcuWire.color;
       } else {
-        pinConn = 'Digital Pushbutton (Active Low)';
+        pinConn = 'Momentary Switch';
       }
+      compDetails = 'Active-Low with 30 kΩ Internal Pullup';
     } else if (comp.kind === 'resistor') {
       pinConn = `${comp.props?.ohms || 220}\u00A0Ω Limiter`;
+      compDetails = 'Series Current Limiting Resistor';
     }
 
     let label = `${comp.kind.toUpperCase()} (${comp.id})`;
@@ -150,6 +158,7 @@ export function buildDiagramChannels(
       enabled: existing !== undefined ? existing.enabled : comp.kind !== 'resistor',
       pinConnection: pinConn,
       wireColor,
+      compDetails,
     });
   });
 
@@ -187,6 +196,7 @@ export function buildDiagramChannels(
         color: existing?.color || CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
         enabled: existing !== undefined ? existing.enabled : pin === '13',
         pinConnection: `ATmega328P Pin ${pin}`,
+        compDetails: 'Hardware Microcontroller GPIO',
       });
     }
   });
@@ -202,18 +212,69 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   configs = [],
   onSave,
 }) => {
-  // Local working copy of channel configurations
-  const [localConfigs, setLocalConfigs] = useState<WaveformChannelConfig[]>([]);
+  // Navigation & Filter State
+  const [activeTab, setActiveTab] = useState<ChannelCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<'all' | 'led' | 'input' | 'mcu'>('all');
+  const [localConfigs, setLocalConfigs] = useState<WaveformChannelConfig[]>([]);
 
-  // ALWAYS re-generate fresh, synchronized channels from the diagram whenever the modal opens
+  // 0-Latency Dragging via Direct DOM Transform (Matches SettingsModal)
+  const modalBoxRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startX: 0, startY: 0 });
+
   useEffect(() => {
     if (isOpen) {
+      posRef.current = { x: 0, y: 0 };
+      if (modalBoxRef.current) {
+        modalBoxRef.current.style.transform = 'translate3d(0px, 0px, 0px)';
+      }
+      // Re-generate fresh, synchronized channels from the diagram on open
       const freshChannels = buildDiagramChannels(components, wires, configs);
       setLocalConfigs(freshChannels);
     }
-  }, [isOpen, components, wires, configs]);
+  }, [isOpen, components, wires]);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('select')) return;
+
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startX: posRef.current.x,
+      startY: posRef.current.y,
+    };
+
+    const header = e.currentTarget as HTMLElement;
+    header.setPointerCapture(e.pointerId);
+
+    const onPointerMove = (ev: PointerEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = ev.clientX - dragStartRef.current.mouseX;
+      const dy = ev.clientY - dragStartRef.current.mouseY;
+      posRef.current = {
+        x: dragStartRef.current.startX + dx,
+        y: dragStartRef.current.startY + dy,
+      };
+      if (modalBoxRef.current) {
+        modalBoxRef.current.style.transform = `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0px)`;
+      }
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      isDraggingRef.current = false;
+      try {
+        header.releasePointerCapture(ev.pointerId);
+      } catch {}
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
 
   // Toggle channel enabled state by unique channel ID
   const handleToggle = (id: string) => {
@@ -235,22 +296,18 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     );
   };
 
-  // Quick Presets
-  const handleSelectAllDiagram = () => {
-    setLocalConfigs((prev) => prev.map((c) => ({ ...c, enabled: true })));
-  };
-
-  const handleSelectAllLeds = () => {
+  // Preset actions
+  const handleSelectAllInTab = () => {
     setLocalConfigs((prev) =>
-      prev.map((c) => (c.kind === 'led' ? { ...c, enabled: true } : c))
-    );
-  };
-
-  const handleSelectAllInputs = () => {
-    setLocalConfigs((prev) =>
-      prev.map((c) =>
-        c.kind === 'pushbutton' || c.kind === 'potentiometer' ? { ...c, enabled: true } : c
-      )
+      prev.map((c) => {
+        if (activeTab === 'all') return { ...c, enabled: true };
+        if (activeTab === 'led' && c.kind === 'led') return { ...c, enabled: true };
+        if (activeTab === 'input' && (c.kind === 'pushbutton' || c.kind === 'potentiometer'))
+          return { ...c, enabled: true };
+        if (activeTab === 'mcu' && c.kind === 'mcu') return { ...c, enabled: true };
+        if (activeTab === 'passive' && c.kind === 'resistor') return { ...c, enabled: true };
+        return c;
+      })
     );
   };
 
@@ -258,15 +315,42 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     setLocalConfigs(buildDiagramChannels(components, wires, []));
   };
 
-  // Filtered list based on category and search query (Hooks MUST run before any early return)
+  // Category counts
+  const counts = useMemo(() => {
+    return {
+      all: localConfigs.length,
+      led: localConfigs.filter((c) => c.kind === 'led').length,
+      input: localConfigs.filter((c) => c.kind === 'pushbutton' || c.kind === 'potentiometer').length,
+      mcu: localConfigs.filter((c) => c.kind === 'mcu').length,
+      passive: localConfigs.filter((c) => c.kind === 'resistor').length,
+    };
+  }, [localConfigs]);
+
+  // Sidebar navigation items
+  const SIDEBAR_ITEMS: {
+    id: ChannelCategory;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    count: number;
+  }[] = [
+    { id: 'all', label: 'All Channels', icon: Layers, count: counts.all },
+    { id: 'led', label: 'Outputs & LEDs', icon: Lightbulb, count: counts.led },
+    { id: 'input', label: 'Inputs & Switches', icon: ToggleLeft, count: counts.input },
+    { id: 'mcu', label: 'MCU Pins (Uno)', icon: Cpu, count: counts.mcu },
+    { id: 'passive', label: 'Passives & Resistors', icon: Zap, count: counts.passive },
+  ];
+
+  // Filtered list based on active category and search query
   const filteredConfigs = useMemo(() => {
     let list = localConfigs;
-    if (filterCategory === 'led') {
+    if (activeTab === 'led') {
       list = list.filter((c) => c.kind === 'led');
-    } else if (filterCategory === 'input') {
+    } else if (activeTab === 'input') {
       list = list.filter((c) => c.kind === 'pushbutton' || c.kind === 'potentiometer');
-    } else if (filterCategory === 'mcu') {
+    } else if (activeTab === 'mcu') {
       list = list.filter((c) => c.kind === 'mcu');
+    } else if (activeTab === 'passive') {
+      list = list.filter((c) => c.kind === 'resistor');
     }
 
     if (!searchQuery.trim()) return list;
@@ -278,7 +362,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
         c.kind.toLowerCase().includes(q) ||
         (c.pinConnection && c.pinConnection.toLowerCase().includes(q))
     );
-  }, [localConfigs, filterCategory, searchQuery]);
+  }, [localConfigs, activeTab, searchQuery]);
 
   const enabledCount = localConfigs.filter((c) => c.enabled).length;
   const totalCount = localConfigs.length;
@@ -288,245 +372,250 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     onClose();
   };
 
-  // Safe early return placed AFTER all hooks to adhere strictly to React Rules of Hooks
+  // Safe early return placed AFTER all hooks (Adheres strictly to React Rules of Hooks)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none animate-in fade-in duration-100">
+    <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center select-none bg-black/60 backdrop-blur-xs">
       <div
-        className="w-full max-w-lg bg-[#141416] border border-[#222226] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-zinc-100 max-h-[85vh]"
+        ref={modalBoxRef}
+        className="pointer-events-auto w-[820px] h-[560px] max-w-[94vw] max-h-[92vh] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl flex flex-col overflow-hidden outline-none will-change-transform"
+        style={{ transform: 'translate3d(0px, 0px, 0px)' }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="p-4 border-b border-[#222226] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <SlidersHorizontal className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                <span>Configure Waveform Channels</span>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] font-mono h-4 border-zinc-700 whitespace-nowrap [word-break:keep-all]"
-                >
-                  {enabledCount}&nbsp;/&nbsp;{totalCount}&nbsp;Active
-                </Badge>
-              </h2>
-              <p className="text-[11px] text-zinc-400 leading-normal">
-                Directly synchronized with all circuit components and wires in the diagram.
-              </p>
-            </div>
+        {/* Draggable Header (Matches SettingsModal standard) */}
+        <div
+          onPointerDown={handlePointerDown}
+          className="h-11 px-4 bg-[#18181b] border-b border-[#222226] flex items-center justify-between cursor-move select-none shrink-0"
+        >
+          <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-xs tracking-tight">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Logic Waveform Channels</span>
+            <span className="text-[10px] text-zinc-500 font-mono font-normal">| Diagram Probes</span>
+            <Badge
+              variant="outline"
+              className="text-[9px] font-mono h-4 border-zinc-700/80 text-zinc-300 ml-1 whitespace-nowrap [word-break:keep-all]"
+            >
+              {enabledCount}&nbsp;/&nbsp;{totalCount}&nbsp;Active
+            </Badge>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-7 h-7 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* Category Tabs & Quick Presets Bar */}
-        <div className="px-4 py-2 bg-[#0e0e11] border-b border-[#222226] space-y-2">
-          {/* Top Row: Category Tabs */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center bg-[#141416] border border-[#27272a] rounded-full p-0.5">
-              <button
-                type="button"
-                onClick={() => setFilterCategory('all')}
-                className={`h-5 px-2.5 rounded-full text-[10px] font-medium transition-all cursor-pointer ${
-                  filterCategory === 'all'
-                    ? 'bg-zinc-200 text-zinc-950 font-semibold shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                All ({localConfigs.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterCategory('led')}
-                className={`h-5 px-2 rounded-full text-[10px] font-medium transition-all cursor-pointer ${
-                  filterCategory === 'led'
-                    ? 'bg-zinc-200 text-zinc-950 font-semibold shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                LEDs ({localConfigs.filter((c) => c.kind === 'led').length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterCategory('input')}
-                className={`h-5 px-2 rounded-full text-[10px] font-medium transition-all cursor-pointer ${
-                  filterCategory === 'input'
-                    ? 'bg-zinc-200 text-zinc-950 font-semibold shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Inputs ({localConfigs.filter((c) => c.kind === 'pushbutton' || c.kind === 'potentiometer').length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterCategory('mcu')}
-                className={`h-5 px-2 rounded-full text-[10px] font-medium transition-all cursor-pointer ${
-                  filterCategory === 'mcu'
-                    ? 'bg-zinc-200 text-zinc-950 font-semibold shadow-xs'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                MCU Pins ({localConfigs.filter((c) => c.kind === 'mcu').length})
-              </button>
-            </div>
-
+          <div className="flex items-center gap-2">
             {/* Search Input */}
-            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#18181b] border border-zinc-800 rounded-full text-xs">
-              <Search className="w-3 h-3 text-zinc-500 shrink-0" />
-              <input
-                type="text"
+            <div className="relative w-44">
+              <Search className="w-3 h-3 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="bg-transparent text-[11px] text-zinc-200 outline-none placeholder:text-zinc-600 w-24"
+                placeholder="Filter channels..."
+                className="h-7 pl-7 pr-2 bg-[#121215] border-zinc-800 text-zinc-200 text-xs rounded-full focus-visible:border-zinc-500"
               />
             </div>
-          </div>
-
-          {/* Bottom Row: Quick Presets */}
-          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={handleSelectAllDiagram}
-              className="h-5 px-2 rounded-full bg-[#18181b] hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+              onClick={onClose}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              title="Close"
             >
-              <Layers className="w-2.5 h-2.5 text-sky-400" />
-              <span>Select All</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleSelectAllLeds}
-              className="h-5 px-2 rounded-full bg-[#18181b] hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <Lightbulb className="w-2.5 h-2.5 text-emerald-400" />
-              <span>All LEDs</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleSelectAllInputs}
-              className="h-5 px-2 rounded-full bg-[#18181b] hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <ToggleLeft className="w-2.5 h-2.5 text-amber-400" />
-              <span>All Inputs</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleResetDefaults}
-              className="h-5 px-2 rounded-full hover:bg-zinc-800 border border-transparent text-zinc-400 hover:text-zinc-200 text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-2.5 h-2.5" />
-              <span>Reset</span>
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Channel Selection Ledger (Level 2 Inset Box) */}
-        <div className="p-3 overflow-y-auto flex-1 space-y-1.5">
-          {filteredConfigs.length === 0 ? (
-            <div className="p-8 text-center text-xs text-zinc-500">
-              No matching diagram components found.
+        {/* Modal Body: Left Flat Sidebar + Right Content Panel */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Navigation Menu (Flat Items - Anti-Card-Nesting) */}
+          <div className="w-48 bg-[#121215] border-r border-[#222226] p-2 space-y-0.5 shrink-0 overflow-y-auto scrollbar-none">
+            <div className="px-2.5 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+              Categories
             </div>
-          ) : (
-            filteredConfigs.map((cfg) => {
+            {SIDEBAR_ITEMS.map((item) => {
+              const IconComp = item.icon;
+              const isActive = activeTab === item.id;
               return (
-                <div
-                  key={cfg.id}
-                  className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
-                    cfg.enabled
-                      ? 'bg-[#1c1c20] border-zinc-700/80 shadow-xs'
-                      : 'bg-[#121215] border-[#222226] opacity-60 hover:opacity-90'
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-between transition-colors text-left cursor-pointer ${
+                    isActive
+                      ? 'bg-[#26262a] text-white shadow-xs font-semibold'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
                   }`}
                 >
-                  {/* Left: Checkbox & Name & Diagram Wire Badge */}
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(cfg.id)}
-                      className={`w-4 h-4 rounded flex items-center justify-center border transition-colors cursor-pointer ${
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <IconComp
+                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                    {item.count}
+                  </span>
+                </button>
+              );
+            })}
+
+            <div className="pt-3 border-t border-[#222226] px-1 space-y-1">
+              <div className="px-1.5 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                Quick Actions
+              </div>
+              <button
+                type="button"
+                onClick={handleSelectAllInTab}
+                className="w-full px-2 py-1.5 rounded-lg text-[11px] text-zinc-300 hover:text-white hover:bg-zinc-800/50 flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
+                <span>Select All in View</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDefaults}
+                className="w-full px-2 py-1.5 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <RotateCcw className="w-3 h-3 text-zinc-500 shrink-0" />
+                <span>Reset to Diagram</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Right Main Content Panel */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin bg-[#141416]">
+            {/* Category Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-[#222226]">
+              <div>
+                <h3 className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                  <span>
+                    {activeTab === 'all' && 'All Diagram Components & MCU Pins'}
+                    {activeTab === 'led' && 'Outputs & LED Indicators'}
+                    {activeTab === 'input' && 'Inputs, Potentiometers & Switches'}
+                    {activeTab === 'mcu' && 'ATmega328P Microcontroller Pins'}
+                    {activeTab === 'passive' && 'Passive Circuit Components'}
+                  </span>
+                  <Badge variant="outline" className="text-[9px] font-mono h-4 border-zinc-700">
+                    {filteredConfigs.length} channels
+                  </Badge>
+                </h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Synchronized with the active breadboard circuit diagram and wiring nets.
+                </p>
+              </div>
+            </div>
+
+            {/* Flat Channel Items (Level 2 Inset Box Architecture - Anti-Card-Nesting) */}
+            <div className="space-y-2">
+              {filteredConfigs.length === 0 ? (
+                <div className="p-12 text-center text-xs text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
+                  No matching components found in this category.
+                </div>
+              ) : (
+                filteredConfigs.map((cfg) => {
+                  return (
+                    <div
+                      key={cfg.id}
+                      className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                         cfg.enabled
-                          ? 'bg-white border-white text-zinc-950 font-bold'
-                          : 'border-zinc-700 bg-transparent'
+                          ? 'bg-[#1c1c20] border-zinc-700/80 shadow-xs'
+                          : 'bg-[#161619] border-[#222226] opacity-60 hover:opacity-90'
                       }`}
                     >
-                      {cfg.enabled && <Check className="w-3 h-3 stroke-[3]" />}
-                    </button>
+                      {/* Left: Checkbox + Icon + Detailed Pin Information */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggle(cfg.id)}
+                          className={`w-4 h-4 rounded flex items-center justify-center border transition-colors cursor-pointer shrink-0 ${
+                            cfg.enabled
+                              ? 'bg-white border-white text-zinc-950 font-bold'
+                              : 'border-zinc-700 bg-transparent hover:border-zinc-500'
+                          }`}
+                        >
+                          {cfg.enabled && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
 
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-[#141416] border border-[#27272a] flex items-center justify-center shrink-0">
-                        {cfg.kind === 'led' && <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />}
-                        {cfg.kind === 'pushbutton' && <ToggleLeft className="w-3.5 h-3.5 text-amber-400" />}
-                        {cfg.kind === 'potentiometer' && <Zap className="w-3.5 h-3.5 text-sky-400" />}
-                        {cfg.kind === 'resistor' && <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />}
-                        {cfg.kind === 'mcu' && <Cpu className="w-3.5 h-3.5 text-purple-400" />}
+                        <div className="w-7 h-7 rounded-lg bg-[#141416] border border-[#27272a] flex items-center justify-center shrink-0">
+                          {cfg.kind === 'led' && <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />}
+                          {cfg.kind === 'pushbutton' && <ToggleLeft className="w-3.5 h-3.5 text-amber-400" />}
+                          {cfg.kind === 'potentiometer' && <Zap className="w-3.5 h-3.5 text-sky-400" />}
+                          {cfg.kind === 'resistor' && <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />}
+                          {cfg.kind === 'mcu' && <Cpu className="w-3.5 h-3.5 text-purple-400" />}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5 truncate">
+                            <span>{cfg.label}</span>
+                            <span className="font-mono text-[10px] text-zinc-500">({cfg.targetId})</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {cfg.pinConnection && (
+                              <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
+                                {cfg.wireColor ? (
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: cfg.wireColor }}
+                                  />
+                                ) : (
+                                  <ArrowRight className="w-2.5 h-2.5 text-zinc-600 shrink-0" />
+                                )}
+                                <span className="truncate">{cfg.pinConnection}</span>
+                              </div>
+                            )}
+                            {cfg.compDetails && (
+                              <span className="text-[10px] text-zinc-500 hidden sm:inline truncate">
+                                • {cfg.compDetails}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div>
-                        <div className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                          <span>{cfg.label}</span>
-                          <span className="font-mono text-[10px] text-zinc-500">({cfg.targetId})</span>
-                        </div>
-                        {cfg.pinConnection && (
-                          <div className="text-[10px] text-zinc-400 leading-tight flex items-center gap-1 mt-0.5">
-                            {cfg.wireColor && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: cfg.wireColor }}
-                              />
-                            )}
-                            <span>{cfg.pinConnection}</span>
-                          </div>
-                        )}
+                      {/* Right: Color Swatch Capsule + Range Badge */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleCycleColor(cfg.id)}
+                          title="Click to cycle channel trace color"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-zinc-800 bg-[#121215] hover:bg-zinc-800 transition-colors cursor-pointer"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: cfg.color }}
+                          />
+                          <Palette className="w-3 h-3 text-zinc-500" />
+                        </button>
+
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] font-mono h-5 px-2 border-zinc-700/60 whitespace-nowrap [word-break:keep-all]"
+                        >
+                          0.00&nbsp;–&nbsp;5.00&nbsp;V
+                        </Badge>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Right: Color Swatch & Unit Tag */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleCycleColor(cfg.id)}
-                      title="Click to cycle channel trace color"
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-zinc-800 bg-[#141416] hover:bg-zinc-800 transition-colors cursor-pointer"
-                    >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: cfg.color }}
-                      />
-                      <Palette className="w-2.5 h-2.5 text-zinc-500" />
-                    </button>
-
-                    <Badge
-                      variant="outline"
-                      className="text-[9px] font-mono h-4 border-zinc-700/60 whitespace-nowrap [word-break:keep-all]"
-                    >
-                      0&nbsp;-&nbsp;5&nbsp;V
-                    </Badge>
-                  </div>
-                </div>
-              );
-            })
-          )}
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-[#222226] bg-[#0e0e11] flex items-center justify-between">
-          <span className="text-[11px] text-zinc-500">
-            Selected: <span className="text-zinc-200 font-semibold font-mono">{enabledCount}</span> channel{enabledCount !== 1 ? 's' : ''}
-          </span>
+        {/* Modal Footer (Matches SettingsModal standard) */}
+        <div className="h-12 px-4 bg-[#18181b] border-t border-[#222226] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <span className="text-[11px] text-zinc-500">Active Probes:</span>
+            <span className="font-mono font-semibold text-white tabular-nums">{enabledCount}</span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-[11px] text-zinc-500">Available:</span>
+            <span className="font-mono text-zinc-300 tabular-nums">{totalCount}</span>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              className="rounded-full h-8 text-xs px-3.5 border-zinc-700 bg-transparent text-zinc-300 hover:text-white"
+              className="rounded-full h-7 text-xs px-3 border-zinc-700 bg-transparent text-zinc-300 hover:text-white"
             >
               Cancel
             </Button>
@@ -534,7 +623,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
               type="button"
               variant="default"
               onClick={handleApply}
-              className="rounded-full h-8 text-xs px-4 bg-white text-zinc-950 hover:bg-zinc-200 font-semibold shadow-xs"
+              className="rounded-full h-7 text-xs px-4 bg-white text-zinc-950 hover:bg-zinc-200 font-semibold shadow-xs"
             >
               Apply Channels
             </Button>
