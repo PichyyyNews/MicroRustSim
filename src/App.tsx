@@ -538,6 +538,8 @@ export default function App() {
   const [pin2History, setPin2History] = useState<[number, number][]>([]);
   const [pinA0History, setPinA0History] = useState<[number, number][]>([]);
   const [circuitFaults, setCircuitFaults] = useState<CircuitFault[]>([]);
+  const [branchCurrents, setBranchCurrents] = useState<Record<string, number>>({});
+  const simTimeRef = useRef<number>(0);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
   const serialContainerRef = useRef<HTMLDivElement>(null);
 
@@ -1470,11 +1472,18 @@ export default function App() {
             setLitLeds(new Set(res.lit_leds));
             setLedBrightness(res.led_brightness || {});
             setCircuitFaults(res.faults || []);
+            if (res.branch_currents) {
+              setBranchCurrents(res.branch_currents);
+            }
             if (res.serial_output) {
               setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
             }
 
-            const t = isRunningRef.current ? res.millis : now;
+            // Monotonically advancing simulation clock ensures smooth 60 FPS waveforms
+            // and eliminates timestamp jumps when paused or toggling running state
+            simTimeRef.current += clampedElapsed * 1000;
+            const t = simTimeRef.current;
+
             const v13 = res.mcu_pin_voltages?.['13'] ?? (res.pin13 ? 5.0 : 0.0);
             const v2 = res.mcu_pin_voltages?.['2'] ?? (res.pin_voltages?.['btn1:1a'] ?? 5.0);
             const vA0 = res.mcu_pin_voltages?.['A0'] ?? res.pin_voltages?.['pot1:2'] ?? 0.0;
@@ -1497,15 +1506,24 @@ export default function App() {
               if (!cfg.enabled) return;
               let v = 0.0;
               if (cfg.kind === 'mcu') {
-                v = res.mcu_pin_voltages?.[cfg.targetId] ?? (cfg.targetId === '13' ? (res.pin13 ? 5.0 : 0.0) : 0.0);
+                v = res.mcu_pin_voltages?.[cfg.targetId] ?? (cfg.targetId === '13' ? (res.pin13 ? (res.mcu_pin_voltages?.['13'] ?? 5.0) : 0.0) : 0.0);
               } else if (cfg.kind === 'led') {
-                const b = res.led_brightness?.[cfg.targetId];
-                if (b !== undefined) {
-                  v = (b / 255.0) * 5.0;
-                } else if (res.lit_leds?.includes(cfg.targetId)) {
-                  v = 2.0;
+                const anodeV = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`];
+                if (anodeV !== undefined) {
+                  v = anodeV;
                 } else {
-                  v = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
+                  const ledWire = wiresRef.current?.find(
+                    (w) => w.fromComp === cfg.targetId || w.toComp === cfg.targetId
+                  );
+                  const mcuPin = ledWire
+                    ? (ledWire.fromComp === cfg.targetId ? ledWire.toPin : ledWire.fromPin)
+                    : undefined;
+                  if (mcuPin && res.mcu_pin_voltages?.[mcuPin] !== undefined) {
+                    v = res.mcu_pin_voltages[mcuPin];
+                  } else {
+                    const b = res.led_brightness?.[cfg.targetId];
+                    v = b !== undefined ? (b / 255.0) * (res.mcu_pin_voltages?.['13'] ?? 5.0) : (res.lit_leds?.includes(cfg.targetId) ? 2.0 : 0.0);
+                  }
                 }
               } else if (cfg.kind === 'pushbutton') {
                 const btnWire = wiresRef.current?.find(
@@ -1541,7 +1559,7 @@ export default function App() {
                 } else if (mnaVolt !== undefined && mnaVolt > 0.001) {
                   v = mnaVolt;
                 } else {
-                  v = potVal * 5.0;
+                  v = potVal * (res.mcu_pin_voltages?.['5V'] ?? 5.0);
                 }
               } else if (cfg.kind === 'resistor') {
                 const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
@@ -4459,6 +4477,7 @@ export default function App() {
                                   const nextMode = powerConfig.mode === 'ideal' ? 'realistic' : 'ideal';
                                   handleUpdatePowerConfig({ ...powerConfig, mode: nextMode });
                                 }}
+                                branchCurrents={branchCurrents}
                               />
                             </TabsContent>
 

@@ -507,12 +507,12 @@ impl SimulationEngine {
     /// Step simulation by `cycles` and resolve connected pin states across wires.
     pub fn step_cycles(&mut self, cycles: u64) {
         self.mcu.step_cycles(cycles);
-        self.step_counter = self.step_counter.wrapping_add(1);
         self.resolve_electrical_nets();
     }
 
     /// Physical Netlist Resolution: solves closed-circuit conduction, voltage division, LED forward drop, and faults using MNA.
     pub fn resolve_electrical_nets(&mut self) {
+        self.step_counter = self.step_counter.wrapping_add(1);
         MnaCircuitSolver::solve(
             &mut self.mcu,
             &self.wires,

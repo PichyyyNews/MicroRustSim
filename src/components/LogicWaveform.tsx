@@ -57,6 +57,7 @@ interface LogicWaveformProps {
   onOpenChannelConfig?: () => void;
   powerConfig?: PowerRealismConfig;
   onTogglePowerMode?: () => void;
+  branchCurrents?: Record<string, number>;
 }
 
 type ViewMode = 'tracks' | 'overlay';
@@ -72,6 +73,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   onOpenChannelConfig,
   powerConfig,
   onTogglePowerMode,
+  branchCurrents,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -885,11 +887,14 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
             <span className="text-zinc-500 text-[10px]">I:</span>
             <span className="font-mono tabular-nums text-sky-400 font-semibold whitespace-nowrap [word-break:keep-all]">
-              {(activeComp?.kind === 'potentiometer'
-                ? electricalMetrics.iPotMa
-                : activeComp?.kind === 'pushbutton'
-                ? electricalMetrics.iButtonMa
-                : electricalMetrics.iResistorMa
+              {(
+                branchCurrents?.[activeCompId] ??
+                branchCurrents?.[`${activeCompId}:anode`] ??
+                (activeComp?.kind === 'potentiometer'
+                  ? electricalMetrics.iPotMa
+                  : activeComp?.kind === 'pushbutton'
+                  ? electricalMetrics.iButtonMa
+                  : electricalMetrics.iResistorMa)
               ).toFixed(1)}&nbsp;mA
             </span>
           </div>

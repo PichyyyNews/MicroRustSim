@@ -140,6 +140,7 @@ export interface StepResult {
   millis: number;
   pin_voltages?: Record<string, number>;
   mcu_pin_voltages?: Record<string, number>;
+  branch_currents?: Record<string, number>;
   faults?: CircuitFault[];
 }
 

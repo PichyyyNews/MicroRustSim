@@ -36,6 +36,7 @@ pub struct StepResult {
     pub millis: f64,
     pub pin_voltages: HashMap<String, f32>,
     pub mcu_pin_voltages: HashMap<String, f32>,
+    pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
 }
 
@@ -508,6 +509,7 @@ pub fn run() {
                     let millis = engine.mcu.millis();
                     let pin_voltages = engine.pin_voltages_map();
                     let mcu_pin_voltages = engine.mcu_pin_voltages_map();
+                    let branch_currents = engine.branch_currents.clone();
                     let faults = engine.faults.clone();
 
                     let _ = reply.send(StepResult {
@@ -518,6 +520,7 @@ pub fn run() {
                         millis,
                         pin_voltages,
                         mcu_pin_voltages,
+                        branch_currents,
                         faults,
                     });
                 }
@@ -754,6 +757,7 @@ mod tests {
             millis: 1234.5,
             pin_voltages,
             mcu_pin_voltages,
+            branch_currents: HashMap::new(),
             faults,
         };
 
@@ -845,6 +849,7 @@ mod tests {
             millis: engine.mcu.millis(),
             pin_voltages: engine.pin_voltages_map(),
             mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+            branch_currents: engine.branch_currents.clone(),
             faults: engine.faults.clone(),
         };
 
@@ -875,6 +880,7 @@ mod tests {
             millis: 0.0,
             pin_voltages: engine.pin_voltages_map(),
             mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+            branch_currents: engine.branch_currents.clone(),
             faults: engine.faults.clone(),
         };
 
