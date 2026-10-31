@@ -534,33 +534,35 @@ impl MnaCircuitSolver {
             stamp_conductance(&mut g_base, n, p1, p2, g);
         }
 
-        // 4. Stamp Potentiometers (continuous 3-terminal voltage dividers)
+        // 4. Stamp Potentiometers (continuous 3-terminal variable resistors)
         for (pot_id, pot) in pots {
-            let vcc = get_node_idx(pot_id, "3");
-            let sig = get_node_idx(pot_id, "2");
-            let gnd = if pot_gnd_wired.contains(pot_id) {
-                get_node_idx(pot_id, "1")
-            } else {
-                None // Default GND reference
-            };
+            let p1 = get_node_idx(pot_id, "1");
+            let p2 = get_node_idx(pot_id, "2"); // Wiper
+            let p3 = get_node_idx(pot_id, "3");
+
+            // Auto-power fallback: ONLY if BOTH pin 1 and pin 3 are completely unwired,
+            // provide convenient 5V track and GND reference so single-wire A0 wiper works.
+            let is_standalone_sensor = !pot_vcc_wired.contains(pot_id) && !pot_gnd_wired.contains(pot_id);
+
+            let gnd_node = if is_standalone_sensor { None } else { p1 };
+            let vcc_node = p3;
 
             let alpha = (pot.value as f64).clamp(0.0, 1.0);
             if alpha <= 1e-6 {
-                stamp_conductance(&mut g_base, n, sig, gnd, 1e6);
-                stamp_conductance(&mut g_base, n, vcc, sig, 1.0 / 10000.0);
+                stamp_conductance(&mut g_base, n, p2, gnd_node, 1e6);
+                stamp_conductance(&mut g_base, n, vcc_node, p2, 1.0 / 10000.0);
             } else if alpha >= 1.0 - 1e-6 {
-                stamp_conductance(&mut g_base, n, vcc, sig, 1e6);
-                stamp_conductance(&mut g_base, n, sig, gnd, 1.0 / 10000.0);
+                stamp_conductance(&mut g_base, n, vcc_node, p2, 1e6);
+                stamp_conductance(&mut g_base, n, p2, gnd_node, 1.0 / 10000.0);
             } else {
                 let r_top = (1.0 - alpha) * 10000.0;
                 let r_bot = alpha * 10000.0;
-                stamp_conductance(&mut g_base, n, vcc, sig, 1.0 / r_top);
-                stamp_conductance(&mut g_base, n, sig, gnd, 1.0 / r_bot);
+                stamp_conductance(&mut g_base, n, vcc_node, p2, 1.0 / r_top);
+                stamp_conductance(&mut g_base, n, p2, gnd_node, 1.0 / r_bot);
             }
 
-            // If VCC is not explicitly wired, power track from internal 5V rail
-            if !pot_vcc_wired.contains(pot_id) {
-                stamp_conductance(&mut g_base, n, pwr5v_idx, vcc, 1e3);
+            if is_standalone_sensor {
+                stamp_conductance(&mut g_base, n, pwr5v_idx, vcc_node, 1e3);
             }
         }
 
@@ -719,21 +721,22 @@ impl MnaCircuitSolver {
 
         // Potentiometer branch currents
         for (pot_id, pot) in pots {
-            let v_vcc = node_volt(get_node_idx(pot_id, "3"));
-            let v_sig = node_volt(get_node_idx(pot_id, "2"));
-            let v_gnd = if pot_gnd_wired.contains(pot_id) {
-                node_volt(get_node_idx(pot_id, "1"))
-            } else {
+            let v_p3 = node_volt(get_node_idx(pot_id, "3"));
+            let v_p2 = node_volt(get_node_idx(pot_id, "2"));
+            let is_standalone_sensor = !pot_vcc_wired.contains(pot_id) && !pot_gnd_wired.contains(pot_id);
+            let v_p1 = if is_standalone_sensor {
                 0.0
+            } else {
+                node_volt(get_node_idx(pot_id, "1"))
             };
-            let alpha = (pot.value as f64).clamp(0.0, 1.0);
-            let r_top = ((1.0 - alpha) * 10000.0 + 0.05).max(0.05);
-            let r_bot = (alpha * 10000.0 + 0.05).max(0.05);
-            let i_top = (v_vcc - v_sig).abs() / r_top;
-            let i_bot = (v_sig - v_gnd).abs() / r_bot;
+            let alpha = (pot.value as f64).clamp(0.0001, 0.9999);
+            let r_top = ((1.0 - alpha) * 10000.0).max(0.01);
+            let r_bot = (alpha * 10000.0).max(0.01);
+            let i_top = (v_p3 - v_p2).abs() / r_top;
+            let i_bot = (v_p2 - v_p1).abs() / r_bot;
             branch_currents.insert(format!("{}:top", pot_id), i_top as f32);
             branch_currents.insert(format!("{}:bot", pot_id), i_bot as f32);
-            branch_currents.insert(pot_id.clone(), i_top.max(i_bot) as f32);
+            branch_currents.insert(pot_id.clone(), (i_top + i_bot) as f32);
         }
 
         // Pushbutton branch currents

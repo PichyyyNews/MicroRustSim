@@ -9,7 +9,7 @@
 
 use sim_core::{
     components::{LedComponent, PotentiometerComponent, PushbuttonComponent, ResistorComponent},
-    LogicState, PinId, SimulationEngine, Wire,
+    LogicState, PinId, PowerRealismLevel, PowerRealismMode, SimulationEngine, Wire,
 };
 
 // ============================================================================
@@ -900,6 +900,59 @@ fn test_t4_pullup_button_digital_read_state_machine() {
     engine.buttons.get_mut("btn1").unwrap().is_pressed = false;
     engine.step_cycles(100);
     assert_eq!(*engine.pin_voltages.get(&PinId::new("uno1", "7")).unwrap(), 5.0);
+}
+
+#[test]
+fn test_t4_potentiometer_rheostat_dimming_led() {
+    let mut engine = SimulationEngine::new_with_uno();
+    engine.pots.insert("pot1".into(), PotentiometerComponent::new("pot1"));
+    engine.leds.insert("led1".into(), LedComponent::new("led1", "red"));
+
+    // 5V -> pot1:3 -> pot1:2 (wiper) -> led1:anode -> led1:cathode -> GND
+    engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("pot1", "3"), color: "#ef4444".into() });
+    engine.add_wire(Wire { id: "w2".into(), from: PinId::new("pot1", "2"), to: PinId::new("led1", "anode"), color: "#ff8800".into() });
+    engine.add_wire(Wire { id: "w3".into(), from: PinId::new("led1", "cathode"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+    // When pot is at 0.95 (wiper close to 5V, low resistance R = 500 ohm): LED is bright
+    engine.pots.get_mut("pot1").unwrap().value = 0.95;
+    engine.resolve_electrical_nets();
+    let bright = engine.leds.get("led1").unwrap().brightness;
+    let i_bright = engine.branch_currents.get("led1").copied().unwrap_or(0.0);
+    assert!(bright > 0.2, "LED must be bright at low resistance, got {}", bright);
+    assert!(i_bright > 0.003, "LED current must exceed 3mA, got {}", i_bright);
+
+    // When pot is at 0.1 (wiper far from 5V, high resistance R = 9000 ohm): LED is dim
+    engine.pots.get_mut("pot1").unwrap().value = 0.1;
+    engine.resolve_electrical_nets();
+    let dim = engine.leds.get("led1").unwrap().brightness;
+    let i_dim = engine.branch_currents.get("led1").copied().unwrap_or(0.0);
+    assert!(dim < bright, "LED must be dimmer at high resistance: dim ({}) < bright ({})", dim, bright);
+    assert!(i_dim < i_bright, "Current at high resistance ({}) must be lower than low resistance ({})", i_dim, i_bright);
+}
+
+#[test]
+fn test_t4_potentiometer_rheostat_dimming_led_in_realistic_mode() {
+    let mut engine = SimulationEngine::new_with_uno();
+    engine.power_config.mode = PowerRealismMode::Realistic;
+    engine.power_config.level = PowerRealismLevel::Medium;
+    engine.power_config.enable_sag = true;
+    engine.power_config.enable_ripple = true;
+    engine.power_config.enable_noise = true;
+
+    engine.pots.insert("pot1".into(), PotentiometerComponent::new("pot1"));
+    engine.leds.insert("led1".into(), LedComponent::new("led1", "red"));
+
+    engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("pot1", "3"), color: "#ef4444".into() });
+    engine.add_wire(Wire { id: "w2".into(), from: PinId::new("pot1", "2"), to: PinId::new("led1", "anode"), color: "#ff8800".into() });
+    engine.add_wire(Wire { id: "w3".into(), from: PinId::new("led1", "cathode"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+    engine.pots.get_mut("pot1").unwrap().value = 0.95;
+    engine.resolve_electrical_nets();
+
+    let v_anode = *engine.pin_voltages.get(&PinId::new("led1", "anode")).unwrap();
+    let v_rail = *engine.pin_voltages.get(&PinId::new("uno1", "5V")).unwrap();
+    assert!(v_rail < 5.0, "5V rail must sag under load in realistic mode, got {}", v_rail);
+    assert!(v_anode > 1.8 && v_anode < v_rail, "Anode voltage must be forward biased below rail, got {}", v_anode);
 }
 
 // ============================================================================
