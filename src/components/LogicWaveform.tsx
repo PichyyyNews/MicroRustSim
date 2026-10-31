@@ -83,12 +83,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   const [timebaseMs, setTimebaseMs] = useState<TimebaseMs>(2000);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Active Channels state
-  const [activeChannels, setActiveChannels] = useState<Record<string, boolean>>({
-    ch_pin13: true,
-    ch_pin2: true,
-    ch_pina0: true,
-  });
+  // Active Channels state (tracks user muting/unmuting individual lanes in waveform)
+  const [mutedChannels, setMutedChannels] = useState<Record<string, boolean>>({});
 
   // Local probe selection if parent doesn't provide
   const [localTargetId, setLocalTargetId] = useState<string>('mcu');
@@ -109,7 +105,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   }, [isPickerOpen]);
 
   const toggleChannel = (id: string) => {
-    setActiveChannels((prev) => ({ ...prev, [id]: !prev[id] }));
+    setMutedChannels((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   // Build normalized channels list
@@ -117,8 +113,17 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
     if (channels && channels.length > 0) return channels;
     return [
       {
-        id: 'ch_pin13',
-        label: 'Pin 13 (LED)',
+        id: 'ch_pot1',
+        label: 'Pot Wiper (pot1)',
+        color: '#38bdf8', // Sky
+        unit: 'V',
+        maxVal: 5.0,
+        history: [],
+        isDigital: false,
+      },
+      {
+        id: 'ch_led1',
+        label: 'LED 1 (led1)',
         color: '#10b981', // Emerald
         unit: 'V',
         maxVal: 5.0,
@@ -126,8 +131,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
         isDigital: false,
       },
       {
-        id: 'ch_pin2',
-        label: 'Pin 2 (Button)',
+        id: 'ch_btn1',
+        label: 'Button (btn1)',
         color: '#f59e0b', // Amber
         unit: 'V',
         maxVal: 5.0,
@@ -135,9 +140,9 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
         isDigital: false,
       },
       {
-        id: 'ch_pina0',
-        label: 'Pin A0 (Pot Wiper)',
-        color: '#38bdf8', // Sky
+        id: 'ch_pin13',
+        label: 'Pin 13 (Builtin)',
+        color: '#a855f7', // Purple
         unit: 'V',
         maxVal: 5.0,
         history: [],
@@ -146,10 +151,10 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
     ];
   }, [channels, history]);
 
-  // Current real-time circuit readings
-  const pin13Ch = channelList.find((c) => c.id === 'ch_pin13');
-  const pin2Ch = channelList.find((c) => c.id === 'ch_pin2');
-  const pinA0Ch = channelList.find((c) => c.id === 'ch_pina0');
+  // Current real-time circuit readings (flexible matching by ID keywords)
+  const pin13Ch = channelList.find((c) => c.id.includes('13') || c.id.includes('led'));
+  const pin2Ch = channelList.find((c) => c.id.includes('pin2') || c.id.includes('btn'));
+  const pinA0Ch = channelList.find((c) => c.id.includes('a0') || c.id.includes('pot'));
 
   const vPin13 = pin13Ch?.history.length ? pin13Ch.history[pin13Ch.history.length - 1][1] : 0.0;
   const vPin2 = pin2Ch?.history.length ? pin2Ch.history[pin2Ch.history.length - 1][1] : 5.0;
@@ -276,8 +281,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
     const tEnd = Math.max(tRange, maxT);
     const tStart = tEnd - tRange;
 
-    // Filter visible channels
-    const visibleChannels = channelList.filter((ch) => activeChannels[ch.id] !== false);
+    // Filter visible channels (not muted)
+    const visibleChannels = channelList.filter((ch) => !mutedChannels[ch.id]);
 
     if (viewMode === 'tracks') {
       // ==========================================
@@ -497,7 +502,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
     }
 
     ctx.restore();
-  }, [channelList, activeChannels, dimensions, viewMode, timebaseMs, isPaused]);
+  }, [channelList, mutedChannels, dimensions, viewMode, timebaseMs, isPaused]);
 
   // Transform historical data for Shadcn Recharts (Pause & Inspect Mode)
   const inspectData = useMemo(() => {
@@ -936,7 +941,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
                     }
                   />
                   {channelList
-                    .filter((ch) => activeChannels[ch.id] !== false)
+                    .filter((ch) => !mutedChannels[ch.id])
                     .map((ch) => (
                       <Line
                         key={ch.id}
@@ -969,7 +974,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             Channels:
           </span>
           {channelList.map((ch) => {
-            const isActive = activeChannels[ch.id] !== false;
+            const isActive = !mutedChannels[ch.id];
             const latestVal = ch.history.length > 0 ? ch.history[ch.history.length - 1][1] : 0.0;
             return (
               <button

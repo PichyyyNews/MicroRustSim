@@ -85,7 +85,7 @@ import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
 import { OpenProjectModal } from './components/OpenProjectModal';
 import { SettingsModal } from './components/SettingsModal';
-import { ChannelConfigModal, WaveformChannelConfig, CHANNEL_PALETTE } from './components/ChannelConfigModal';
+import { ChannelConfigModal, WaveformChannelConfig, CHANNEL_PALETTE, buildDiagramChannels } from './components/ChannelConfigModal';
 import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
@@ -577,97 +577,19 @@ export default function App() {
 
   // --- Dynamic Waveform Channels & Config Modal ---
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
-  const [channelConfigs, setChannelConfigs] = useState<WaveformChannelConfig[]>([
-    {
-      id: 'ch_pot1',
-      targetId: 'pot1',
-      label: 'Pot Wiper (pot1)',
-      kind: 'potentiometer',
-      color: '#38bdf8', // Sky
-      enabled: true,
-      pinConnection: 'Wired to MCU Pin A0 (3-Pin)',
-    },
-    {
-      id: 'ch_led1',
-      targetId: 'led1',
-      label: 'LED 1 (led1)',
-      kind: 'led',
-      color: '#10b981', // Emerald
-      enabled: true,
-      pinConnection: 'Wired to MCU Pin 13',
-    },
-    {
-      id: 'ch_btn1',
-      targetId: 'btn1',
-      label: 'Button (btn1)',
-      kind: 'pushbutton',
-      color: '#f59e0b', // Amber
-      enabled: true,
-      pinConnection: 'Wired to MCU Pin 2',
-    },
-    {
-      id: 'ch_pin13',
-      targetId: '13',
-      label: 'Pin 13 (Builtin LED)',
-      kind: 'mcu',
-      color: '#a855f7', // Purple
-      enabled: true,
-      pinConnection: 'ATmega328P Pin 13',
-    },
-  ]);
+  const [channelConfigs, setChannelConfigs] = useState<WaveformChannelConfig[]>(() =>
+    buildDiagramChannels(components, wires)
+  );
   const channelConfigsRef = useRef(channelConfigs);
   channelConfigsRef.current = channelConfigs;
 
   const waveformHistoriesRef = useRef<Record<string, [number, number][]>>({});
   const [waveformVersion, setWaveformVersion] = useState(0);
 
-  // Automatically discover new components (e.g. 4 LEDs, Potentiometers) and register them in channel configs
+  // Automatically discover and synchronize channel configs with components & wires in diagram
   useEffect(() => {
-    setChannelConfigs((prev) => {
-      const existing = new Set(prev.map((c) => c.targetId));
-      const validComps = components.filter(
-        (c) => c.kind !== 'arduino_uno' && c.kind !== 'breadboard' && c.kind !== 'text_label'
-      );
-      let added = false;
-      const next = [...prev];
-      let colorIdx = prev.length;
-
-      validComps.forEach((comp) => {
-        if (!existing.has(comp.id)) {
-          added = true;
-          let label = `${comp.kind.toUpperCase()} (${comp.id})`;
-          if (comp.kind === 'led') label = `LED (${comp.id})`;
-          if (comp.kind === 'pushbutton') label = `Button (${comp.id})`;
-          if (comp.kind === 'potentiometer') label = `Pot Wiper (${comp.id})`;
-
-          // Find connected wire to MCU if available
-          const connectedWire = wiresRef.current?.find(
-            (w) =>
-              (w.fromComp === comp.id && w.toComp.toLowerCase().includes('uno')) ||
-              (w.toComp === comp.id && w.fromComp.toLowerCase().includes('uno'))
-          );
-          const mcuPin = connectedWire
-            ? connectedWire.fromComp.toLowerCase().includes('uno')
-              ? connectedWire.fromPin
-              : connectedWire.toPin
-            : undefined;
-
-          next.push({
-            id: `ch_${comp.id}`,
-            targetId: comp.id,
-            label,
-            kind: comp.kind,
-            color: CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
-            // Enabled by default for all interactive components (potentiometer, led, button)
-            enabled: comp.kind === 'potentiometer' || comp.kind === 'led' || comp.kind === 'pushbutton',
-            pinConnection: mcuPin ? `Wired to MCU Pin ${mcuPin}` : '3-Pin Divider',
-          });
-        }
-      });
-
-      return added ? next : prev;
-    });
-  }, [components]);
+    setChannelConfigs((prev) => buildDiagramChannels(components, wires, prev));
+  }, [components, wires]);
 
   const waveformChannels = useMemo<WaveformChannel[]>(() => {
     return channelConfigs
@@ -4837,7 +4759,15 @@ export default function App() {
           components={components}
           wires={wires}
           configs={channelConfigs}
-          onSave={(newConfigs) => setChannelConfigs(newConfigs)}
+          onSave={(newConfigs) => {
+            setChannelConfigs(newConfigs);
+            newConfigs.forEach((c) => {
+              if (c.enabled && !waveformHistoriesRef.current[c.id]) {
+                waveformHistoriesRef.current[c.id] = [];
+              }
+            });
+            setWaveformVersion((v) => (v + 1) % 1000000);
+          }}
         />
 
         {/* Modal Dialog: Unsaved Changes Confirmation on Close (Save / Discard / Cancel) */}
