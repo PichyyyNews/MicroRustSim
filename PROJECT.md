@@ -110,3 +110,9 @@ export interface WaveformChannel {
 | Frontend App & Overlay | `src/App.tsx`, `src/types.ts`, `src/components/FaultOverlay.tsx` | M3, M4, M5 |
 | E2E Test Suite | `crates/sim_core/tests/e2e_circuit_tests.rs` | M6 (Test Track) |
 | Manifests / Versions | `package.json`, `Cargo.toml`, `crates/*/Cargo.toml` | M5 |
+
+---
+
+## Future Roadmap & Component Catalog
+For upcoming milestones, detailed physical/electrical component models, and engine evolution plans, see [`ROADMAP.md`](file:///d:/Microrustsim/ROADMAP.md).
+

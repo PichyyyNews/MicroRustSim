@@ -45,6 +45,13 @@ export default {
           DEFAULT: "var(--warning)",
           foreground: "var(--warning-foreground)",
         },
+        chart: {
+          '1': 'var(--chart-1)',
+          '2': 'var(--chart-2)',
+          '3': 'var(--chart-3)',
+          '4': 'var(--chart-4)',
+          '5': 'var(--chart-5)',
+        },
         success: "#10b981",
         canvas: '#0f1117',
         surface: '#181b26',

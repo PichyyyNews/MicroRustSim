@@ -1,29 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  GoX,
-  GoGear,
-  GoCpu,
-  GoPackage,
-  GoFileDirectory,
-  GoCheck,
-  GoSearch,
-  GoTerminal,
-  GoEye,
-  GoSync,
-} from 'react-icons/go';
-import {
-  Palette,
-  Sliders,
-  Type,
+  X,
+  Search,
   Code2,
+  Palette,
+  Cpu,
+  Terminal,
+  Wrench,
+  Keyboard,
+  Check,
   Save,
-  CheckCircle2,
+  Sliders,
   Sparkles,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Badge } from './ui/badge';
 
-export type SettingsTab = 'general' | 'appearance' | 'project' | 'engine' | 'plugin';
+export type SettingsTab = 'general' | 'appearance' | 'engine' | 'hardware' | 'toolchain' | 'shortcuts';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -95,7 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input')) return;
+    if (target.closest('button') || target.closest('input') || target.closest('select')) return;
 
     isDraggingRef.current = true;
     dragStartRef.current = {
@@ -135,61 +129,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const SIDEBAR_ITEMS: { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'general', label: 'General', icon: GoGear },
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'project', label: 'Project', icon: GoFileDirectory },
-    { id: 'engine', label: 'Engine', icon: GoCpu },
-    { id: 'plugin', label: 'Plugin', icon: GoPackage },
+    { id: 'general', label: 'Editor & General', icon: Code2 },
+    { id: 'appearance', label: 'Theme & Canvas', icon: Palette },
+    { id: 'engine', label: 'Simulation & MNA', icon: Cpu },
+    { id: 'hardware', label: 'MCU & Serial UART', icon: Terminal },
+    { id: 'toolchain', label: 'Toolchain & CLI', icon: Wrench },
+    { id: 'shortcuts', label: 'Keybindings', icon: Keyboard },
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center select-none"
-    >
+    <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center select-none bg-black/60 backdrop-blur-xs">
       <div
         ref={modalBoxRef}
-        className="pointer-events-auto w-[840px] h-[580px] max-w-[94vw] max-h-[92vh] bg-[#141417]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden outline-none ring-0 will-change-transform"
+        className="pointer-events-auto w-[820px] h-[580px] max-w-[94vw] max-h-[92vh] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl flex flex-col overflow-hidden outline-none will-change-transform"
         style={{ transform: 'translate3d(0px, 0px, 0px)' }}
       >
         {/* Draggable Header */}
         <div
           onPointerDown={handlePointerDown}
-          className="h-11 px-4 bg-[#18181b] border-b border-zinc-800 flex items-center justify-between cursor-move select-none shrink-0"
+          className="h-11 px-4 bg-[#18181b] border-b border-[#222226] flex items-center justify-between cursor-move select-none shrink-0"
         >
-          <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-xs tracking-wide">
-            <GoGear className="w-4 h-4 text-zinc-400" />
+          <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-xs tracking-tight">
             <span>Settings</span>
-            <span className="text-[11px] text-zinc-500 font-mono font-normal">| Preferences</span>
+            <span className="text-[10px] text-zinc-500 font-mono font-normal">| Preferences</span>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Search Input */}
-            <div className="relative w-48">
-              <GoSearch className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="relative w-44">
+              <Search className="w-3 h-3 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search settings..."
-                className="h-7 pl-8 pr-2 bg-[#121215] border-zinc-800 text-zinc-200 text-xs rounded-md focus-visible:border-zinc-500"
+                placeholder="Filter settings..."
+                className="h-7 pl-7 pr-2 bg-[#121215] border-zinc-800 text-zinc-200 text-xs rounded-full focus-visible:border-zinc-500"
               />
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               title="Close"
             >
-              <GoX className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Modal Body with VS Code Layout (Sidebar + Content) */}
+        {/* Modal Body: Left Flat Sidebar + Right Content Panel */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Sidebar */}
-          <div className="w-48 bg-[#161619] border-r border-zinc-800 p-2 space-y-1 shrink-0 overflow-y-auto scrollbar-none">
+          {/* Left Navigation Menu (Flat Items - Anti-Card-Nesting) */}
+          <div className="w-48 bg-[#121215] border-r border-[#222226] p-2 space-y-0.5 shrink-0 overflow-y-auto scrollbar-none">
             <div className="px-2.5 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-              Preferences
+              Categories
             </div>
             {SIDEBAR_ITEMS.map((item) => {
               const IconComp = item.icon;
@@ -199,50 +191,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-2.5 transition-colors text-left ${
+                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-colors text-left cursor-pointer ${
                     isActive
-                      ? 'bg-zinc-800/90 text-zinc-100 shadow-xs'
+                      ? 'bg-[#26262a] text-white shadow-xs font-semibold'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
                   }`}
                 >
-                  <IconComp className={`w-3.5 h-3.5 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`} />
-                  <span>{item.label}</span>
+                  <IconComp className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`} />
+                  <span className="truncate">{item.label}</span>
                 </button>
               );
             })}
           </div>
 
           {/* Right Main Content Panel */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin bg-[#121215]">
-            {/* 1. GENERAL TAB */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin bg-[#141416]">
+            {/* 1. GENERAL / EDITOR TAB */}
             {activeTab === 'general' && (
-              <div className="space-y-6 animate-in fade-in duration-100">
+              <div className="space-y-4 animate-in fade-in duration-100">
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                     <Code2 className="w-4 h-4 text-zinc-400" />
-                    Code Editor Configuration
+                    Code Editor Preferences
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Controls code editor typography, line numbering, minimap, and formatting.
+                    Configure typography, minimap, line wrapping, and automatic file saving.
                   </p>
                 </div>
 
-                {/* Setting: Editor Font Size */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Font Size Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-medium text-zinc-200">Font Size</div>
-                    <div className="text-[11px] text-zinc-500">Controls the font size in pixels for Monaco code editor.</div>
+                    <div className="text-xs font-medium text-zinc-200">Editor Font Size</div>
+                    <div className="text-[11px] text-zinc-500">Font size in pixels for Monaco code editor.</div>
                   </div>
-                  <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-md p-0.5">
+                  <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-full p-0.5">
                     {[12, 13, 14, 16].map((sz) => (
                       <button
                         key={sz}
                         type="button"
                         onClick={() => setEditorFontSize(sz)}
-                        className={`h-6 px-2.5 rounded text-xs font-mono transition-colors ${
+                        className={`h-6 px-2.5 rounded-full text-xs font-mono transition-colors cursor-pointer ${
                           editorFontSize === sz
-                            ? 'bg-zinc-700 text-zinc-100 font-semibold'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                            ? 'bg-white text-zinc-950 font-semibold'
+                            : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
                         {sz}px
@@ -251,278 +243,187 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Setting: Line Numbers */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Line Numbers Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-medium text-zinc-200">Line Numbers</div>
-                    <div className="text-[11px] text-zinc-500">Display line numbers along the left gutter in sketch files.</div>
+                    <div className="text-[11px] text-zinc-500">Show line numbers in the editor left gutter.</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setEditorLineNumbers(!editorLineNumbers)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                    className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
                       editorLineNumbers
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                        ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
                         : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    {editorLineNumbers ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
+                    {editorLineNumbers ? <Check className="w-3 h-3 text-emerald-400" /> : null}
                     <span>{editorLineNumbers ? 'Enabled' : 'Disabled'}</span>
                   </button>
                 </div>
 
-                {/* Setting: Word Wrap */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Word Wrap Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-medium text-zinc-200">Word Wrap</div>
-                    <div className="text-[11px] text-zinc-500">Wrap long lines to fit within the editor viewport without horizontal scrolling.</div>
+                    <div className="text-[11px] text-zinc-500">Wrap long lines to fit within editor width.</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setEditorWordWrap(!editorWordWrap)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                    className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
                       editorWordWrap
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                        ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
                         : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    {editorWordWrap ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
+                    {editorWordWrap ? <Check className="w-3 h-3 text-emerald-400" /> : null}
                     <span>{editorWordWrap ? 'On' : 'Off'}</span>
                   </button>
                 </div>
 
-                {/* Setting: Minimap */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-medium text-zinc-200">Editor Minimap</div>
-                    <div className="text-[11px] text-zinc-500">Show code outline miniature overview scrollbar on the right.</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditorMinimap(!editorMinimap)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
-                      editorMinimap
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
-                        : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    {editorMinimap ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
-                    <span>{editorMinimap ? 'Show' : 'Hidden'}</span>
-                  </button>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <Save className="w-4 h-4 text-zinc-400" />
-                    Auto-Save & Simulation Sync
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Configure sketch file persistence and runtime synchronization.
-                  </p>
-                </div>
-
-                {/* Setting: Auto Save on Run */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Auto Save on Run Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-medium text-zinc-200">Auto Save on Compile / Run</div>
-                    <div className="text-[11px] text-zinc-500">Automatically save sketch.ino and project files when executing simulation.</div>
+                    <div className="text-[11px] text-zinc-500">Automatically save sketch files when executing simulation.</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setAutoSaveOnRun(!autoSaveOnRun)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                    className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
                       autoSaveOnRun
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                        ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
                         : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    {autoSaveOnRun ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
+                    {autoSaveOnRun ? <Check className="w-3 h-3 text-emerald-400" /> : null}
                     <span>{autoSaveOnRun ? 'Always' : 'Manual'}</span>
-                  </button>
-                </div>
-
-                {/* Setting: Auto Scroll Serial */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-medium text-zinc-200">Terminal Auto-Scroll</div>
-                    <div className="text-[11px] text-zinc-500">Keep bottom serial console scrolled to latest incoming UART output.</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAutoScrollSerial(!autoScrollSerial)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
-                      autoScrollSerial
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
-                        : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    {autoScrollSerial ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
-                    <span>{autoScrollSerial ? 'Follow' : 'Locked'}</span>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* 2. APPEARANCE TAB */}
+            {/* 2. APPEARANCE & CANVAS TAB */}
             {activeTab === 'appearance' && (
-              <div className="space-y-6 animate-in fade-in duration-100">
+              <div className="space-y-4 animate-in fade-in duration-100">
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                     <Palette className="w-4 h-4 text-zinc-400" />
-                    Visual Theme & Color Tokens
+                    Canvas & Theme Styling
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Official MicroRustSim zinc monochrome design system (AGENTS.md).
+                    Breadboard grid alignment, wire routing curves, and dark visual depth.
                   </p>
                 </div>
 
-                {/* Theme Palette Card */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-medium text-zinc-200">Color Palette</div>
-                      <div className="text-[11px] text-zinc-500">Distraction-free flat dark zinc monochrome styling.</div>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
-                      Zinc Monochrome Active
-                    </span>
-                  </div>
-
-                  {/* Palette Swatches */}
-                  <div className="grid grid-cols-4 gap-2 pt-1">
-                    <div className="p-2 rounded bg-[#09090b] border border-zinc-800 text-[10px]">
-                      <div className="font-mono text-zinc-400">#09090b</div>
-                      <div className="text-zinc-500 text-[9px]">Canvas Grid</div>
-                    </div>
-                    <div className="p-2 rounded bg-[#121215] border border-zinc-800 text-[10px]">
-                      <div className="font-mono text-zinc-400">#121215</div>
-                      <div className="text-zinc-500 text-[9px]">Surface Base</div>
-                    </div>
-                    <div className="p-2 rounded bg-[#18181b] border border-zinc-800 text-[10px]">
-                      <div className="font-mono text-zinc-400">#18181b</div>
-                      <div className="text-zinc-500 text-[9px]">Elevated Panel</div>
-                    </div>
-                    <div className="p-2 rounded bg-[#27272a] border border-zinc-800 text-[10px]">
-                      <div className="font-mono text-zinc-400">#27272a</div>
-                      <div className="text-zinc-500 text-[9px]">Hover / Border</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <Sliders className="w-4 h-4 text-zinc-400" />
-                    Canvas & Breadboard Viewport
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Interactive workspace canvas styling and wiring behavior.
-                  </p>
-                </div>
-
-                {/* Setting: Infinite Grid Dots */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Dot Grid Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-medium text-zinc-200">Infinite Grid Pattern</div>
-                    <div className="text-[11px] text-zinc-500">Render dot-matrix alignment grid on the breadboard canvas.</div>
+                    <div className="text-xs font-medium text-zinc-200">Infinite Dot Grid</div>
+                    <div className="text-[11px] text-zinc-500">Subtle dot-matrix guide on the circuit canvas.</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setCanvasGridVisible(!canvasGridVisible)}
-                    className={`h-6 px-3 rounded-md text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                    className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
                       canvasGridVisible
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
+                        ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
                         : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    {canvasGridVisible ? <GoCheck className="w-3.5 h-3.5 text-emerald-400" /> : null}
+                    {canvasGridVisible ? <Check className="w-3 h-3 text-emerald-400" /> : null}
                     <span>{canvasGridVisible ? 'Visible' : 'Hidden'}</span>
                   </button>
                 </div>
 
-                {/* Setting: Wire Routing Mode */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                {/* Wire Routing Mode Inset Box */}
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-medium text-zinc-200">Default Wire Routing Mode</div>
-                    <div className="text-[11px] text-zinc-500">Choose between natural curved bezier arcs or 90-degree orthogonal jumpers.</div>
+                    <div className="text-[11px] text-zinc-500">Natural curved Bezier arcs vs 90° orthogonal jumpers.</div>
                   </div>
-                  <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-md p-0.5">
+                  <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-full p-0.5">
                     <button
                       type="button"
                       onClick={() => setWireRoutingMode('curve')}
-                      className={`h-6 px-2.5 rounded text-xs transition-colors ${
+                      className={`h-6 px-3 rounded-full text-xs transition-colors cursor-pointer ${
                         wireRoutingMode === 'curve'
-                          ? 'bg-zinc-700 text-zinc-100 font-semibold'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                          ? 'bg-white text-zinc-950 font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Curved (Bezier)
+                      Curved
                     </button>
                     <button
                       type="button"
                       onClick={() => setWireRoutingMode('ortho')}
-                      className={`h-6 px-2.5 rounded text-xs transition-colors ${
+                      className={`h-6 px-3 rounded-full text-xs transition-colors cursor-pointer ${
                         wireRoutingMode === 'ortho'
-                          ? 'bg-zinc-700 text-zinc-100 font-semibold'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                          ? 'bg-white text-zinc-950 font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Orthogonal (90°)
+                      90° Ortho
                     </button>
-                  </div>
-                </div>
-
-                {/* Wire Colors Palette Preview */}
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg space-y-2">
-                  <div className="text-xs font-medium text-zinc-200">Standard Wire Colors</div>
-                  <div className="text-[11px] text-zinc-500">Pre-calibrated high contrast electronic wire palette:</div>
-                  <div className="flex items-center gap-2 pt-1">
-                    {[
-                      { hex: '#ef4444', label: 'VCC 5V' },
-                      { hex: '#f97316', label: '3.3V' },
-                      { hex: '#eab308', label: 'I2C' },
-                      { hex: '#22c55e', label: 'Signal' },
-                      { hex: '#3b82f6', label: 'SPI' },
-                      { hex: '#a855f7', label: 'PWM' },
-                      { hex: '#ffffff', label: 'White' },
-                      { hex: '#18181b', label: 'GND' },
-                    ].map((w) => (
-                      <div key={w.hex} className="flex flex-col items-center gap-1" title={w.label}>
-                        <div
-                          className="w-5 h-5 rounded-full border border-zinc-700/80 shadow-xs"
-                          style={{ backgroundColor: w.hex }}
-                        />
-                        <span className="text-[9px] text-zinc-500 font-mono">{w.label}</span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 3. PROJECT TAB */}
-            {activeTab === 'project' && (
-              <div className="space-y-6 animate-in fade-in duration-100">
+            {/* 3. SIMULATION & MNA ENGINE TAB */}
+            {activeTab === 'engine' && (
+              <div className="space-y-4 animate-in fade-in duration-100">
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <GoFileDirectory className="w-4 h-4 text-zinc-400" />
-                    Project & Target Board Configuration
+                    <Cpu className="w-4 h-4 text-zinc-400" />
+                    Physics Simulation Engine (MNA)
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Target hardware definitions and compilation defaults for the workspace.
+                    Modified Nodal Analysis solver with cycle-accurate timing.
                   </p>
                 </div>
 
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-medium text-zinc-200">Target Microcontroller</div>
-                    <div className="text-[11px] text-zinc-500">Main computing architecture for sketch compilation.</div>
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-200">Circuit Matrix Solver</span>
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 text-[10px] font-mono whitespace-nowrap">
+                      100% Genuine MNA
+                    </Badge>
                   </div>
-                  <span className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-800 text-zinc-200 border border-zinc-700">
-                    ATmega328P @ 16 MHz
-                  </span>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Uses Modified Nodal Analysis with conductance matrix G and LU decomposition.
+                    Accurately models Ohm's law, Kirchhoff's laws (KCL/KVL), and diode forward curves.
+                  </p>
                 </div>
 
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200">Execution Frequency</div>
+                    <div className="text-[11px] text-zinc-500">Hardware clock rate for ATmega328P emulator.</div>
+                  </div>
+                  <span className="font-mono text-xs text-zinc-200 bg-[#121215] px-2.5 py-1 rounded-full border border-zinc-800 whitespace-nowrap">
+                    16&nbsp;MHz Core Clock
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* 4. MCU & SERIAL UART TAB */}
+            {activeTab === 'hardware' && (
+              <div className="space-y-4 animate-in fade-in duration-100">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-zinc-400" />
+                    MCU Hardware & Serial UART
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Serial baud rates, pin mapping, and hardware USART emulation.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-xs font-medium text-zinc-200">Default UART Baud Rate</div>
                     <div className="text-[11px] text-zinc-500">Communication speed for Serial.begin() hardware USART.</div>
@@ -530,7 +431,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <select
                     value={baudRate}
                     onChange={(e) => setBaudRate(Number(e.target.value))}
-                    className="h-7 px-2 bg-[#121215] border border-zinc-800 rounded text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-500 cursor-pointer"
+                    className="h-7 px-3 bg-[#121215] border border-zinc-800 rounded-full text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-500 cursor-pointer"
                   >
                     {[9600, 19200, 38400, 57600, 115200].map((b) => (
                       <option key={b} value={b}>
@@ -540,118 +441,101 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </select>
                 </div>
 
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-medium text-zinc-200">Core Schematic Standard</div>
-                    <div className="text-[11px] text-zinc-500">Format used for diagram.json component serialization.</div>
+                    <div className="text-xs font-medium text-zinc-200">Terminal Auto-Scroll</div>
+                    <div className="text-[11px] text-zinc-500">Keep serial monitor pinned to newest incoming data.</div>
                   </div>
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                    Wokwi JSON v1
+                  <button
+                    type="button"
+                    onClick={() => setAutoScrollSerial(!autoScrollSerial)}
+                    className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                      autoScrollSerial
+                        ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
+                        : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {autoScrollSerial ? <Check className="w-3 h-3 text-emerald-400" /> : null}
+                    <span>{autoScrollSerial ? 'Follow' : 'Locked'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 5. TOOLCHAIN & CLI TAB */}
+            {activeTab === 'toolchain' && (
+              <div className="space-y-4 animate-in fade-in duration-100">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-zinc-400" />
+                    Arduino CLI Toolchain
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Local compiler toolchain for compiling real C++ sketches to AVR binaries.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl space-y-1.5">
+                  <div className="text-xs font-medium text-zinc-200">Binary Toolchain Location</div>
+                  <div className="font-mono text-[11px] text-zinc-400 bg-[#121215] p-2 rounded-lg border border-zinc-800 truncate select-all">
+                    %LOCALAPPDATA%\MicroRustSim\tools\arduino-cli.exe
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200">Board Definition</div>
+                    <div className="text-[11px] text-zinc-500">Target FQBN passed to compiler.</div>
+                  </div>
+                  <span className="font-mono text-xs text-zinc-300 bg-[#121215] px-2.5 py-1 rounded-full border border-zinc-800">
+                    arduino:avr:uno
                   </span>
                 </div>
               </div>
             )}
 
-            {/* 4. ENGINE TAB */}
-            {activeTab === 'engine' && (
-              <div className="space-y-6 animate-in fade-in duration-100">
+            {/* 6. KEYBINDINGS TAB */}
+            {activeTab === 'shortcuts' && (
+              <div className="space-y-4 animate-in fade-in duration-100">
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <GoCpu className="w-4 h-4 text-zinc-400" />
-                    Physics Simulation Engine (MNA)
+                    <Keyboard className="w-4 h-4 text-zinc-400" />
+                    Keyboard Shortcuts & Hotkeys
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Modified Nodal Analysis engine details and cycle-accurate execution properties.
+                    Essential keybindings for high-speed hardware simulation.
                   </p>
                 </div>
 
-                <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-zinc-200">Circuit Solver Architecture</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
-                      100% Genuine MNA Solver
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Uses full Modified Nodal Analysis with conductance matrix G and LU decomposition.
-                    Solves Ohm's law, Kirchhoff's current/voltage laws (KCL/KVL), and diode forward voltage curves at 60 FPS.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg">
-                    <div className="text-xs font-medium text-zinc-300">Clock Timing Ratio</div>
-                    <div className="text-sm font-mono text-zinc-100 font-semibold mt-1">1:1 Wall-Clock</div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">delay(1000) = 1.000s real time</div>
-                  </div>
-                  <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg">
-                    <div className="text-xs font-medium text-zinc-300">Fault Detection</div>
-                    <div className="text-sm font-mono text-emerald-400 font-semibold mt-1">Hardware Protected</div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">Short circuit & GPIO overcurrent alerts</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 5. PLUGIN TAB */}
-            {activeTab === 'plugin' && (
-              <div className="space-y-6 animate-in fade-in duration-100">
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                    <GoPackage className="w-4 h-4 text-zinc-400" />
-                    Installed Toolchains & Plugins
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Native backend toolchains powering firmware build and physics computation.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-medium text-zinc-200">avr-gcc / avr-objcopy</div>
-                      <div className="text-[11px] text-zinc-500">Genuine GNU AVR Compiler for ATmega328P hex output.</div>
+                <div className="rounded-xl bg-[#1c1c20] p-1.5 border border-zinc-800/60 divide-y divide-zinc-800/60">
+                  {[
+                    { key: 'F5', desc: 'Run / Pause Simulation' },
+                    { key: 'Ctrl + S', desc: 'Save Project & Sketch' },
+                    { key: 'Ctrl + K', desc: 'Open Command Palette' },
+                    { key: 'R', desc: 'Rotate Selected Component (90°)' },
+                    { key: 'F', desc: 'Flip Selected Component (Horizontal)' },
+                    { key: 'Del / Backspace', desc: 'Delete Selected Component or Wire' },
+                    { key: 'Escape', desc: 'Cancel Wire Placement / Deselect' },
+                  ].map((s) => (
+                    <div key={s.key} className="px-3 py-2 flex items-center justify-between text-xs">
+                      <span className="text-zinc-300 font-medium">{s.desc}</span>
+                      <kbd className="font-mono text-[10px] bg-[#121215] border border-zinc-700/80 px-2 py-0.5 rounded text-zinc-200 shadow-xs">
+                        {s.key}
+                      </kbd>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                      Installed & Active
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-medium text-zinc-200">arduino-cli</div>
-                      <div className="text-[11px] text-zinc-500">Arduino core compiler preprocessor and library resolver.</div>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                      Installed & Active
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-[#18181b]/50 border border-zinc-800/80 rounded-lg flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-medium text-zinc-200">sim_core (MNA Engine)</div>
-                      <div className="text-[11px] text-zinc-500">High-performance Rust circuit solver crate.</div>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
-                      Built-in v0.2.3
-                    </span>
-                  </div>
+                  ))}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="h-10 px-4 bg-[#18181b] border-t border-zinc-800 flex items-center justify-between text-xs shrink-0 select-none">
-          <span className="text-[10px] text-zinc-500 font-mono">
-            Settings auto-saved to local workspace configuration
-          </span>
+        {/* Footer */}
+        <div className="h-11 px-4 bg-[#18181b] border-t border-[#222226] flex items-center justify-end shrink-0">
           <Button
             type="button"
-            size="sm"
             onClick={onClose}
-            className="h-7 px-3 text-xs bg-zinc-100 hover:bg-white text-zinc-950 font-semibold rounded-md transition-colors"
+            className="rounded-full bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs px-4 h-8 transition-colors shadow-sm"
           >
             Done
           </Button>

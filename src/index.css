@@ -96,6 +96,11 @@ body {
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --chart-1: #10b981;
+    --chart-2: #3b82f6;
+    --chart-3: #f59e0b;
+    --chart-4: #8b5cf6;
+    --chart-5: #ec4899;
   }
   .dark {
     --background: #09090b;
@@ -127,6 +132,11 @@ body {
     --sidebar-accent-foreground: #f4f4f5;
     --sidebar-border: #222226;
     --sidebar-ring: #52525b;
+    --chart-1: #10b981;
+    --chart-2: #38bdf8;
+    --chart-3: #fbbf24;
+    --chart-4: #a78bfa;
+    --chart-5: #f472b6;
   }
   * {
     @apply border-border;

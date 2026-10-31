@@ -4351,6 +4351,9 @@ export default function App() {
                                 history={logicHistory}
                                 channels={waveformChannels}
                                 onClear={handleClearWaveform}
+                                components={components}
+                                selectedCompId={selectedCompId}
+                                onSelectComponent={setSelectedCompId}
                               />
                             </TabsContent>
 

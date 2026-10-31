@@ -7,36 +7,56 @@ This document establishes the official design system, visual hierarchy, token de
 ## 1. Visual Philosophy: Clean, Minimal, Dark & Low-Text
 
 1. **Low Text Density, Icon-First**:
-   - Replace long verbal button text with crisp, recognizable **GitHub Octicons** (`react-icons/go` aesthetic).
-   - Use succinct tooltips (`on_hover_text`) instead of verbose inlined explanations.
-   - Every toolbar action should be an icon badge (e.g. `▶`, `⏸`, `⚡`, `⟳`, `🗎`, `⚙`).
-2. **Hide Visual Clutter (Drawer Architecture)**:
+   - Replace long verbal button text with crisp, recognizable vector icons (**Lucide** and **GitHub Octicons**).
+   - Every toolbar action should be an icon badge or capsule button (e.g. `▶`, `⏸`, `⚡`, `⟳`, `🗎`, `⚙`).
+   - Use succinct tooltips (`<Tooltip>` on hover) instead of verbose inlined explanations.
+   - Summarize dense simulation information visually using color-coded status dots, micro-badges (`<Badge variant="outline">`), and metric pills.
+
+2. **Hide Visual Clutter (Drawer Architecture & Progressive Disclosure)**:
    - Provide **1-click toggle buttons** to collapse the Left Code Editor, the Right Component Palette, or the Bottom Drawer.
    - When collapsed, the central canvas expands into a distraction-free, 100% full-screen interactive breadboard.
-   - Collapsible groups in the right panel keep inactive categories neatly tucked away.
+   - Secondary actions and overflow options belong in `<DropdownMenu>` or right-click Context Menus, never cluttering primary toolbars.
+   - Collapsible groups (`<Collapsible>`) in the right panel keep inactive categories neatly tucked away.
+
 3. **Flat Dark & Zinc Monochrome Palette (Internal IDE Tool Aesthetic)**:
-   - Deep dark surfaces (`#09090b`, `#121215`, `#18181b`).
-   - Clean zinc dividers (`#222226`, `#27272a`).
-   - Pure, distraction-free monochrome styling with emerald (`#10b981`) for running simulation and amber (`oklch(0.41 0.11 46)`) for warnings. All purple accents eliminated.
+   - 3-Tier Dark Surface Depth:
+     - Level 0 (Canvas Base): `#09090b` / `#0a0a0c`
+     - Level 1 (Card / Shell): `#141416` / `#161619` with a clean 1px zinc divider (`#222226`, `#242428`)
+     - Level 2 (Inset Box / Field / Ledger): `#1c1c20` / `#1f1f23` (borderless or 1px subtle border)
+     - Level 3 (Active / Hover Surface): `#26262a` / `#27272a`
+   - Pure, distraction-free monochrome styling with emerald (`#10b981`) for running simulation and amber (`oklch(0.41 0.11 46)`) for warnings. All purple accents and neon gradients are strictly eliminated.
 
 ---
 
-## 2. Design Token System
+## 2. Anti-Card-Nesting & Anti-AI-Slop Architecture
 
-### 2.1 Corner Radii (`--radius`)
-Following the proportional formula based on `--radius: 8px`:
+1. **Strictly NO Card Nesting ("ห้าม Card ซ้อน Card")**:
+   - **NEVER nest `<Card>` inside another `<Card>`**. This is the primary indicator of low-quality AI slop.
+   - Default to NOT wrapping main view containers in Cards. Instead, use natural layout surfaces (`bg-surface`, `bg-canvas`), clean Tailwind spacing (`space-y-3`, `gap-2`), and thin 1px dividers (`<Separator />` or `border-border`).
+   - For sub-items inside a container, use an **Inset Box** (`bg-[#1c1c20] rounded-xl p-3`) rather than nested cards.
+2. **No Mindless 3-Card Grids**:
+   - For listing items (files, projects, MCU pins, components, register banks), use flat list rows (`<div className="flex items-center justify-between p-2 hover:bg-hover rounded-md">`), `<Table>`, or `<ScrollArea>`.
+3. **Single Primary Action Rule**:
+   - Exactly **one** primary button (`variant="default"`, high-contrast solid white/light zinc) per view or dialog.
+   - All other actions must use `variant="outline"`, `variant="ghost"`, or `variant="secondary"`.
+4. **Zero Decorative Emojis**:
+   - Strictly NO emojis (🚀, ✨, 💡, ⚙️, 📁) in UI headings, titles, buttons, or badges.
+   - Exclusively use official vector icons (`lucide-react` or `react-icons/go`).
+5. **No AI Clutter / Placeholder Slop**:
+   - No mock sections (hero banners, testimonial boxes, decorative stat grids).
+   - Show actual emulator state, circuit pins, register values, or real project files.
 
-| Token | Formula | Value (px) | Application |
-| :--- | :--- | :--- | :--- |
-| `--radius-sm` | `calc(var(--radius) * 0.6)` | **4.8px** | Tooltips, badges, inner tags |
-| `--radius-md` | `calc(var(--radius) * 0.8)` | **6.4px** | Standard buttons, inputs, icon toggles |
-| `--radius-lg` | `var(--radius)` | **8.0px** | Cards, component cards, modals |
-| `--radius-xl` | `calc(var(--radius) * 1.4)` | **11.2px** | Floating toolbars, drawer headers |
-| `--radius-2xl`| `calc(var(--radius) * 1.8)` | **14.4px** | Breadboard corners, Uno PCB pads |
-| `--radius-3xl`| `calc(var(--radius) * 2.2)` | **17.6px** | Pill buttons, status badges |
-| `--radius-4xl`| `calc(var(--radius) * 2.6)` | **20.8px** | Large overlay dialogs |
+---
 
-### 2.2 Dark Theme Color Tokens
+## 3. Design Token System
+
+### 3.1 Corner Radii & Pill Shapes
+- **Capsule / Pill Buttons & Badges**: `rounded-full` (9999px) for primary, secondary, and outline buttons, search bars, and status badges.
+- **Card Containers**: `rounded-2xl` (16px–20px) for modals, dialogs, and outer floating surfaces.
+- **Inset Boxes & Fields**: `rounded-xl` (10px–12px) for text inputs, textareas, and data ledgers.
+- **Inner Tags / Tooltips**: `rounded-md` (4.8px–6.4px).
+
+### 3.2 Dark Theme Color Tokens
 
 ```css
 :root, .dark {
@@ -44,7 +64,7 @@ Following the proportional formula based on `--radius: 8px`:
   --bg-canvas: #09090b;       /* Infinite grid background */
   --bg-app: #0e0e11;          /* Window base background */
   --bg-surface: #121215;      /* Panels, drawers, editor gutter */
-  --bg-elevated: #18181b;     /* Cards, unpressed buttons, headers */
+  --bg-elevated: #18181b;     /* Dialogs, popovers, elevated overlays */
   --bg-hover: #27272a;        /* Hover state for buttons and list items */
 
   /* Borders & Dividers */
@@ -71,54 +91,63 @@ Following the proportional formula based on `--radius: 8px`:
 
 ---
 
-## 3. Iconography Guidelines: GitHub Octicons (`react-icons/go`)
+## 4. Typography Scale & Text Length Budgets
 
-To eliminate clutter and maintain a professional engineer-grade interface, buttons use icon-first representations inspired by GitHub Octicons:
+### 4.1 Strict Typography Hierarchy
+- **Hero Metric / Big Number**: `text-3xl` or `text-4xl font-bold tracking-tight text-white font-mono`.
+- **Card / View Title**: `text-base font-semibold text-zinc-100`.
+- **Section Eyebrow**: `text-[10px] uppercase tracking-wider text-zinc-400 font-semibold`.
+- **Standard Body / Row Item**: `text-xs font-medium text-zinc-200`.
+- **Secondary Subtitle**: `text-xs text-zinc-400 leading-normal`.
+- **Footnote / Hint Text**: `text-[11px] text-zinc-400 leading-relaxed max-w-[320px]`.
+- **Numbers & Physical Units**: `font-mono tabular-nums text-right whitespace-nowrap`.
 
-| Action / Element | Octicon Equivalent | Symbol / Glyph | Description |
-| :--- | :--- | :--- | :--- |
-| **Run Simulation** | `GoPlay` | `▶` | Emerald/Purple primary run button |
-| **Pause Simulation** | `GoPause` | `⏸` | Pauses cycle clock |
-| **Compile & Upload** | `GoZap` | `⚡` | Flashes Arduino C++ to ATmega328P |
-| **Reset MCU** | `GoSync` | `⟳` | Hardware reset trigger |
-| **Serial Console** | `GoTerminal` | `>_` | Serial UART input/output drawer |
-| **Logic Plot** | `GoGraph` | `∿` | Real-time digital oscilloscope |
-| **Code Editor** | `GoCode` | `</>` | Sketch editing tab |
-| **Add Component** | `GoPlus` | `+` | Quick spawn button in palette |
-| **Remove** | `GoTrash` | `🗑` | Delete selected item or wire |
-| **Settings / Config**| `GoGear` | `⚙` | Baud rate, compiler configuration |
-| **Save Project** | `GoFile` | `🗎` | SQLite persistent store |
-| **Fold / Unfold** | `GoSidebarCollapse` | `⏴ / ⏵` | Toggle panels to declutter screen |
+### 4.2 Text Length Budgets (ความยาว Text ให้พอดี ไม่ล้น ไม่ฉีกคำ)
+- **Titles**: 2–4 words max (under 24 characters).
+- **Button Labels**: 1–3 words max (under 16 characters), `whitespace-nowrap shrink-0`.
+- **Footnotes & Descriptions**: Cap max width at `max-w-[320px]` or `max-w-[360px]` with `leading-relaxed` so text flows naturally in 2–3 lines without hanging single orphan words.
 
----
-
-## 4. UI Layout & Component Categorization
-
-### 4.1 Categorized Components Palette
-Rather than dumping all parts in a single sprawling list, items are categorized into collapsible drawers:
-1. **Core Processing**:
-   - `Arduino Uno R3` (ATmega328P @ 16 MHz)
-2. **Prototyping**:
-   - `Half Breadboard` (30 rows, power rails)
-3. **Outputs & Actuators**:
-   - `LED` (Red, Green, Blue, Yellow, White) with realistic forward voltage glow
-4. **Passives**:
-   - `Resistor` (220Ω, 1kΩ, 10kΩ with color code bands)
-5. **Interactive Inputs**:
-   - `Tactile Pushbutton` (Interactive click-to-depress)
-   - `Rotary Potentiometer` (Interactive drag-to-rotate wiper for ADC)
-
-### 4.2 Distraction-Free Toggle
-- **Toggle Code Panel** (`⏴ / ⏵`): Allows immediate full focus on wiring.
-- **Toggle Palette** (`⊞`): Hides parts when only interacting with completed circuits.
-- **Toggle Bottom Drawer** (`>_`): Hides terminal until output is expected.
+### 4.3 Badge & Metric Guidelines (Strict "ไม่เอาหน่วยแตก" / No Unit Splitting Rule)
+For `<Badge variant="outline">` and metric pills displaying physical or engineering values (e.g. `16 MHz`, `5 V`, `220 Ω`, `60 FPS`, `9600 baud`, `100 ms`, `$1,211.29 USD`):
+1. **Strictly Non-Breaking Units ("ไม่เอาหน่วยแตก")**:
+   - The value and its measurement unit must never wrap or split across lines (`16` on line 1 and `MHz` on line 2 is strictly forbidden).
+   - Enforce `whitespace-nowrap`, `shrink-0`, `tabular-nums`, and `[word-break:keep-all]` on `<Badge variant="outline">`.
+   - Use non-breaking space (`\u00A0` or `&nbsp;`) between number and unit, or wrap them in an atomic span.
+2. **Tabular Numerals & Monospace**:
+   - Dynamic simulation values must use `font-mono tabular-nums` to eliminate layout jitter.
+3. **Atomic Micro-Pills**:
+   - Keep badge height consistent (`h-5`), with crisp 1px borders (`border-border`), and prevent shrinking (`shrink-0`).
 
 ---
 
-## 5. Rules for Agents Modifying Code
+## 5. shadcn/ui Component Standards
 
-1. **Preserve Token Consistency**: Never introduce arbitrary hardcoded colors like `Color32::from_rgb(123, 45, 67)` in UI code. Always reference `crate::theme::tokens::*`.
-2. **No Excessive Text in Controls**: Use an icon + short tooltip (`resp.on_hover_text(...)`).
-3. **Always Respect Dark Visuals**: Keep background dark `#0f1117` and panel surface `#181b26`.
+The frontend uses **shadcn/ui** with:
+- **Style**: `base-nova`
+- **Base Library**: `@base-ui/react`
+- **Icons**: `lucide-react` (with `react-icons/go` for specific hardware symbols)
+- **CSS**: Tailwind CSS v3 with CSS variables
+
+### 5.1 Component Selection Taxonomy
+| Role / Function | Component to Use | DO NOT USE |
+| :--- | :--- | :--- |
+| **Row collection (files, pins, parts)** | Flat list / `<Table>` / `<Item>` | Multiple nested cards |
+| **Tabbed views (Code / Logic / Pinout)** | `<Tabs>` with `<TabsList>` | Clustered buttons |
+| **Input with icon / unit** | Pill Input with icon prefix/suffix | Div hack wrapping input + span |
+| **Action groups (Zoom, Step, Run)** | Split Button Group / icon toggles | Disconnected button pills |
+| **Contextual metadata** | `<Tooltip>` or `<Popover>` | Inlined verbose text |
+| **Overflow & Actions** | `<DropdownMenu>`, Context Menu | Toolbar filled with 15 text buttons |
+| **Status badge** | `<Badge variant="outline">` (ไม่เอาหน่วยแตก) | Disabled button |
+| **Confirm destructive action** | `<Dialog>` with destructive action | Plain browser confirm |
+| **Drawer / Panel collapse** | `<Collapsible>` | Hardcoded CSS toggle |
+| **Separation** | `<Separator />` | Heavy colored borders |
+
+---
+
+## 6. Rules for Agents Modifying Code
+
+1. **Preserve Token Consistency**: Never introduce arbitrary hardcoded colors like `Color32::from_rgb(123, 45, 67)` in Rust UI or `bg-blue-500` / `#123456` in React. Always reference `var(--...)` or semantic Tailwind tokens.
+2. **No Excessive Text in Controls**: Use an icon + short tooltip (`<Tooltip>` in React, `on_hover_text` in egui).
+3. **Always Respect Dark Visuals**: Keep canvas background dark `#09090b` and panel surface `#121215`.
 4. **Never Block the UI Thread**: The simulation engine steps in configurable cycle slices per frame. Keep UI at 60 FPS.
 5. **Preserve Genuine Logic**: Do not replace real emulator hooks with static mocks. The toolchain in `%LOCALAPPDATA%\MicroRustSim\tools` is genuine and must remain functional.

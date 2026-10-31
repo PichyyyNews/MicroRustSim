@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  GoX,
-  GoClock,
-  GoAlert,
-} from 'react-icons/go';
-import {
   FolderOpen,
+  Clock,
+  AlertCircle,
+  X,
+  FileCode2,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -101,7 +100,7 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
       }
     } catch (err: any) {
       const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
-      setErrorMessage(`ไม่สามารถเปิดโฟลเดอร์นี้ได้: ${rawMsg}`);
+      setErrorMessage(`ไม่สามารถเปิดไดเรกทอรี: ${rawMsg}`);
     } finally {
       setIsOpening(false);
     }
@@ -109,18 +108,19 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const trimmed = projectPathInput.trim();
-    if (!trimmed) {
-      setErrorMessage('กรุณาระบุที่อยู่โฟลเดอร์โปรเจกต์ (Please specify a project directory)');
+    const path = projectPathInput.trim();
+    if (!path) {
+      setErrorMessage('กรุณาระบุที่อยู่ของโฟลเดอร์โปรเจกต์');
       return;
     }
+
     setErrorMessage(null);
     setIsOpening(true);
     try {
-      await onOpen(trimmed);
+      await onOpen(path);
     } catch (err: any) {
       const rawMsg = typeof err === 'string' ? err : err?.message || String(err);
-      setErrorMessage(`ไม่สามารถเปิดไดเรกทอรีนี้ได้: ${rawMsg}`);
+      setErrorMessage(`ไม่พบโฟลเดอร์โปรเจกต์: ${rawMsg}`);
     } finally {
       setIsOpening(false);
     }
@@ -142,41 +142,41 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs select-none"
       onClick={onClose}
     >
       <div
         ref={modalBoxRef}
         onClick={(e) => e.stopPropagation()}
-        className="w-[500px] max-w-[92vw] bg-[#141417] border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden outline-none ring-0 will-change-transform"
+        className="w-[500px] max-w-[94vw] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl flex flex-col overflow-hidden outline-none will-change-transform"
         style={{ transform: 'translate3d(0px, 0px, 0px)' }}
       >
         {/* Draggable Header */}
         <div
           onPointerDown={handlePointerDown}
-          className="h-10 px-4 bg-[#18181b] border-b border-zinc-800 flex items-center justify-between cursor-move select-none"
+          className="h-11 px-4 bg-[#18181b] border-b border-[#222226] flex items-center justify-between cursor-move select-none"
         >
-          <div className="flex items-center gap-2 text-zinc-100 font-semibold text-xs tracking-wide">
+          <div className="flex items-center gap-2 text-zinc-100 font-semibold text-xs tracking-tight">
             <FolderOpen className="w-4 h-4 text-zinc-300" />
             <span>Open Project Folder</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
             title="Close"
           >
-            <GoX className="w-3.5 h-3.5" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4 text-xs">
           <div>
-            <label className="text-[11px] font-medium text-zinc-300 block mb-1">
-              Select or Type Working Directory
+            <label className="text-[10px] uppercase font-semibold text-zinc-400 block mb-1.5 tracking-wider">
+              Working Directory
             </label>
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               <Input
                 value={projectPathInput}
                 onChange={(e) => {
@@ -184,7 +184,7 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
                   if (errorMessage) setErrorMessage(null);
                 }}
                 placeholder="e.g. C:/MicroRustSim/Projects/Traffic_Light"
-                className={`bg-[#121215] text-zinc-100 font-mono text-xs flex-1 focus:outline-none focus:ring-0 focus-visible:ring-0 rounded-md transition-colors ${
+                className={`bg-[#121215] text-zinc-100 font-mono text-xs flex-1 rounded-xl h-8 transition-colors ${
                   errorMessage
                     ? 'border-red-500/70 focus-visible:border-red-500'
                     : 'border-zinc-800 focus-visible:border-zinc-500'
@@ -193,9 +193,8 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={handleBrowse}
-                className="border-zinc-800 bg-[#18181b] hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs shrink-0 px-3 h-8 flex items-center gap-1.5 rounded-md"
+                className="rounded-full border-zinc-700/80 bg-[#18181b] hover:bg-zinc-800 text-zinc-200 text-xs shrink-0 px-3.5 h-8 flex items-center gap-1.5"
                 title="Browse folder using Windows File Explorer"
               >
                 <FolderOpen className="w-3.5 h-3.5 text-zinc-400" />
@@ -206,8 +205,8 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
 
           {/* Error Banner */}
           {errorMessage && (
-            <div className="p-2.5 bg-red-950/35 border border-red-500/35 rounded-lg flex items-start gap-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
-              <GoAlert className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div className="p-3 bg-red-950/40 border border-red-500/40 rounded-xl flex items-start gap-2.5 text-xs animate-in fade-in duration-150">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div className="flex-1 text-red-200 leading-relaxed">
                 <span className="font-semibold text-red-300 text-[11px] block">ไม่สามารถเปิดโปรเจกต์ได้</span>
                 <span className="text-[11px] text-red-200/90 mt-0.5 block select-text font-sans">{errorMessage}</span>
@@ -215,31 +214,35 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
               <button
                 type="button"
                 onClick={() => setErrorMessage(null)}
-                className="text-red-400 hover:text-red-200 p-0.5 rounded hover:bg-red-900/40 transition-colors shrink-0"
+                className="text-red-400 hover:text-red-200 p-0.5 rounded-full hover:bg-red-900/40 transition-colors shrink-0"
                 title="ปิดการแจ้งเตือน"
               >
-                <GoX className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
+          {/* Recent Projects Section */}
           {recentProjects.length > 0 && (
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-                <GoClock className="w-3 h-3 text-zinc-500" />
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                <Clock className="w-3 h-3 text-zinc-500" />
                 <span>Recent Projects</span>
               </div>
-              <div className="bg-[#121215] border border-zinc-800 rounded-lg max-h-40 overflow-y-auto divide-y divide-zinc-800/60 scrollbar-thin">
+              <div className="rounded-xl bg-[#1c1c20] p-1.5 border border-zinc-800/60 max-h-44 overflow-y-auto space-y-0.5 scrollbar-thin">
                 {recentProjects.map((rec) => (
                   <div
                     key={rec.path}
                     onClick={() => handleSelectRecent(rec.path)}
-                    className="px-3 py-2 hover:bg-zinc-800/50 cursor-pointer flex items-center justify-between transition-colors group"
+                    className="px-3 py-2 rounded-lg hover:bg-[#26262a] cursor-pointer flex items-center justify-between transition-colors group"
                   >
-                    <span className="font-medium text-zinc-200 text-xs group-hover:text-white truncate">
-                      {rec.name}
-                    </span>
-                    <span className="font-mono text-[10px] text-zinc-500 group-hover:text-zinc-400 truncate max-w-[220px]">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
+                      <FileCode2 className="w-3.5 h-3.5 text-zinc-400 shrink-0 group-hover:text-white" />
+                      <span className="font-medium text-zinc-200 text-xs group-hover:text-white truncate">
+                        {rec.name}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[10px] text-zinc-500 group-hover:text-zinc-400 truncate max-w-[200px] shrink-0">
                       {rec.path}
                     </span>
                   </div>
@@ -248,22 +251,21 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
             </div>
           )}
 
-          <div className="pt-3 border-t border-zinc-800 flex items-center justify-end gap-2">
+          {/* Action Footer */}
+          <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={onClose}
               disabled={isOpening}
-              className="border-zinc-800 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs rounded-md"
+              className="rounded-full border-zinc-700/80 bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs h-8 px-4"
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              size="sm"
               disabled={isOpening}
-              className="bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs px-3.5 shadow-none transition-colors rounded-md disabled:opacity-50 flex items-center gap-1.5"
+              className="rounded-full bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs px-4 h-8 transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
             >
               {isOpening ? (
                 <>
