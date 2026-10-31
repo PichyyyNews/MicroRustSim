@@ -111,8 +111,8 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
           label: compLabel,
           kind: comp.kind,
           color: CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
-          enabled: comp.kind === 'led' || comp.kind === 'pushbutton', // Auto-enable first components
-          pinConnection: mcuPin ? `Wired to MCU Pin ${mcuPin}` : undefined,
+          enabled: comp.kind === 'potentiometer' || comp.kind === 'led' || comp.kind === 'pushbutton', // Auto-enable interactive components
+          pinConnection: mcuPin ? `Wired to MCU Pin ${mcuPin}` : '3-Pin Voltage Divider',
         });
       }
     });

@@ -564,6 +564,11 @@ export default function App() {
     { id: 'w8', fromComp: 'pot1', fromPin: '3', toComp: 'uno1', toPin: 'GND.2', color: '#18181b' },
   ]);
 
+  const wiresRef = useRef<CircuitWire[]>(wires);
+  useEffect(() => {
+    wiresRef.current = wires;
+  }, [wires]);
+
   // --- Selected Component / Active Wire Creation ---
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
@@ -574,31 +579,40 @@ export default function App() {
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
   const [channelConfigs, setChannelConfigs] = useState<WaveformChannelConfig[]>([
     {
+      id: 'ch_pot1',
+      targetId: 'pot1',
+      label: 'Pot Wiper (pot1)',
+      kind: 'potentiometer',
+      color: '#38bdf8', // Sky
+      enabled: true,
+      pinConnection: 'Wired to MCU Pin A0 (3-Pin)',
+    },
+    {
+      id: 'ch_led1',
+      targetId: 'led1',
+      label: 'LED 1 (led1)',
+      kind: 'led',
+      color: '#10b981', // Emerald
+      enabled: true,
+      pinConnection: 'Wired to MCU Pin 13',
+    },
+    {
+      id: 'ch_btn1',
+      targetId: 'btn1',
+      label: 'Button (btn1)',
+      kind: 'pushbutton',
+      color: '#f59e0b', // Amber
+      enabled: true,
+      pinConnection: 'Wired to MCU Pin 2',
+    },
+    {
       id: 'ch_pin13',
       targetId: '13',
       label: 'Pin 13 (Builtin LED)',
       kind: 'mcu',
-      color: '#10b981',
+      color: '#a855f7', // Purple
       enabled: true,
       pinConnection: 'ATmega328P Pin 13',
-    },
-    {
-      id: 'ch_pin2',
-      targetId: '2',
-      label: 'Pin 2 (Button)',
-      kind: 'mcu',
-      color: '#f59e0b',
-      enabled: true,
-      pinConnection: 'ATmega328P Pin 2',
-    },
-    {
-      id: 'ch_pina0',
-      targetId: 'A0',
-      label: 'Pin A0 (Pot Wiper)',
-      kind: 'mcu',
-      color: '#38bdf8',
-      enabled: true,
-      pinConnection: 'ATmega328P Pin A0',
     },
   ]);
   const channelConfigsRef = useRef(channelConfigs);
@@ -607,7 +621,7 @@ export default function App() {
   const waveformHistoriesRef = useRef<Record<string, [number, number][]>>({});
   const [waveformVersion, setWaveformVersion] = useState(0);
 
-  // Automatically discover new components (e.g. 4 LEDs) and register them in channel configs
+  // Automatically discover new components (e.g. 4 LEDs, Potentiometers) and register them in channel configs
   useEffect(() => {
     setChannelConfigs((prev) => {
       const existing = new Set(prev.map((c) => c.targetId));
@@ -626,13 +640,27 @@ export default function App() {
           if (comp.kind === 'pushbutton') label = `Button (${comp.id})`;
           if (comp.kind === 'potentiometer') label = `Pot Wiper (${comp.id})`;
 
+          // Find connected wire to MCU if available
+          const connectedWire = wiresRef.current?.find(
+            (w) =>
+              (w.fromComp === comp.id && w.toComp.toLowerCase().includes('uno')) ||
+              (w.toComp === comp.id && w.fromComp.toLowerCase().includes('uno'))
+          );
+          const mcuPin = connectedWire
+            ? connectedWire.fromComp.toLowerCase().includes('uno')
+              ? connectedWire.fromPin
+              : connectedWire.toPin
+            : undefined;
+
           next.push({
             id: `ch_${comp.id}`,
             targetId: comp.id,
             label,
             kind: comp.kind,
             color: CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
-            enabled: comp.kind === 'led' || comp.kind === 'pushbutton',
+            // Enabled by default for all interactive components (potentiometer, led, button)
+            enabled: comp.kind === 'potentiometer' || comp.kind === 'led' || comp.kind === 'pushbutton',
+            pinConnection: mcuPin ? `Wired to MCU Pin ${mcuPin}` : '3-Pin Divider',
           });
         }
       });
@@ -1534,11 +1562,45 @@ export default function App() {
                   v = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
                 }
               } else if (cfg.kind === 'pushbutton') {
-                v = res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 5.0;
+                const btnWire = wiresRef.current?.find(
+                  (w) => w.fromComp === cfg.targetId || w.toComp === cfg.targetId
+                );
+                const mcuPin = btnWire
+                  ? (btnWire.fromComp === cfg.targetId ? btnWire.toPin : btnWire.fromPin)
+                  : undefined;
+                if (mcuPin && res.mcu_pin_voltages?.[mcuPin] !== undefined) {
+                  v = res.mcu_pin_voltages[mcuPin];
+                } else {
+                  v = res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 5.0;
+                }
               } else if (cfg.kind === 'potentiometer') {
-                v = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
+                const potComp = componentsRef.current.find((c) => c.id === cfg.targetId);
+                const potVal = potComp?.props?.value ?? 0.5;
+
+                // Find if pot wiper is wired to MCU
+                const potWire = wiresRef.current?.find(
+                  (w) =>
+                    (w.fromComp === cfg.targetId && (w.fromPin === '2' || w.fromPin === 'sig' || w.fromPin === 'wiper')) ||
+                    (w.toComp === cfg.targetId && (w.toPin === '2' || w.toPin === 'sig' || w.toPin === 'wiper'))
+                );
+                const wiredPin = potWire
+                  ? (potWire.fromComp === cfg.targetId ? potWire.toPin : potWire.fromPin)
+                  : undefined;
+
+                const mnaVolt = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:sig`];
+                const mcuVolt = wiredPin ? res.mcu_pin_voltages?.[wiredPin] : undefined;
+
+                if (mcuVolt !== undefined) {
+                  v = mcuVolt;
+                } else if (mnaVolt !== undefined && mnaVolt > 0.001) {
+                  v = mnaVolt;
+                } else {
+                  v = potVal * 5.0;
+                }
               } else if (cfg.kind === 'resistor') {
-                v = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
+                const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
+                const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
+                v = Math.abs(v1 - v2);
               }
 
               if (!waveformHistoriesRef.current[cfg.id]) {
@@ -1657,11 +1719,6 @@ export default function App() {
   useEffect(() => {
     getPinWorldPosRef.current = getPinWorldPos;
   }, [getPinWorldPos]);
-
-  const wiresRef = useRef(wires);
-  useEffect(() => {
-    wiresRef.current = wires;
-  }, [wires]);
 
   // --- Window Dragging Listener for Smooth Component Movement ---
   useEffect(() => {

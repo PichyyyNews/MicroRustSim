@@ -828,17 +828,33 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
 
         {/* Right: Live Genuine Electrical Telemetry Pills (V, I, R) */}
         <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
-            <span className="text-zinc-500 text-[10px]">V:</span>
-            <span className="font-mono tabular-nums text-emerald-400 font-semibold whitespace-nowrap [word-break:keep-all]">
-              {(activeComp?.kind === 'potentiometer'
-                ? electricalMetrics.vPinA0
+          {(() => {
+            const activeCh = channelList.find(
+              (c) =>
+                c.id === `ch_${activeCompId}` ||
+                c.id === activeCompId ||
+                (activeCompId === 'mcu' && c.id === 'ch_pin13')
+            );
+            const liveV =
+              activeCh && activeCh.history.length > 0
+                ? activeCh.history[activeCh.history.length - 1][1]
+                : activeComp?.kind === 'potentiometer'
+                ? activeComp.props?.value !== undefined
+                  ? activeComp.props.value * 5.0
+                  : electricalMetrics.vPinA0
                 : activeComp?.kind === 'resistor'
                 ? electricalMetrics.vResistor
-                : electricalMetrics.vPin13
-              ).toFixed(2)}&nbsp;V
-            </span>
-          </div>
+                : electricalMetrics.vPin13;
+
+            return (
+              <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
+                <span className="text-zinc-500 text-[10px]">V:</span>
+                <span className="font-mono tabular-nums text-emerald-400 font-semibold whitespace-nowrap [word-break:keep-all]">
+                  {liveV.toFixed(2)}&nbsp;V
+                </span>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
             <span className="text-zinc-500 text-[10px]">I:</span>
