@@ -171,14 +171,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               onSelectFile(node.relativePath);
             }
           }}
-          style={{ paddingLeft: `${6 + depth * 14}px` }}
-          className={`group flex items-center justify-between py-1 pr-2 rounded cursor-pointer transition-colors ${
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          className={`group flex items-center justify-between py-1.5 px-2.5 mx-1 my-0.5 rounded-xl cursor-pointer transition-colors ${
             isSelected && !isFolder
-              ? 'bg-[#27272a] text-white font-medium'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+              ? 'bg-[#26262a] text-white font-semibold shadow-xs'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#18181b]'
           }`}
         >
-          <div className="flex items-center gap-1.5 truncate">
+          <div className="flex items-center gap-2 truncate">
             {hasChildren ? (
               <span
                 onClick={(e) => toggleFolder(node.relativePath, e)}
@@ -195,7 +195,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             )}
 
             {getFileIcon(node.name, isFolder, isExpanded)}
-            <span className="truncate">{node.name}</span>
+            <span className="truncate text-xs">{node.name}</span>
           </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -210,7 +210,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
                   setNewEntryName('');
                   setExpandedFolders((prev) => new Set(prev).add(node.relativePath));
                 }}
-                className="p-0.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                className="w-5 h-5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
               >
                 <GoPlus className="w-3 h-3" />
               </button>
@@ -224,7 +224,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
                   e.stopPropagation();
                   onDeleteFile(node.path || node.relativePath);
                 }}
-                className="p-0.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
+                className="w-5 h-5 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
               >
                 <GoTrash className="w-3 h-3" />
               </button>
@@ -280,7 +280,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
         </div>
 
         {/* Action Toolbar */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             title="New File"
@@ -289,7 +289,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               setCreateType('file');
               setNewEntryName('');
             }}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
+            className="w-6 h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
           >
             <GoPlus className="w-3.5 h-3.5" />
           </button>
@@ -301,7 +301,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               setCreateType('folder');
               setNewEntryName('');
             }}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
+            className="w-6 h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
           >
             <FolderPlus className="w-3.5 h-3.5" />
           </button>
@@ -309,7 +309,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
             type="button"
             title="Collapse All Folders"
             onClick={collapseAllFolders}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
+            className="w-6 h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
           >
             <GoFold className="w-3.5 h-3.5" />
           </button>
@@ -318,7 +318,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               type="button"
               title="Refresh Files"
               onClick={onRefresh}
-              className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
+              className="w-6 h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
             >
               <GoSync className="w-3.5 h-3.5" />
             </button>
@@ -328,7 +328,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               type="button"
               title="Open Another Working Folder (Ctrl+O)"
               onClick={onOpenFolder}
-              className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] rounded transition-colors"
+              className="w-6 h-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
             >
               <FolderOpen className="w-3.5 h-3.5 text-zinc-300" />
             </button>

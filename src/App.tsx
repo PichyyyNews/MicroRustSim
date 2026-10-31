@@ -41,6 +41,8 @@ import {
   SlidersHorizontal,
   FolderOpen,
   Type,
+  Send,
+  ArrowRight,
 } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -3337,7 +3339,7 @@ export default function App() {
           <div className="flex items-center gap-1.5">
             {/* Category 1: Execution & Hardware Control (Run/Flash/Reset) */}
             <div className="flex items-center gap-1">
-              {/* Run / Pause */}
+              {/* Run / Pause Pill Button */}
               {isRunning ? (
                 <Tooltip>
                   <TooltipTrigger
@@ -3345,9 +3347,9 @@ export default function App() {
                       <button
                         type="button"
                         onClick={handleRunToggle}
-                        className="h-7 w-7 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded flex items-center justify-center transition-colors shadow-sm"
+                        className="h-7 w-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-full flex items-center justify-center transition-all shadow-xs cursor-pointer"
                       >
-                        <PauseIcon className="text-xs" />
+                        <PauseIcon className="w-3.5 h-3.5" />
                       </button>
                     }
                   />
@@ -3361,12 +3363,12 @@ export default function App() {
                         type="button"
                         disabled={isCompiling}
                         onClick={handleRunToggle}
-                        className="h-7 w-7 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded flex items-center justify-center transition-colors shadow-sm disabled:opacity-60"
+                        className="h-7 w-7 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-full flex items-center justify-center transition-all shadow-xs cursor-pointer disabled:opacity-60"
                       >
                         {isCompiling ? (
-                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <div className="w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
                         ) : (
-                          <GoPlay className="text-sm ml-0.5" />
+                          <GoPlay className="w-3.5 h-3.5 ml-0.5" />
                         )}
                       </button>
                     }
@@ -3381,8 +3383,8 @@ export default function App() {
                 </Tooltip>
               )}
 
-              {/* Quick Action: Upload Split Button */}
-              <div className="flex items-center">
+              {/* Quick Action: Upload Split Button Capsule */}
+              <div className="flex items-center rounded-full bg-[#18181b] border border-zinc-800 p-0.5">
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -3390,12 +3392,12 @@ export default function App() {
                         type="button"
                         disabled={isCompiling}
                         onClick={() => handleCompile()}
-                        className="h-7 px-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded-l flex items-center justify-center transition-colors disabled:opacity-40"
+                        className="h-6 w-6 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 cursor-pointer"
                       >
                         {isCompiling ? (
                           <div className="w-3 h-3 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin" />
                         ) : (
-                          <GoZap className="text-sm" />
+                          <GoZap className="w-3.5 h-3.5" />
                         )}
                       </button>
                     }
@@ -3409,7 +3411,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setShowUploadModal(true)}
-                        className="h-7 px-1 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded-r flex items-center justify-center transition-colors border-l border-[#27272a]/80"
+                        className="h-6 w-4 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
                       >
                         <ChevronDown className="w-2.5 h-2.5" />
                       </button>
@@ -3419,7 +3421,7 @@ export default function App() {
                 </Tooltip>
               </div>
 
-              {/* Quick Action: Reset */}
+              {/* Quick Action: Reset MCU Clock */}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -3437,9 +3439,9 @@ export default function App() {
                         setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
                         setStatusMessage('MCU Reset');
                       }}
-                      className="h-7 w-7 text-zinc-400 hover:text-zinc-200 hover:bg-[#27272a] rounded flex items-center justify-center transition-colors"
+                      className="h-7 w-7 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
                     >
-                      <GoSync className="text-sm" />
+                      <GoSync className="w-3.5 h-3.5" />
                     </button>
                   }
                 />
@@ -3447,10 +3449,10 @@ export default function App() {
               </Tooltip>
             </div>
 
-            {/* Subtle Divider */}
-            <div className="w-[1px] h-4 bg-zinc-800 shrink-0 mx-1.5" />
+            {/* Clean 1px Zinc Divider */}
+            <div className="w-[1px] h-3.5 bg-[#242428] shrink-0 mx-1" />
 
-            {/* Category 2: Canvas Tools (Select, Move, Wire, Eraser) */}
+            {/* Category 2: Canvas Tools (Select, Move, Wire, Eraser, Text) */}
             <div className="flex items-center gap-1">
               {/* 1. Select Tool */}
               <Tooltip>
@@ -3459,10 +3461,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('select')}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         activeTool === 'select'
-                          ? 'bg-[#27272a] text-zinc-100'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                          ? 'bg-[#27272a] text-white shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                       }`}
                     >
                       <MousePointer className="w-3.5 h-3.5" />
@@ -3479,10 +3481,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('move')}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         activeTool === 'move'
-                          ? 'bg-[#27272a] text-zinc-100'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                          ? 'bg-[#27272a] text-white shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                       }`}
                     >
                       <Move className="w-3.5 h-3.5" />
@@ -3492,23 +3494,23 @@ export default function App() {
                 <TooltipContent className="text-xs">Move Tool (M)</TooltipContent>
               </Tooltip>
 
-              {/* 3. Wire Tool Split Button */}
-              <div className="relative flex items-center" ref={wireMenuRef}>
+              {/* 3. Wire Tool Split Button Capsule */}
+              <div className="relative flex items-center rounded-full bg-[#18181b] border border-zinc-800 p-0.5" ref={wireMenuRef}>
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <button
                         type="button"
                         onClick={() => setActiveTool('wire')}
-                        className={`h-7 px-1.5 flex flex-col items-center justify-center rounded-l transition-colors ${
+                        className={`h-6 px-1.5 flex flex-col items-center justify-center rounded-full transition-colors cursor-pointer ${
                           activeTool === 'wire'
-                            ? 'bg-[#27272a] text-zinc-100'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                            ? 'bg-[#27272a] text-white'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                         }`}
                       >
-                        <Cable className="w-3.5 h-3.5" />
+                        <Cable className="w-3 h-3" />
                         <span
-                          className="w-3.5 h-[2px] rounded-full mt-0.5"
+                          className="w-3 h-[2px] rounded-full mt-0.5"
                           style={{
                             backgroundColor: selectedWire
                               ? selectedWire.color
@@ -3528,20 +3530,20 @@ export default function App() {
                     e.stopPropagation();
                     setShowWireColorMenu((prev) => !prev);
                   }}
-                  className={`h-7 px-1 flex items-center justify-center rounded-r transition-colors ${
+                  className={`h-6 w-4 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                     activeTool === 'wire' || showWireColorMenu
-                      ? 'bg-[#27272a] text-zinc-100 hover:bg-[#333338]'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                      ? 'text-zinc-200 hover:bg-zinc-800'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800'
                   }`}
                   title="Choose Wire Color"
                 >
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="w-2.5 h-2.5" />
                 </button>
 
                 {/* Floating Word-Style Color Picker Popover */}
                 {showWireColorMenu && (
                   <div
-                    className="absolute top-full left-0 mt-1 w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-lg text-xs z-50 animate-in fade-in zoom-in-95 duration-100 select-none"
+                    className="absolute top-full left-0 mt-1.5 w-64 p-3 bg-[#18181b] border border-[#27272a] shadow-2xl rounded-2xl text-xs z-50 animate-in fade-in zoom-in-95 duration-100 select-none"
                     onMouseDown={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-between pb-2 border-b border-[#27272a]">
@@ -3572,7 +3574,7 @@ export default function App() {
                               type="button"
                               title={`${c.name} (${c.role})`}
                               onClick={() => handleApplyWireColor(c.hex)}
-                              className={`relative w-8 h-7 rounded flex items-center justify-center transition-all ${
+                              className={`relative w-8 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                                 isMatch
                                   ? 'ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-105'
                                   : 'hover:scale-105 border border-zinc-700/60'
@@ -3594,7 +3596,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between px-2 py-1 bg-[#121215] rounded border border-zinc-800 mb-2">
+                    <div className="text-[10px] text-zinc-400 font-mono flex items-center justify-between px-2.5 py-1 bg-[#121215] rounded-xl border border-zinc-800 mb-2">
                       <span>Active:</span>
                       <span className="text-zinc-200 font-medium">
                         {WIRE_COLORS.find(
@@ -3609,7 +3611,7 @@ export default function App() {
                     <div className="pt-2 border-t border-[#27272a] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className="w-4 h-4 rounded border border-zinc-700 shrink-0 shadow-sm"
+                          className="w-4 h-4 rounded-full border border-zinc-700 shrink-0 shadow-sm"
                           style={{
                             backgroundColor: /^#([0-9A-Fa-f]{3}){1,2}$/.test(customColorInput)
                               ? customColorInput
@@ -3632,7 +3634,7 @@ export default function App() {
                           }}
                           placeholder="#HEX"
                           maxLength={7}
-                          className="h-6 w-20 px-1.5 bg-[#09090b] border border-zinc-800 focus:border-zinc-500 rounded text-zinc-200 font-mono text-[11px] focus:outline-none uppercase"
+                          className="h-6 w-20 px-2 bg-[#09090b] border border-zinc-800 focus:border-zinc-500 rounded-full text-zinc-200 font-mono text-[11px] focus:outline-none uppercase"
                         />
                       </div>
                       <button
@@ -3642,7 +3644,7 @@ export default function App() {
                             handleApplyWireColor(customColorInput);
                           }
                         }}
-                        className="h-6 px-2.5 bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                        className="h-6 px-2.5 bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 rounded-full text-[11px] font-medium transition-colors cursor-pointer"
                       >
                         Set
                       </button>
@@ -3658,10 +3660,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('eraser')}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         activeTool === 'eraser'
-                          ? 'bg-rose-950/70 text-rose-300 border border-rose-800/80'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                          ? 'bg-rose-950/70 text-rose-300 border border-rose-800/80 shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                       }`}
                     >
                       <Eraser className="w-3.5 h-3.5" />
@@ -3678,10 +3680,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTool('text')}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         activeTool === 'text'
-                          ? 'bg-[#27272a] text-zinc-100'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                          ? 'bg-[#27272a] text-white shadow-xs'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                       }`}
                     >
                       <Type className="w-3.5 h-3.5" />
@@ -3692,8 +3694,8 @@ export default function App() {
               </Tooltip>
             </div>
 
-            {/* Subtle Divider */}
-            <div className="w-[1px] h-4 bg-zinc-800 shrink-0 mx-1.5" />
+            {/* Clean 1px Zinc Divider */}
+            <div className="w-[1px] h-3.5 bg-[#242428] shrink-0 mx-1" />
 
             {/* Category 3: Component Transform (Rotate, Flip) */}
             <div className="flex items-center gap-1">
@@ -3705,9 +3707,9 @@ export default function App() {
                       type="button"
                       disabled={!selectedCompId && selectedCompIds.size === 0}
                       onClick={handleRotateSelected}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         selectedCompId || selectedCompIds.size > 0
-                          ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
+                          ? 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                           : 'text-zinc-600 cursor-not-allowed opacity-30'
                       }`}
                     >
@@ -3726,9 +3728,9 @@ export default function App() {
                       type="button"
                       disabled={!selectedCompId && selectedCompIds.size === 0}
                       onClick={handleFlipSelected}
-                      className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
+                      className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                         selectedCompId || selectedCompIds.size > 0
-                          ? 'text-zinc-300 hover:text-white hover:bg-[#27272a]'
+                          ? 'text-zinc-300 hover:text-white hover:bg-zinc-800'
                           : 'text-zinc-600 cursor-not-allowed opacity-30'
                       }`}
                     >
@@ -3740,8 +3742,8 @@ export default function App() {
               </Tooltip>
             </div>
 
-            {/* Subtle Divider */}
-            <div className="w-[1px] h-4 bg-zinc-800 shrink-0 mx-1.5" />
+            {/* Clean 1px Zinc Divider */}
+            <div className="w-[1px] h-3.5 bg-[#242428] shrink-0 mx-1" />
 
             {/* Category 4: Wire Routing Mode (Curve vs Ortho Diagram) */}
             <Tooltip>
@@ -3750,10 +3752,10 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleToggleRoutingMode}
-                    className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                    className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
                       activeRoutingDisplay === 'ortho'
-                        ? 'text-zinc-100 bg-[#27272a] border border-zinc-600'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1a1e]'
+                        ? 'text-zinc-100 bg-[#27272a] border border-zinc-600 shadow-xs'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                     }`}
                   >
                     {activeRoutingDisplay === 'ortho' ? (
@@ -3768,14 +3770,14 @@ export default function App() {
                 {selectedWireId
                   ? `Selected Wire Style • ${
                       activeRoutingDisplay === 'ortho'
-                        ? 'Diagram 90° Right-Angles'
-                        : 'Flexible Natural Curves'
-                    } (Click to toggle)`
-                  : `Wire Routing Mode • ${
+                        ? 'Right-Angle Orthogonal'
+                        : 'Smooth Bezier Curve'
+                    } (O)`
+                  : `Default Wiring Style • ${
                       activeRoutingDisplay === 'ortho'
-                        ? 'Diagram 90° Right-Angles'
-                        : 'Flexible Natural Curves'
-                    } (Click to toggle)`}
+                        ? 'Right-Angle Orthogonal'
+                        : 'Smooth Bezier Curve'
+                    } (O)`}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -4383,34 +4385,40 @@ export default function App() {
                                   {serialLogs}
                                 </pre>
                               </div>
-                              <div className="flex items-center gap-2 pt-1.5 border-t border-[#222226] mt-1 shrink-0">
-                                <Input
-                                  type="text"
-                                  placeholder="Send command to Arduino UART..."
-                                  value={serialInput}
-                                  onChange={(e) => setSerialInput(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && serialInput) {
-                                      tauriInvoke('write_serial', { input: serialInput });
-                                      setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
-                                      setSerialInput('');
-                                    }
-                                  }}
-                                  className="flex-1 h-6 text-xs bg-[#18181b] border-zinc-800 text-zinc-200"
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    if (serialInput) {
-                                      tauriInvoke('write_serial', { input: serialInput });
-                                      setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
-                                      setSerialInput('');
-                                    }
-                                  }}
-                                  className="h-6 px-2.5 text-xs bg-zinc-200 text-zinc-900 hover:bg-zinc-100 font-medium"
-                                >
-                                  Send
-                                </Button>
+                              {/* Cohesive Capsule UART Input Bar */}
+                              <div className="pt-2 border-t border-[#222226] mt-1 shrink-0">
+                                <div className="flex items-center gap-2 bg-[#18181b] border border-zinc-800 hover:border-zinc-700 focus-within:border-zinc-500 rounded-full pl-3 pr-1 py-0.5 transition-all shadow-xs">
+                                  <GoTerminal className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                  <input
+                                    type="text"
+                                    placeholder="Send command to Arduino UART..."
+                                    value={serialInput}
+                                    onChange={(e) => setSerialInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && serialInput) {
+                                        tauriInvoke('write_serial', { input: serialInput });
+                                        setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                        setSerialInput('');
+                                      }
+                                    }}
+                                    className="flex-1 bg-transparent border-none outline-none font-mono text-xs text-zinc-200 placeholder:text-zinc-600 h-6"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (serialInput) {
+                                        tauriInvoke('write_serial', { input: serialInput });
+                                        setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                        setSerialInput('');
+                                      }
+                                    }}
+                                    className="h-6 px-3 rounded-full text-xs font-semibold bg-white text-zinc-950 hover:bg-zinc-200 shadow-xs flex items-center gap-1 shrink-0 cursor-pointer"
+                                  >
+                                    <span>Send</span>
+                                    <Send className="w-2.5 h-2.5" />
+                                  </Button>
+                                </div>
                               </div>
                             </TabsContent>
 

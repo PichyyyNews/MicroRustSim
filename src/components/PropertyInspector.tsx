@@ -16,6 +16,7 @@ import {
   Layers,
   Zap,
 } from 'lucide-react';
+import { Badge } from './ui/badge';
 import { CircuitComponent, CircuitWire } from '../types';
 
 export interface PropertyInspectorProps {
@@ -151,7 +152,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
               <button
                 type="button"
                 onClick={() => toggleSection('identity')}
-                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-1.5">
                   <Cpu className="w-3.5 h-3.5 text-zinc-500" />
@@ -165,13 +166,13 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
               </button>
 
               {openSections.identity && (
-                <div className="pt-2 space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between py-0.5">
-                    <span className="text-zinc-500">Instance ID</span>
-                    <span className="font-mono text-zinc-200">{selectedComp.id}</span>
+                <div className="mt-2 bg-[#1c1c20] border border-zinc-800/60 rounded-xl p-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 text-xs">Instance ID</span>
+                    <span className="font-mono text-zinc-100 font-semibold">{selectedComp.id}</span>
                   </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <span className="text-zinc-500">Class</span>
+                  <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
+                    <span className="text-zinc-400 text-xs">Class</span>
                     <span className="font-mono text-zinc-200 capitalize">
                       {selectedComp.kind.replace('_', ' ')}
                     </span>
@@ -181,11 +182,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
             </div>
 
             {/* Section 2: Transform */}
-            <div className="py-3">
+            <div className="py-2">
               <button
                 type="button"
                 onClick={() => toggleSection('transform')}
-                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-zinc-500" />
@@ -199,12 +200,12 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
               </button>
 
               {openSections.transform && (
-                <div className="pt-2 space-y-2 text-xs">
+                <div className="mt-2 bg-[#1c1c20] border border-zinc-800/60 rounded-xl p-3 space-y-3 text-xs">
                   {/* Position */}
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Position</span>
+                    <span className="text-zinc-400 text-xs">Position</span>
                     <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-1 bg-[#18181b] border border-[#27272a] rounded px-1.5 h-6">
+                      <div className="flex items-center gap-1.5 bg-[#141416] border border-zinc-800 rounded-lg px-2 h-7 focus-within:border-zinc-600 transition-colors">
                         <span className="text-[10px] font-mono text-zinc-500 font-semibold">X</span>
                         <input
                           type="number"
@@ -217,7 +218,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                           className="w-12 bg-transparent text-zinc-200 outline-none font-mono text-xs text-right"
                         />
                       </div>
-                      <div className="flex items-center gap-1 bg-[#18181b] border border-[#27272a] rounded px-1.5 h-6">
+                      <div className="flex items-center gap-1.5 bg-[#141416] border border-zinc-800 rounded-lg px-2 h-7 focus-within:border-zinc-600 transition-colors">
                         <span className="text-[10px] font-mono text-zinc-500 font-semibold">Y</span>
                         <input
                           type="number"
@@ -234,8 +235,8 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                   </div>
 
                   {/* Orientation */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Orientation</span>
+                  <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
+                    <span className="text-zinc-400 text-xs">Orientation</span>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
@@ -245,7 +246,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             rotation: (((selectedComp.rotation || 0) + 90) % 360),
                           })
                         }
-                        className="h-6 px-2 flex items-center gap-1 bg-[#18181b] hover:bg-[#222226] border border-[#27272a] rounded text-zinc-300 transition-colors"
+                        className="h-6 px-2.5 flex items-center gap-1 bg-[#141416] hover:bg-[#222226] border border-zinc-800 rounded-full text-zinc-300 transition-colors cursor-pointer"
                       >
                         <RotateCw className="w-3 h-3 text-zinc-400" />
                         <span className="font-mono text-[10px]">{selectedComp.rotation || 0}°</span>
@@ -257,10 +258,10 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                         onClick={() =>
                           onUpdateComponent(selectedComp.id, { flipped: !selectedComp.flipped })
                         }
-                        className={`h-6 px-2 flex items-center gap-1 rounded border text-[11px] transition-colors ${
+                        className={`h-6 px-2.5 flex items-center gap-1 rounded-full border text-[11px] transition-colors cursor-pointer ${
                           selectedComp.flipped
-                            ? 'bg-zinc-800 border-zinc-600 text-white'
-                            : 'bg-[#18181b] hover:bg-[#222226] border-[#27272a] text-zinc-400'
+                            ? 'bg-zinc-200 border-white text-zinc-950 font-semibold shadow-xs'
+                            : 'bg-[#141416] hover:bg-[#222226] border-zinc-800 text-zinc-400'
                         }`}
                       >
                         <FlipHorizontal className="w-3 h-3" />
@@ -273,11 +274,11 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
             </div>
 
             {/* Section 3: Physical Parameters & Controls */}
-            <div className="py-3">
+            <div className="py-2">
               <button
                 type="button"
                 onClick={() => toggleSection('specs')}
-                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                className="w-full py-1 flex items-center justify-between text-zinc-400 hover:text-zinc-200 text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-zinc-500" />
@@ -291,7 +292,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
               </button>
 
               {openSections.specs && (
-                <div className="pt-2 space-y-2.5 text-xs">
+                <div className="mt-2 bg-[#1c1c20] border border-zinc-800/60 rounded-xl p-3 space-y-3 text-xs">
                   {/* Potentiometer */}
                   {selectedComp.kind === 'potentiometer' && (() => {
                     const wiperVal = typeof selectedComp.props?.value === 'number' ? selectedComp.props.value : 0.5;
@@ -300,12 +301,15 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     const percent = Math.round(wiperVal * 100);
 
                     return (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-zinc-500">Wiper Position</span>
-                          <span className="font-mono text-zinc-100 font-semibold text-xs">
-                            {voltage} V <span className="text-zinc-500 font-normal">({percent}%)</span>
-                          </span>
+                          <span className="text-zinc-400 text-xs">Wiper Position</span>
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-[11px] h-5 px-2 border-zinc-700 text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all] shrink-0"
+                          >
+                            {voltage}&nbsp;V&nbsp;({percent}%)
+                          </Badge>
                         </div>
 
                         {/* Flat Minimal Slider */}
@@ -322,7 +326,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                                 props: { ...(selectedComp.props || {}), value: val },
                               });
                             }}
-                            className="w-full accent-white h-1.5 bg-[#1f1f23] rounded cursor-pointer"
+                            className="w-full accent-white h-1.5 bg-[#121215] rounded-full cursor-pointer"
                           />
                           <div className="flex justify-between text-[10px] font-mono text-zinc-500">
                             <span>0V (0)</span>
@@ -342,10 +346,10 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                                   props: { ...(selectedComp.props || {}), value: v },
                                 })
                               }
-                              className={`py-0.5 rounded border transition-colors ${
+                              className={`h-5.5 rounded-full border transition-colors cursor-pointer flex items-center justify-center tabular-nums ${
                                 Math.abs(wiperVal - v) < 0.05
-                                  ? 'bg-zinc-800 border-zinc-600 text-white font-medium'
-                                  : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                                  ? 'bg-white border-white text-zinc-950 font-semibold shadow-xs'
+                                  : 'bg-[#141416] border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                               }`}
                             >
                               {(v * 5).toFixed(1)}V
@@ -353,9 +357,9 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                           ))}
                         </div>
 
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-zinc-500">Total Track</span>
-                          <span className="font-mono text-zinc-300">10 kΩ (Linear B)</span>
+                        <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
+                          <span className="text-zinc-400 text-xs">Total Track</span>
+                          <span className="font-mono text-zinc-300">10&nbsp;kΩ (Linear B)</span>
                         </div>
                       </div>
                     );

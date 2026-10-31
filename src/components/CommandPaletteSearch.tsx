@@ -18,6 +18,7 @@ import {
   Sliders,
   FolderOpen,
   Pause,
+  Search,
 } from 'lucide-react';
 
 export interface CommandItem {
@@ -314,15 +315,15 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
 
   return (
     <div ref={containerRef} className="relative select-none">
-      {/* VS Code Style Command Input Bar */}
+      {/* Sleek Pill Capsule Command Input Bar */}
       <div
-        className={`w-64 sm:w-72 h-7 bg-[#161619] hover:bg-[#1a1a1e] border rounded-md flex items-center px-2 gap-2 text-xs transition-all ${
+        className={`w-64 sm:w-76 h-7.5 bg-[#18181b] hover:bg-[#1c1c20] border rounded-full flex items-center px-3 gap-2 text-xs transition-all shadow-xs ${
           isOpen
-            ? 'border-zinc-500 bg-[#18181b] shadow-sm ring-1 ring-zinc-600/30'
-            : 'border-zinc-800/90 text-zinc-400'
+            ? 'border-zinc-500 bg-[#18181b] ring-1 ring-zinc-600/30'
+            : 'border-zinc-800/90 hover:border-zinc-700/80 text-zinc-400'
         }`}
       >
-        <span className="font-mono text-zinc-500 font-semibold text-xs shrink-0 select-none">&gt;</span>
+        <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -343,12 +344,12 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
               setQuery('');
               inputRef.current?.focus();
             }}
-            className="p-0.5 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="p-0.5 rounded-full text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer"
           >
             <GoX className="w-3 h-3" />
           </button>
         ) : (
-          <kbd className="hidden sm:inline-block text-[9px] font-mono px-1 py-0.5 rounded bg-zinc-800/80 text-zinc-500 border border-zinc-700/60 shrink-0">
+          <kbd className="hidden sm:inline-block text-[9px] font-mono px-2 py-0.5 rounded-full bg-[#27272a] text-zinc-400 border border-zinc-700/60 shrink-0">
             Ctrl+K
           </kbd>
         )}
@@ -356,13 +357,13 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
 
       {/* VS Code Command Palette Dropdown Popup */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-84 sm:w-96 bg-[#16161a] border border-zinc-700/80 rounded-lg shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-100">
-          <div className="px-3 py-1.5 bg-[#121215] border-b border-zinc-800 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+        <div className="absolute right-0 top-full mt-1.5 w-84 sm:w-96 bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-100 p-1">
+          <div className="px-3 py-1.5 bg-[#121215] border-b border-[#222226] rounded-t-xl flex items-center justify-between text-[10px] text-zinc-500 font-mono">
             <span>{filteredCommands.length} commands available</span>
             <span>Use ↑ ↓ to navigate, Enter to run</span>
           </div>
 
-          <div className="max-h-64 overflow-y-auto divide-y divide-zinc-800/40 scrollbar-thin py-1">
+          <div className="max-h-64 overflow-y-auto space-y-0.5 scrollbar-thin p-1">
             {filteredCommands.length === 0 ? (
               <div className="p-4 text-center text-xs text-zinc-500 font-mono">
                 No matching commands found for "{query}"
@@ -376,10 +377,10 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
                     key={cmd.id}
                     onClick={() => handleExecute(cmd)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`px-3 py-1.5 flex items-center justify-between cursor-pointer transition-colors text-xs ${
+                    className={`px-2.5 py-1.5 rounded-xl flex items-center justify-between cursor-pointer transition-colors text-xs ${
                       isSelected
-                        ? 'bg-zinc-800/90 text-zinc-100'
-                        : 'text-zinc-300 hover:bg-zinc-800/40'
+                        ? 'bg-[#26262a] text-white shadow-xs font-medium'
+                        : 'text-zinc-300 hover:bg-[#1c1c20]'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 truncate">
@@ -399,7 +400,7 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
                     </div>
 
                     {cmd.shortcut && (
-                      <kbd className="text-[9px] font-mono px-1 py-0.5 rounded bg-[#121215] border border-zinc-700/60 text-zinc-400 shrink-0 ml-2">
+                      <kbd className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-[#18181b] border border-zinc-700/60 text-zinc-400 shrink-0 ml-2">
                         {cmd.shortcut}
                       </kbd>
                     )}
