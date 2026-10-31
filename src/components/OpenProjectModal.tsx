@@ -157,7 +157,6 @@ export const OpenProjectModal: React.FC<OpenProjectModalProps> = ({
           className="h-11 px-4 bg-[#18181b] border-b border-[#222226] flex items-center justify-between cursor-move select-none"
         >
           <div className="flex items-center gap-2 text-zinc-100 font-semibold text-xs tracking-tight">
-            <FolderOpen className="w-4 h-4 text-zinc-300" />
             <span>Open Project Folder</span>
           </div>
           <button

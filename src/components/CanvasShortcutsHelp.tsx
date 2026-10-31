@@ -37,7 +37,7 @@ export const CanvasShortcutsHelp: React.FC = () => {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="w-6 h-6 rounded-md bg-[#18181b]/70 hover:bg-[#222226] border border-zinc-800/80 text-zinc-500 hover:text-zinc-200 text-xs font-mono flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-sm"
+        className="w-6 h-6 rounded-full bg-[#18181b]/70 hover:bg-[#222226] border border-zinc-800/80 text-zinc-500 hover:text-zinc-200 text-xs font-mono flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-sm"
         title="Canvas & Controls Cheat Sheet"
         aria-label="Keyboard shortcuts"
       >

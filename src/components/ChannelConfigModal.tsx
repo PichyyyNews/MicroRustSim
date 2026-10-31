@@ -389,7 +389,6 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
           className="h-11 px-4 bg-[#18181b] border-b border-[#222226] flex items-center justify-between cursor-move select-none shrink-0"
         >
           <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-xs tracking-tight">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
             <span>Logic Waveform Channels</span>
             <span className="text-[10px] text-zinc-500 font-mono font-normal">| Diagram Probes</span>
             <Badge
@@ -445,7 +444,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <IconComp
-                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`}
+                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white' : 'text-zinc-500'}`}
                     />
                     <span className="truncate">{item.label}</span>
                   </div>
@@ -465,7 +464,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                 onClick={handleSelectAllInTab}
                 className="w-full px-2 py-1.5 rounded-lg text-[11px] text-zinc-300 hover:text-white hover:bg-zinc-800/50 flex items-center gap-1.5 cursor-pointer transition-colors"
               >
-                <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
+                <Sparkles className="w-3 h-3 text-zinc-400 shrink-0" />
                 <span>Select All in View</span>
               </button>
               <button
@@ -534,11 +533,11 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                         </button>
 
                         <div className="w-7 h-7 rounded-lg bg-[#141416] border border-[#27272a] flex items-center justify-center shrink-0">
-                          {cfg.kind === 'led' && <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />}
-                          {cfg.kind === 'pushbutton' && <ToggleLeft className="w-3.5 h-3.5 text-amber-400" />}
-                          {cfg.kind === 'potentiometer' && <Zap className="w-3.5 h-3.5 text-sky-400" />}
-                          {cfg.kind === 'resistor' && <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />}
-                          {cfg.kind === 'mcu' && <Cpu className="w-3.5 h-3.5 text-purple-400" />}
+                          {cfg.kind === 'led' && <Lightbulb className="w-3.5 h-3.5 text-zinc-200" />}
+                          {cfg.kind === 'pushbutton' && <ToggleLeft className="w-3.5 h-3.5 text-zinc-200" />}
+                          {cfg.kind === 'potentiometer' && <Zap className="w-3.5 h-3.5 text-zinc-200" />}
+                          {cfg.kind === 'resistor' && <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-200" />}
+                          {cfg.kind === 'mcu' && <Cpu className="w-3.5 h-3.5 text-zinc-200" />}
                         </div>
 
                         <div className="min-w-0">
