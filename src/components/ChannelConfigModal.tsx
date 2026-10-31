@@ -215,8 +215,6 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     }
   }, [isOpen, components, wires, configs]);
 
-  if (!isOpen) return null;
-
   // Toggle channel enabled state by unique channel ID
   const handleToggle = (id: string) => {
     setLocalConfigs((prev) =>
@@ -260,7 +258,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     setLocalConfigs(buildDiagramChannels(components, wires, []));
   };
 
-  // Filtered list based on category and search query
+  // Filtered list based on category and search query (Hooks MUST run before any early return)
   const filteredConfigs = useMemo(() => {
     let list = localConfigs;
     if (filterCategory === 'led') {
@@ -289,6 +287,9 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     onSave(localConfigs);
     onClose();
   };
+
+  // Safe early return placed AFTER all hooks to adhere strictly to React Rules of Hooks
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none animate-in fade-in duration-100">
