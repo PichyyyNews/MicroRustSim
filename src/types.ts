@@ -100,6 +100,38 @@ export interface CircuitFault {
   voltage: number;
 }
 
+export type PowerRealismMode = 'ideal' | 'realistic';
+export type PowerRealismLevel = 'low' | 'medium' | 'high' | 'custom';
+
+export interface PowerRealismConfig {
+  mode: PowerRealismMode;
+  level: PowerRealismLevel;
+  r_internal_5v: number;
+  r_internal_3v3: number;
+  ripple_vpp_5v: number;
+  ripple_freq_hz: number;
+  noise_sigma_5v: number;
+  enable_sag: boolean;
+  enable_ripple: boolean;
+  enable_noise: boolean;
+  seed: number;
+}
+
+export const DEFAULT_POWER_REALISM_CONFIG: PowerRealismConfig = {
+  mode: 'ideal',
+  level: 'medium',
+  r_internal_5v: 0.05,
+  r_internal_3v3: 0.10,
+  ripple_vpp_5v: 0.060,
+  ripple_freq_hz: 100.0,
+  noise_sigma_5v: 0.015,
+  enable_sag: true,
+  enable_ripple: true,
+  enable_noise: true,
+  seed: 42,
+};
+
+
 export interface StepResult {
   pin13: boolean;
   lit_leds: string[];

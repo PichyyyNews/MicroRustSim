@@ -6,7 +6,10 @@ use avr8rs::board::{parse_hex, Board, PinState as AvrPinState};
 use avr8rs::runtime::{Backend, Runtime};
 
 pub mod solver;
-pub use solver::{CircuitFault, FaultType, MnaCircuitSolver};
+pub use solver::{
+    deterministic_gaussian_noise, CircuitFault, FaultType, MnaCircuitSolver, PowerRealismConfig,
+    PowerRealismLevel, PowerRealismMode,
+};
 
 /// Logic/Electrical state of a pin or node.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -460,6 +463,8 @@ pub struct SimulationEngine {
     pub pin_voltages: HashMap<PinId, f32>,
     pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
+    pub power_config: PowerRealismConfig,
+    pub step_counter: u64,
 }
 
 impl SimulationEngine {
@@ -474,6 +479,8 @@ impl SimulationEngine {
             pin_voltages: HashMap::new(),
             branch_currents: HashMap::new(),
             faults: Vec::new(),
+            power_config: PowerRealismConfig::default(),
+            step_counter: 0,
         }
     }
 
@@ -486,6 +493,7 @@ impl SimulationEngine {
         self.pin_voltages.clear();
         self.branch_currents.clear();
         self.faults.clear();
+        self.step_counter = 0;
     }
 
     pub fn add_wire(&mut self, wire: Wire) {
@@ -499,6 +507,7 @@ impl SimulationEngine {
     /// Step simulation by `cycles` and resolve connected pin states across wires.
     pub fn step_cycles(&mut self, cycles: u64) {
         self.mcu.step_cycles(cycles);
+        self.step_counter = self.step_counter.wrapping_add(1);
         self.resolve_electrical_nets();
     }
 
@@ -514,6 +523,8 @@ impl SimulationEngine {
             &mut self.pin_voltages,
             &mut self.branch_currents,
             &mut self.faults,
+            &self.power_config,
+            self.step_counter,
         );
     }
 
@@ -764,5 +775,56 @@ mod tests {
         assert!(engine.faults().is_empty(), "Removing short must clear faults");
         let recovered_mcu_volts = engine.mcu_pin_voltages_map();
         assert_eq!(*recovered_mcu_volts.get("5V").unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_power_realism_ideal_vs_realistic_physics() {
+        let mut engine = SimulationEngine::new_with_uno();
+
+        // 1. In default Ideal mode, 5V rail is exactly 5.000V
+        assert_eq!(engine.power_config.mode, PowerRealismMode::Ideal);
+        engine.resolve_electrical_nets();
+        let v5_ideal = engine.get_pin_voltage("uno1", "5V");
+        assert!((v5_ideal - 5.0).abs() < 1e-4, "Ideal mode 5V rail must be exactly 5.00V, got {}", v5_ideal);
+
+        // 2. Deterministic Gaussian noise reproducibility check
+        let n1 = deterministic_gaussian_noise(42, 100, 0.015);
+        let n2 = deterministic_gaussian_noise(42, 100, 0.015);
+        assert_eq!(n1, n2, "Deterministic Gaussian noise must match identically for same (seed, step)");
+
+        let n3 = deterministic_gaussian_noise(999, 100, 0.015);
+        assert_ne!(n1, n3, "Different seed must yield different noise value");
+
+        // 3. Switch to Realistic mode and add heavy load to observe physical voltage sag
+        engine.power_config = PowerRealismConfig {
+            mode: PowerRealismMode::Realistic,
+            level: PowerRealismLevel::High,
+            r_internal_5v: 0.50, // 0.5 ohm internal resistance
+            r_internal_3v3: 0.50,
+            ripple_vpp_5v: 0.0,
+            ripple_freq_hz: 100.0,
+            noise_sigma_5v: 0.0,
+            enable_sag: true,
+            enable_ripple: false,
+            enable_noise: false,
+            seed: 42,
+        };
+
+        // Add 10 ohm load resistor between 5V and GND (draws ~500mA)
+        engine.resistors.insert("r_load".into(), components::ResistorComponent::new("r_load", 10.0));
+        engine.add_wire(Wire { id: "w_load1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("r_load", "1"), color: "#ff0000".into() });
+        engine.add_wire(Wire { id: "w_load2".into(), from: PinId::new("r_load", "2"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+        engine.resolve_electrical_nets();
+
+        let v5_loaded = engine.get_pin_voltage("uno1", "5V");
+        // Voltage divider: V = 5.0 * 10 / (10 + 0.5) = 4.7619 V
+        let expected_v = 5.0 * 10.0 / (10.0 + 0.5);
+        assert!(
+            (v5_loaded - expected_v as f32).abs() < 0.05,
+            "Loaded 5V rail must sag physically according to MNA equation! Expected ~{:.3}V, got {:.3}V",
+            expected_v,
+            v5_loaded
+        );
+        assert!(v5_loaded < 4.90, "Loaded 5V rail must sag under load, got {}", v5_loaded);
     }
 }

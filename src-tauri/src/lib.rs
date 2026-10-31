@@ -4,7 +4,7 @@ use std::thread;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sim_compiler::{ArduinoCliBackend, BuiltinSketches, CompilerBackend, MockCompilerBackend};
-pub use sim_core::{CircuitFault, FaultType};
+pub use sim_core::{CircuitFault, FaultType, PowerRealismConfig, PowerRealismLevel, PowerRealismMode};
 use sim_core::{components, LogicState, PinId, SimulationEngine, Wire};
 use sim_storage::{
     DirectoryProject, FileEntry, ProjectData, ProjectMetadata, ProjectStorage,
@@ -75,6 +75,7 @@ pub enum SimCommand {
     AddResistor { id: String, ohms: f32 },
     AddButton { id: String },
     AddPot { id: String },
+    SetPowerRealism(PowerRealismConfig),
     SyncCircuit {
         components: Vec<ComponentDto>,
         wires: Vec<WireDto>,
@@ -218,6 +219,11 @@ fn add_potentiometer(id: String, state: State<'_, AppState>) {
 #[tauri::command]
 fn sync_circuit(components: Vec<ComponentDto>, wires: Vec<WireDto>, state: State<'_, AppState>) {
     let _ = state.sim_tx.send(SimCommand::SyncCircuit { components, wires });
+}
+
+#[tauri::command]
+fn set_power_realism_config(config: PowerRealismConfig, state: State<'_, AppState>) -> Result<(), String> {
+    state.sim_tx.send(SimCommand::SetPowerRealism(config)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -556,6 +562,10 @@ pub fn run() {
                     engine.pots.insert(id.clone(), components::PotentiometerComponent::new(id));
                     engine.resolve_electrical_nets();
                 }
+                SimCommand::SetPowerRealism(config) => {
+                    engine.power_config = config;
+                    engine.resolve_electrical_nets();
+                }
                 SimCommand::SyncCircuit { components, wires } => {
                     engine.wires.clear();
                     engine.leds.clear();
@@ -666,6 +676,7 @@ pub fn run() {
             add_resistor,
             add_button,
             add_potentiometer,
+            set_power_realism_config,
             save_project_db,
             load_project_db,
             list_projects_db,

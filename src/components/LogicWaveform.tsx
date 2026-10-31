@@ -21,7 +21,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { CircuitComponent, ComponentKind } from '../types';
+import { CircuitComponent, ComponentKind, PowerRealismConfig } from '../types';
 import {
   ChartConfig,
   ChartContainer,
@@ -55,6 +55,8 @@ interface LogicWaveformProps {
   selectedCompId?: string | null;
   onSelectComponent?: (id: string | null) => void;
   onOpenChannelConfig?: () => void;
+  powerConfig?: PowerRealismConfig;
+  onTogglePowerMode?: () => void;
 }
 
 type ViewMode = 'tracks' | 'overlay';
@@ -68,6 +70,8 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   selectedCompId,
   onSelectComponent,
   onOpenChannelConfig,
+  powerConfig,
+  onTogglePowerMode,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -829,6 +833,23 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             {isPaused ? <Play className="w-2.5 h-2.5 text-amber-400" /> : <Pause className="w-2.5 h-2.5" />}
             <span>{isPaused ? 'Resume' : 'Inspect'}</span>
           </button>
+
+          {/* Quick Power Supply Physics Toggle */}
+          {powerConfig && onTogglePowerMode && (
+            <button
+              type="button"
+              onClick={onTogglePowerMode}
+              title={`Power Realism Mode: ${powerConfig.mode === 'realistic' ? 'Realistic Lab (Sag, Ripple, Noise Active)' : 'Ideal (Pure 5.000V)'}. Click to toggle.`}
+              className={`h-6 px-2.5 rounded-full border text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                powerConfig.mode === 'realistic'
+                  ? 'bg-[#27272a] border-zinc-500 text-white shadow-xs font-semibold'
+                  : 'bg-[#18181b] hover:bg-zinc-800 border-zinc-700/80 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Zap className={`w-2.5 h-2.5 ${powerConfig.mode === 'realistic' ? 'text-white' : 'text-zinc-500'}`} />
+              <span className="capitalize">{powerConfig.mode === 'realistic' ? 'Realistic (Lab)' : 'Ideal (5V)'}</span>
+            </button>
+          )}
         </div>
 
         {/* Right: Live Genuine Electrical Telemetry Pills (V, I, R) */}

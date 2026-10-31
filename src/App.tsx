@@ -107,6 +107,8 @@ import {
   RecentProject,
   WorkspaceLayout,
   OpenTab,
+  PowerRealismConfig,
+  DEFAULT_POWER_REALISM_CONFIG,
 } from './types';
 
 // Safely invoke Tauri IPC commands with web preview fallback
@@ -255,6 +257,21 @@ export default function App() {
   const [autoSaveOnRun, setAutoSaveOnRun] = useState(true);
   const [autoScrollSerial, setAutoScrollSerial] = useState(true);
   const [canvasGridVisible, setCanvasGridVisible] = useState(true);
+  const [powerConfig, setPowerConfig] = useState<PowerRealismConfig>(() => {
+    try {
+      const saved = localStorage.getItem('microrustsim_power_realism');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_POWER_REALISM_CONFIG;
+  });
+
+  const handleUpdatePowerConfig = useCallback((newConfig: PowerRealismConfig) => {
+    setPowerConfig(newConfig);
+    try {
+      localStorage.setItem('microrustsim_power_realism', JSON.stringify(newConfig));
+    } catch {}
+    tauriInvoke('set_power_realism_config', { config: newConfig }).catch(console.error);
+  }, []);
   const [clipboardComponent, setClipboardComponent] = useState<CircuitComponent | null>(null);
   const [clipboardComponents, setClipboardComponents] = useState<CircuitComponent[]>([]);
   const [selectedCompIds, setSelectedCompIds] = useState<Set<string>>(new Set());
@@ -351,6 +368,11 @@ export default function App() {
       setIsAppLoading(false);
     }, 700);
     return () => clearTimeout(t);
+  }, []);
+
+  // Synchronize power supply realism configuration with Rust simulation engine on startup
+  useEffect(() => {
+    tauriInvoke('set_power_realism_config', { config: powerConfig }).catch(console.error);
   }, []);
 
   // Load layout preferences from SQLite on app startup
@@ -4432,6 +4454,11 @@ export default function App() {
                                 selectedCompId={selectedCompId}
                                 onSelectComponent={setSelectedCompId}
                                 onOpenChannelConfig={() => setIsChannelModalOpen(true)}
+                                powerConfig={powerConfig}
+                                onTogglePowerMode={() => {
+                                  const nextMode = powerConfig.mode === 'ideal' ? 'realistic' : 'ideal';
+                                  handleUpdatePowerConfig({ ...powerConfig, mode: nextMode });
+                                }}
                               />
                             </TabsContent>
 
@@ -4758,6 +4785,8 @@ export default function App() {
           setWireRoutingMode={setWireRoutingMode}
           baudRate={baudRate}
           setBaudRate={setBaudRate}
+          powerConfig={powerConfig}
+          setPowerConfig={handleUpdatePowerConfig}
         />
 
         {/* Modal Dialog: Configure Real-time Waveform Channels (Multi-LEDs / Components) */}

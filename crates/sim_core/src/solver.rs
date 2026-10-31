@@ -12,6 +12,87 @@ pub enum FaultType {
     ReversePolarity,
 }
 
+/// Power Supply Realism Mode (Ideal default for teaching, Realistic for lab physics)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerRealismMode {
+    Ideal,
+    Realistic,
+}
+
+/// Power Supply Realism Level Presets
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerRealismLevel {
+    Low,
+    Medium,
+    High,
+    Custom,
+}
+
+/// Physical Power Supply Simulation Configuration
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PowerRealismConfig {
+    pub mode: PowerRealismMode,
+    pub level: PowerRealismLevel,
+    pub r_internal_5v: f64,
+    pub r_internal_3v3: f64,
+    pub ripple_vpp_5v: f64,
+    pub ripple_freq_hz: f64,
+    pub noise_sigma_5v: f64,
+    pub enable_sag: bool,
+    pub enable_ripple: bool,
+    pub enable_noise: bool,
+    pub seed: u64,
+}
+
+impl Default for PowerRealismConfig {
+    fn default() -> Self {
+        Self {
+            mode: PowerRealismMode::Ideal,
+            level: PowerRealismLevel::Medium,
+            r_internal_5v: 0.05,
+            r_internal_3v3: 0.10,
+            ripple_vpp_5v: 0.060,
+            ripple_freq_hz: 100.0,
+            noise_sigma_5v: 0.015,
+            enable_sag: true,
+            enable_ripple: true,
+            enable_noise: true,
+            seed: 42,
+        }
+    }
+}
+
+/// Deterministic Gaussian noise generator using Box-Muller transform with 64-bit SplitMix PRNG.
+/// Guaranteed identical noise sequence for the same (seed, step) tuple across all platforms.
+pub fn deterministic_gaussian_noise(seed: u64, step: u64, sigma: f64) -> f64 {
+    if sigma <= 1e-9 {
+        return 0.0;
+    }
+    let mut s1 = seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(step.wrapping_mul(0xBF58476D1CE4E5B9));
+    if s1 == 0 { s1 = 0x853c49e6748fea9b; }
+    s1 ^= s1 >> 30;
+    s1 = s1.wrapping_mul(0xBF58476D1CE4E5B9);
+    s1 ^= s1 >> 27;
+    s1 = s1.wrapping_mul(0x94D049BB133111EB);
+    s1 ^= s1 >> 31;
+
+    let mut s2 = s1.wrapping_add(0x9E3779B97F4A7C15);
+    s2 ^= s2 >> 30;
+    s2 = s2.wrapping_mul(0xBF58476D1CE4E5B9);
+    s2 ^= s2 >> 27;
+    s2 = s2.wrapping_mul(0x94D049BB133111EB);
+    s2 ^= s2 >> 31;
+
+    let u1 = (((s1 >> 11) as f64) + 1.0) / 9007199254740993.0;
+    let u2 = (((s2 >> 11) as f64) + 1.0) / 9007199254740993.0;
+
+    let u1_clamped = u1.clamp(1e-15, 1.0);
+    let z = (-2.0 * u1_clamped.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+    z * sigma
+}
+
 /// Structured fault record emitted during physical circuit solving.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CircuitFault {
@@ -261,12 +342,54 @@ impl MnaCircuitSolver {
         pin_voltages: &mut HashMap<PinId, f32>,
         branch_currents: &mut HashMap<String, f32>,
         faults: &mut Vec<CircuitFault>,
+        power_config: &PowerRealismConfig,
+        step_count: u64,
     ) {
         let mcu_pins = [
             "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
             "A0", "A1", "A2", "A3", "A4", "A5", "5V", "3.3V", "GND", "GND_1", "GND_2",
             "VIN", "IOREF", "AREF", "SDA", "SCL",
         ];
+
+        // Power rail realism parameters (Ideal: flat 5.000V/3.300V; Realistic: genuine MNA sag, ripple & noise)
+        let (v_src_5v, r_int_5v, v_src_3v3, r_int_3v3) = match power_config.mode {
+            PowerRealismMode::Ideal => (5.0, 0.05, 3.3, 0.10),
+            PowerRealismMode::Realistic => {
+                let r_5v = if power_config.enable_sag {
+                    power_config.r_internal_5v.max(0.001)
+                } else {
+                    0.05
+                };
+                let r_3v3 = if power_config.enable_sag {
+                    power_config.r_internal_3v3.max(0.001)
+                } else {
+                    0.10
+                };
+
+                // Time estimation: 60 FPS update rate ~ 1/60s per step
+                let t = (step_count as f64) * 0.016666666666666666;
+
+                // 100 Hz Full-wave rectified AC ripple
+                let ripple_5v = if power_config.enable_ripple {
+                    (power_config.ripple_vpp_5v * 0.5)
+                        * (2.0 * std::f64::consts::PI * power_config.ripple_freq_hz * t).sin()
+                } else {
+                    0.0
+                };
+
+                // Deterministic Gaussian Noise with user seed
+                let noise_5v = if power_config.enable_noise {
+                    deterministic_gaussian_noise(power_config.seed, step_count, power_config.noise_sigma_5v)
+                } else {
+                    0.0
+                };
+
+                let v5 = (5.0 + ripple_5v + noise_5v).clamp(0.0, 10.0);
+                let v33 = (3.3 + (3.3 / 5.0) * (ripple_5v + noise_5v)).clamp(0.0, 10.0);
+
+                (v5, r_5v, v33, r_3v3)
+            }
+        };
 
         // 1. Collect all canonical non-ground nodes in the circuit
         let mut node_set: HashSet<String> = HashSet::new();
@@ -358,10 +481,14 @@ impl MnaCircuitSolver {
 
         // 2. Stamp Uno power rails and MCU pins
         let pwr5v_idx = get_node_idx("uno1", "5V");
-        stamp_norton_source(&mut g_base, &mut j_base, n, pwr5v_idx, 20.0, 100.0); // 5.0V with R_rail = 0.05 ohm
+        let g_rail_5v = 1.0 / r_int_5v;
+        let i_inj_5v = v_src_5v * g_rail_5v;
+        stamp_norton_source(&mut g_base, &mut j_base, n, pwr5v_idx, g_rail_5v, i_inj_5v);
 
         let pwr33_idx = get_node_idx("uno1", "3.3V");
-        stamp_norton_source(&mut g_base, &mut j_base, n, pwr33_idx, 10.0, 33.0); // 3.3V with R_rail = 0.1 ohm
+        let g_rail_3v3 = 1.0 / r_int_3v3;
+        let i_inj_3v3 = v_src_3v3 * g_rail_3v3;
+        stamp_norton_source(&mut g_base, &mut j_base, n, pwr33_idx, g_rail_3v3, i_inj_3v3);
 
         for &pin_name in &mcu_pins {
             if pin_name == "5V" || pin_name == "3.3V" || pin_name.starts_with("GND") || pin_name == "VIN" || pin_name == "IOREF" {
@@ -371,26 +498,29 @@ impl MnaCircuitSolver {
             let state = mcu.get_pin_state(pin_name);
             match state {
                 LogicState::High => {
-                    // CMOS driver Ron = 25 ohm, Vth = 5.0V -> G = 0.04S, I_inj = 0.20A
-                    stamp_norton_source(&mut g_base, &mut j_base, n, pin_idx, 0.04, 0.20);
+                    // CMOS PMOS driver Ron = 25 ohm connecting pin to internal 5V rail
+                    stamp_conductance(&mut g_base, n, pwr5v_idx, pin_idx, 0.04);
                 }
                 LogicState::Low => {
-                    // CMOS driver Ron = 25 ohm, Vth = 0.0V -> G = 0.04S, I_inj = 0.0A
-                    stamp_norton_source(&mut g_base, &mut j_base, n, pin_idx, 0.04, 0.0);
+                    // CMOS NMOS driver Ron = 25 ohm connecting pin to GND
+                    stamp_conductance(&mut g_base, n, pin_idx, None, 0.04);
                 }
                 LogicState::InputPullUp => {
-                    // Internal pullup ~35k ohm to 5V -> G = 1/35000, I_inj = 5.0/35000
-                    let g_pu = 1.0 / 35000.0;
-                    let i_pu = 5.0 / 35000.0;
-                    stamp_norton_source(&mut g_base, &mut j_base, n, pin_idx, g_pu, i_pu);
+                    // Internal pullup ~35k ohm connected to internal 5V rail
+                    stamp_conductance(&mut g_base, n, pwr5v_idx, pin_idx, 1.0 / 35000.0);
                 }
                 LogicState::Pwm { duty, .. } => {
-                    let v_pwm = (duty as f64 / 255.0) * 5.0;
-                    stamp_norton_source(&mut g_base, &mut j_base, n, pin_idx, 0.04, v_pwm * 0.04);
+                    let alpha = duty as f64 / 255.0;
+                    if alpha > 0.001 {
+                        stamp_conductance(&mut g_base, n, pwr5v_idx, pin_idx, 0.04 * alpha);
+                    }
+                    if alpha < 0.999 {
+                        stamp_conductance(&mut g_base, n, pin_idx, None, 0.04 * (1.0 - alpha));
+                    }
                 }
                 LogicState::Analog(_) | LogicState::Floating => {
                     // High-impedance input > 100M ohm
-                    stamp_norton_source(&mut g_base, &mut j_base, n, pin_idx, 1e-8, 0.0);
+                    stamp_conductance(&mut g_base, n, pin_idx, None, 1e-8);
                 }
             }
         }
@@ -430,7 +560,7 @@ impl MnaCircuitSolver {
 
             // If VCC is not explicitly wired, power track from internal 5V rail
             if !pot_vcc_wired.contains(pot_id) {
-                stamp_norton_source(&mut g_base, &mut j_base, n, vcc, 20.0, 100.0);
+                stamp_conductance(&mut g_base, n, pwr5v_idx, vcc, 1e3);
             }
         }
 
@@ -534,12 +664,16 @@ impl MnaCircuitSolver {
 
         let node_volt_clean = |u: Option<usize>| -> f32 {
             let v = node_volt(u);
-            if (v - 5.0).abs() < 1e-4 {
-                5.0
-            } else if (v - 3.3).abs() < 1e-4 {
-                3.3
-            } else if v.abs() < 1e-4 {
-                0.0
+            if power_config.mode == PowerRealismMode::Ideal {
+                if (v - 5.0).abs() < 1e-4 {
+                    5.0
+                } else if (v - 3.3).abs() < 1e-4 {
+                    3.3
+                } else if v.abs() < 1e-4 {
+                    0.0
+                } else {
+                    v as f32
+                }
             } else {
                 v as f32
             }
@@ -612,11 +746,11 @@ impl MnaCircuitSolver {
 
         // MCU Power rail currents
         let v5v = node_volt(pwr5v_idx);
-        let i5v = (5.0 - v5v) / 0.05;
+        let i5v = (v_src_5v - v5v) / r_int_5v;
         branch_currents.insert("uno1:5V".to_string(), i5v as f32);
 
         let v33 = node_volt(pwr33_idx);
-        let i33 = (3.3 - v33) / 0.1;
+        let i33 = (v_src_3v3 - v33) / r_int_3v3;
         branch_currents.insert("uno1:3.3V".to_string(), i33 as f32);
 
         // MCU GPIO currents
@@ -628,7 +762,7 @@ impl MnaCircuitSolver {
             let vp = node_volt(pin_idx);
             let state = mcu.get_pin_state(pin_name);
             let ip = match state {
-                LogicState::High => (5.0 - vp) / 25.0,
+                LogicState::High => (v5v - vp) / 25.0,
                 LogicState::Low => (vp - 0.0) / 25.0,
                 _ => 0.0,
             };

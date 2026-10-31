@@ -12,10 +12,16 @@ import {
   Save,
   Sliders,
   Sparkles,
+  Zap,
+  RotateCcw,
+  Activity,
+  ShieldCheck,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
+import { PowerRealismConfig, PowerRealismLevel, PowerRealismMode, DEFAULT_POWER_REALISM_CONFIG } from '../types';
 
 export type SettingsTab = 'general' | 'appearance' | 'engine' | 'hardware' | 'toolchain' | 'shortcuts';
 
@@ -43,6 +49,9 @@ export interface SettingsModalProps {
   // Project / Hardware
   baudRate: number;
   setBaudRate: (baud: number) => void;
+  // Power Realism Engine Physics
+  powerConfig?: PowerRealismConfig;
+  setPowerConfig?: (config: PowerRealismConfig) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -66,6 +75,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setWireRoutingMode,
   baudRate,
   setBaudRate,
+  powerConfig,
+  setPowerConfig,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [searchQuery, setSearchQuery] = useState('');
@@ -406,6 +417,254 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="font-mono text-xs text-zinc-200 bg-[#121215] px-2.5 py-1 rounded-full border border-zinc-800 whitespace-nowrap">
                     16&nbsp;MHz Core Clock
                   </span>
+                </div>
+
+                {/* Power Supply Realism Section (Lab Circuit Physics) */}
+                <div className="pt-2 border-t border-[#222226] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Power Supply Realism</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-500">
+                        Toggle between ideal textbook voltages and real-world laboratory circuit physics.
+                      </div>
+                    </div>
+                    {/* Ideal vs Realistic Capsule Switch */}
+                    <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-full p-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!setPowerConfig) return;
+                          setPowerConfig({
+                            ...(powerConfig || DEFAULT_POWER_REALISM_CONFIG),
+                            mode: 'ideal',
+                          });
+                        }}
+                        className={`h-6 px-3 rounded-full text-xs transition-colors cursor-pointer ${
+                          (powerConfig?.mode || 'ideal') === 'ideal'
+                            ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        Ideal (5.00V)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!setPowerConfig) return;
+                          setPowerConfig({
+                            ...(powerConfig || DEFAULT_POWER_REALISM_CONFIG),
+                            mode: 'realistic',
+                          });
+                        }}
+                        className={`h-6 px-3 rounded-full text-xs transition-colors cursor-pointer ${
+                          powerConfig?.mode === 'realistic'
+                            ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        Realistic (Lab)
+                      </button>
+                    </div>
+                  </div>
+
+                  {powerConfig?.mode === 'realistic' ? (
+                    <div className="space-y-3 p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl animate-in fade-in duration-100">
+                      {/* Presets Row */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-zinc-400 font-medium">Realism Preset:</span>
+                        <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-full p-0.5">
+                          {(['low', 'medium', 'high', 'custom'] as PowerRealismLevel[]).map((lvl) => {
+                            const isAct = (powerConfig.level || 'medium') === lvl;
+                            return (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() => {
+                                  if (!setPowerConfig) return;
+                                  if (lvl === 'low') {
+                                    setPowerConfig({
+                                      ...powerConfig,
+                                      level: 'low',
+                                      r_internal_5v: 0.02,
+                                      r_internal_3v3: 0.05,
+                                      ripple_vpp_5v: 0.020,
+                                      noise_sigma_5v: 0.005,
+                                      enable_sag: true,
+                                      enable_ripple: true,
+                                      enable_noise: true,
+                                    });
+                                  } else if (lvl === 'medium') {
+                                    setPowerConfig({
+                                      ...powerConfig,
+                                      level: 'medium',
+                                      r_internal_5v: 0.05,
+                                      r_internal_3v3: 0.10,
+                                      ripple_vpp_5v: 0.060,
+                                      noise_sigma_5v: 0.015,
+                                      enable_sag: true,
+                                      enable_ripple: true,
+                                      enable_noise: true,
+                                    });
+                                  } else if (lvl === 'high') {
+                                    setPowerConfig({
+                                      ...powerConfig,
+                                      level: 'high',
+                                      r_internal_5v: 0.12,
+                                      r_internal_3v3: 0.25,
+                                      ripple_vpp_5v: 0.150,
+                                      noise_sigma_5v: 0.035,
+                                      enable_sag: true,
+                                      enable_ripple: true,
+                                      enable_noise: true,
+                                    });
+                                  } else {
+                                    setPowerConfig({ ...powerConfig, level: 'custom' });
+                                  }
+                                }}
+                                className={`h-5.5 px-2.5 rounded-full text-[11px] capitalize transition-colors cursor-pointer ${
+                                  isAct
+                                    ? 'bg-white text-zinc-950 font-semibold'
+                                    : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {lvl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Deterministic Seed Inset Row */}
+                      <div className="flex items-center justify-between pt-2 border-t border-zinc-800/60">
+                        <div>
+                          <div className="text-[11px] font-medium text-zinc-300">Deterministic Seed</div>
+                          <div className="text-[10px] text-zinc-500">
+                            Ensures 100% reproducible noise sequence across runs.
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            value={powerConfig.seed}
+                            onChange={(e) => {
+                              if (!setPowerConfig) return;
+                              setPowerConfig({
+                                ...powerConfig,
+                                seed: parseInt(e.target.value) || 0,
+                              });
+                            }}
+                            className="w-16 h-6 px-2 bg-[#121215] border border-zinc-800 rounded-md text-xs font-mono text-zinc-200 text-right focus:outline-none focus:border-zinc-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!setPowerConfig) return;
+                              const randSeed = Math.floor(Math.random() * 99999) + 1;
+                              setPowerConfig({ ...powerConfig, seed: randSeed });
+                            }}
+                            title="Randomize Seed"
+                            className="h-6 px-2 rounded-full bg-[#121215] hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                            <span>New</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Discrete Physics Effects Toggles */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-zinc-800/60">
+                        {/* Sag */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!setPowerConfig) return;
+                            setPowerConfig({
+                              ...powerConfig,
+                              enable_sag: !powerConfig.enable_sag,
+                              level: 'custom',
+                            });
+                          }}
+                          className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex flex-col justify-between ${
+                            powerConfig.enable_sag
+                              ? 'bg-[#18181b] border-zinc-700 text-zinc-100'
+                              : 'bg-[#121215] border-zinc-850 text-zinc-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[11px] font-semibold">Load Sag</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-400 mt-1 whitespace-nowrap [word-break:keep-all]">
+                            R_int:&nbsp;{(powerConfig.r_internal_5v * 1000).toFixed(0)}&nbsp;mΩ
+                          </span>
+                        </button>
+
+                        {/* Ripple */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!setPowerConfig) return;
+                            setPowerConfig({
+                              ...powerConfig,
+                              enable_ripple: !powerConfig.enable_ripple,
+                              level: 'custom',
+                            });
+                          }}
+                          className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex flex-col justify-between ${
+                            powerConfig.enable_ripple
+                              ? 'bg-[#18181b] border-zinc-700 text-zinc-100'
+                              : 'bg-[#121215] border-zinc-850 text-zinc-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[11px] font-semibold">AC Ripple</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-400 mt-1 whitespace-nowrap [word-break:keep-all]">
+                            Vpp:&nbsp;{(powerConfig.ripple_vpp_5v * 1000).toFixed(0)}&nbsp;mV
+                          </span>
+                        </button>
+
+                        {/* Noise */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!setPowerConfig) return;
+                            setPowerConfig({
+                              ...powerConfig,
+                              enable_noise: !powerConfig.enable_noise,
+                              level: 'custom',
+                            });
+                          }}
+                          className={`p-2 rounded-lg border text-left transition-colors cursor-pointer flex flex-col justify-between ${
+                            powerConfig.enable_noise
+                              ? 'bg-[#18181b] border-zinc-700 text-zinc-100'
+                              : 'bg-[#121215] border-zinc-850 text-zinc-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[11px] font-semibold">Thermal Noise</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-400 mt-1 whitespace-nowrap [word-break:keep-all]">
+                            σ:&nbsp;{(powerConfig.noise_sigma_5v * 1000).toFixed(0)}&nbsp;mV
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                      <div className="text-[11px] text-zinc-400">
+                        <span className="font-semibold text-zinc-200">Ideal Mode Active:</span> Power rail stays perfectly flat at 5.000&nbsp;V. Suitable for beginners and introductory lectures.
+                      </div>
+                      <Badge variant="outline" className="border-zinc-700 text-zinc-300 text-[10px] font-mono whitespace-nowrap [word-break:keep-all]">
+                        Flat&nbsp;5.000&nbsp;V
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
