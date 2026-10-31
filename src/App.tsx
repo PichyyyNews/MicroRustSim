@@ -85,6 +85,7 @@ import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
 import { OpenProjectModal } from './components/OpenProjectModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ChannelConfigModal, WaveformChannelConfig, CHANNEL_PALETTE } from './components/ChannelConfigModal';
 import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
@@ -569,40 +570,97 @@ export default function App() {
   const [wireDraftStart, setWireDraftStart] = useState<{ compId: string; pinName: string } | null>(null);
   const [mouseCanvasPos, setMouseCanvasPos] = useState({ x: 0, y: 0 });
 
-  const waveformChannels = useMemo<WaveformChannel[]>(() => [
+  // --- Dynamic Waveform Channels & Config Modal ---
+  const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
+  const [channelConfigs, setChannelConfigs] = useState<WaveformChannelConfig[]>([
     {
       id: 'ch_pin13',
-      label: 'Pin 13 (LED)',
-      color: '#10b981', // Emerald
-      unit: 'V',
-      maxVal: 5.0,
-      history: logicHistory,
-      isDigital: false,
+      targetId: '13',
+      label: 'Pin 13 (Builtin LED)',
+      kind: 'mcu',
+      color: '#10b981',
+      enabled: true,
+      pinConnection: 'ATmega328P Pin 13',
     },
     {
       id: 'ch_pin2',
+      targetId: '2',
       label: 'Pin 2 (Button)',
-      color: '#f59e0b', // Amber
-      unit: 'V',
-      maxVal: 5.0,
-      history: pin2History,
-      isDigital: false,
+      kind: 'mcu',
+      color: '#f59e0b',
+      enabled: true,
+      pinConnection: 'ATmega328P Pin 2',
     },
     {
       id: 'ch_pina0',
+      targetId: 'A0',
       label: 'Pin A0 (Pot Wiper)',
-      color: '#3b82f6', // Blue
-      unit: 'V',
-      maxVal: 5.0,
-      history: pinA0History,
-      isDigital: false,
+      kind: 'mcu',
+      color: '#38bdf8',
+      enabled: true,
+      pinConnection: 'ATmega328P Pin A0',
     },
-  ], [logicHistory, pin2History, pinA0History]);
+  ]);
+  const channelConfigsRef = useRef(channelConfigs);
+  channelConfigsRef.current = channelConfigs;
+
+  const waveformHistoriesRef = useRef<Record<string, [number, number][]>>({});
+  const [waveformVersion, setWaveformVersion] = useState(0);
+
+  // Automatically discover new components (e.g. 4 LEDs) and register them in channel configs
+  useEffect(() => {
+    setChannelConfigs((prev) => {
+      const existing = new Set(prev.map((c) => c.targetId));
+      const validComps = components.filter(
+        (c) => c.kind !== 'arduino_uno' && c.kind !== 'breadboard' && c.kind !== 'text_label'
+      );
+      let added = false;
+      const next = [...prev];
+      let colorIdx = prev.length;
+
+      validComps.forEach((comp) => {
+        if (!existing.has(comp.id)) {
+          added = true;
+          let label = `${comp.kind.toUpperCase()} (${comp.id})`;
+          if (comp.kind === 'led') label = `LED (${comp.id})`;
+          if (comp.kind === 'pushbutton') label = `Button (${comp.id})`;
+          if (comp.kind === 'potentiometer') label = `Pot Wiper (${comp.id})`;
+
+          next.push({
+            id: `ch_${comp.id}`,
+            targetId: comp.id,
+            label,
+            kind: comp.kind,
+            color: CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
+            enabled: comp.kind === 'led' || comp.kind === 'pushbutton',
+          });
+        }
+      });
+
+      return added ? next : prev;
+    });
+  }, [components]);
+
+  const waveformChannels = useMemo<WaveformChannel[]>(() => {
+    return channelConfigs
+      .filter((c) => c.enabled)
+      .map((c) => ({
+        id: c.id,
+        label: c.label,
+        color: c.color,
+        unit: 'V',
+        maxVal: 5.0,
+        history: waveformHistoriesRef.current[c.id] || [],
+        isDigital: false,
+      }));
+  }, [channelConfigs, waveformVersion]);
 
   const handleClearWaveform = useCallback(() => {
     setLogicHistory([]);
     setPin2History([]);
     setPinA0History([]);
+    waveformHistoriesRef.current = {};
+    setWaveformVersion((v) => v + 1);
   }, []);
 
   // Initial circuit sync to Rust simulation engine so components (btn, pot, led, r) and wires are immediately active
@@ -1459,6 +1517,38 @@ export default function App() {
               const next = [...prev, [t, vA0] as [number, number]];
               return next.slice(-300);
             });
+
+            // Dynamic real-time telemetry recording for all enabled channels (LED 1-4, switches, etc.)
+            channelConfigsRef.current.forEach((cfg) => {
+              if (!cfg.enabled) return;
+              let v = 0.0;
+              if (cfg.kind === 'mcu') {
+                v = res.mcu_pin_voltages?.[cfg.targetId] ?? (cfg.targetId === '13' ? (res.pin13 ? 5.0 : 0.0) : 0.0);
+              } else if (cfg.kind === 'led') {
+                const b = res.led_brightness?.[cfg.targetId];
+                if (b !== undefined) {
+                  v = (b / 255.0) * 5.0;
+                } else if (res.lit_leds?.includes(cfg.targetId)) {
+                  v = 2.0;
+                } else {
+                  v = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
+                }
+              } else if (cfg.kind === 'pushbutton') {
+                v = res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 5.0;
+              } else if (cfg.kind === 'potentiometer') {
+                v = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
+              } else if (cfg.kind === 'resistor') {
+                v = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
+              }
+
+              if (!waveformHistoriesRef.current[cfg.id]) {
+                waveformHistoriesRef.current[cfg.id] = [];
+              }
+              const h = waveformHistoriesRef.current[cfg.id];
+              h.push([t, v]);
+              if (h.length > 300) h.shift();
+            });
+            setWaveformVersion((ver) => (ver + 1) % 1000000);
           }
         } catch (err) {
           console.error('step_simulation error:', err);
@@ -4354,6 +4444,7 @@ export default function App() {
                                 components={components}
                                 selectedCompId={selectedCompId}
                                 onSelectComponent={setSelectedCompId}
+                                onOpenChannelConfig={() => setIsChannelModalOpen(true)}
                               />
                             </TabsContent>
 
@@ -4680,6 +4771,16 @@ export default function App() {
           setWireRoutingMode={setWireRoutingMode}
           baudRate={baudRate}
           setBaudRate={setBaudRate}
+        />
+
+        {/* Modal Dialog: Configure Real-time Waveform Channels (Multi-LEDs / Components) */}
+        <ChannelConfigModal
+          isOpen={isChannelModalOpen}
+          onClose={() => setIsChannelModalOpen(false)}
+          components={components}
+          wires={wires}
+          configs={channelConfigs}
+          onSave={(newConfigs) => setChannelConfigs(newConfigs)}
         />
 
         {/* Modal Dialog: Unsaved Changes Confirmation on Close (Save / Discard / Cancel) */}

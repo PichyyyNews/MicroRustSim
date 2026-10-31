@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   Lightbulb,
   ToggleLeft,
+  Plus,
 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { CircuitComponent, ComponentKind } from '../types';
@@ -53,6 +54,7 @@ interface LogicWaveformProps {
   components?: CircuitComponent[];
   selectedCompId?: string | null;
   onSelectComponent?: (id: string | null) => void;
+  onOpenChannelConfig?: () => void;
 }
 
 type ViewMode = 'tracks' | 'overlay';
@@ -65,6 +67,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   components = [],
   selectedCompId,
   onSelectComponent,
+  onOpenChannelConfig,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -734,6 +737,23 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Popover Footer: Open Channels Config Modal */}
+                {onOpenChannelConfig && (
+                  <div className="pt-2 border-t border-[#222226]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPickerOpen(false);
+                        onOpenChannelConfig();
+                      }}
+                      className="w-full h-7 rounded-lg bg-[#1c1c20] hover:bg-zinc-800 text-zinc-300 hover:text-white text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-zinc-800"
+                    >
+                      <SlidersHorizontal className="w-3 h-3 text-emerald-400" />
+                      <span>Configure Channels Modal</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -968,6 +988,19 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
               </button>
             );
           })}
+
+          {/* Add / Configure Channels Button */}
+          {onOpenChannelConfig && (
+            <button
+              type="button"
+              onClick={onOpenChannelConfig}
+              title="Add or configure channels for circuit components (e.g. multiple LEDs)"
+              className="px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-dashed border-zinc-700 hover:border-zinc-500 bg-[#141416] hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+            >
+              <Plus className="w-2.5 h-2.5 text-emerald-400" />
+              <span>+ Channels</span>
+            </button>
+          )}
         </div>
 
         {/* Engine Telemetry & Resolution Pill */}
