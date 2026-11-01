@@ -539,6 +539,7 @@ export default function App() {
   const [pinA0History, setPinA0History] = useState<[number, number][]>([]);
   const [circuitFaults, setCircuitFaults] = useState<CircuitFault[]>([]);
   const [branchCurrents, setBranchCurrents] = useState<Record<string, number>>({});
+  const [pinVoltages, setPinVoltages] = useState<Record<string, number>>({});
   const simTimeRef = useRef<number>(0);
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
   const serialContainerRef = useRef<HTMLDivElement>(null);
@@ -1490,6 +1491,9 @@ export default function App() {
             if (res.branch_currents) {
               setBranchCurrents(res.branch_currents);
             }
+            if (res.pin_voltages) {
+              setPinVoltages(res.pin_voltages);
+            }
             if (res.serial_output) {
               setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
             }
@@ -1503,17 +1507,31 @@ export default function App() {
             const v2 = res.mcu_pin_voltages?.['2'] ?? (res.pin_voltages?.['btn1:1a'] ?? 5.0);
             const vA0 = res.mcu_pin_voltages?.['A0'] ?? res.pin_voltages?.['pot1:2'] ?? 0.0;
 
+            const cutoffTime = t - 15000; // Retain at least 15s of history across all monitor refresh rates (60Hz to 240Hz)
+
             setLogicHistory((prev) => {
               const next = [...prev, [t, v13] as [number, number]];
-              return next.slice(-300);
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
             });
             setPin2History((prev) => {
               const next = [...prev, [t, v2] as [number, number]];
-              return next.slice(-300);
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
             });
             setPinA0History((prev) => {
               const next = [...prev, [t, vA0] as [number, number]];
-              return next.slice(-300);
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
             });
 
             // Genuine physical electrical telemetry recording for all enabled channels (LEDs, Pots, Buttons, Resistors, MCU)
@@ -1543,7 +1561,12 @@ export default function App() {
               }
               const h = waveformHistoriesRef.current[cfg.id];
               h.push([t, v]);
-              if (h.length > 300) h.shift();
+              while (h.length > 0 && h[0][0] < cutoffTime) {
+                h.shift();
+              }
+              if (h.length > 3000) {
+                h.shift();
+              }
             });
             setWaveformVersion((ver) => (ver + 1) % 1000000);
           }
@@ -4705,6 +4728,8 @@ export default function App() {
                           wires={wires}
                           litLeds={litLeds}
                           ledBrightness={ledBrightness}
+                          pinVoltages={pinVoltages}
+                          branchCurrents={branchCurrents}
                           onUpdateComponent={handleUpdateComponent}
                           onUpdateWire={handleUpdateWire}
                           onDeleteComponent={handleDeleteComponent}

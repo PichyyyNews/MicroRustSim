@@ -30,4 +30,6 @@ data/
 
 /target_tests/
 release_artifacts/
+*.exe
+*.zip
 .agents/

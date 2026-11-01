@@ -26,6 +26,8 @@ export interface PropertyInspectorProps {
   wires: CircuitWire[];
   litLeds?: Set<string>;
   ledBrightness?: Record<string, number>;
+  pinVoltages?: Record<string, number>;
+  branchCurrents?: Record<string, number>;
   onUpdateComponent: (id: string, updates: Partial<CircuitComponent>) => void;
   onUpdateWire: (id: string, updates: Partial<CircuitWire>) => void;
   onDeleteComponent: (id: string) => void;
@@ -78,6 +80,8 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   wires,
   litLeds,
   ledBrightness,
+  pinVoltages,
+  branchCurrents,
   onUpdateComponent,
   onUpdateWire,
   onDeleteComponent,
@@ -298,19 +302,27 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     const rawVal = selectedComp.props?.value;
                     const parsed = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal));
                     const wiperVal = isNaN(parsed) ? 0.5 : parsed > 1.0 ? 0.5 : Math.max(0, Math.min(1, parsed));
-                    const voltage = (wiperVal * 5.0).toFixed(2);
-                    const adcRaw = Math.round(wiperVal * 1023);
+                    const totalTrackOhms = typeof selectedComp.props?.ohms === 'number' && selectedComp.props.ohms > 0
+                      ? selectedComp.props.ohms
+                      : 10000;
                     const percent = Math.round(wiperVal * 100);
+                    const r12 = wiperVal * totalTrackOhms;
+                    const r23 = (1.0 - wiperVal) * totalTrackOhms;
+
+                    const formatR = (ohms: number) => {
+                      if (ohms >= 1000) return `${(ohms / 1000).toFixed(1)}\u00A0kΩ`;
+                      return `${Math.round(ohms)}\u00A0Ω`;
+                    };
 
                     return (
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-zinc-400 text-xs">Wiper Position</span>
+                          <span className="text-zinc-400 text-xs">Wiper Ratio</span>
                           <Badge
                             variant="outline"
                             className="font-mono text-[11px] h-5 px-2 border-zinc-700 text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all] shrink-0"
                           >
-                            {voltage}&nbsp;V&nbsp;({percent}%)
+                            {percent}%&nbsp;({formatR(r12)}&nbsp;/&nbsp;{formatR(r23)})
                           </Badge>
                         </div>
 
@@ -330,38 +342,46 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             }}
                             className="w-full accent-white h-1.5 bg-[#121215] rounded-full cursor-pointer"
                           />
-                          <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-                            <span>0V (0)</span>
-                            <span>ADC: {adcRaw}</span>
-                            <span>5V (1023)</span>
+                          <div className="flex justify-between text-[10px] font-mono text-zinc-500 tabular-nums">
+                            <span>0% (0&nbsp;Ω)</span>
+                            <span>R1-2: {formatR(r12)}</span>
+                            <span>100% ({formatR(totalTrackOhms)})</span>
                           </div>
                         </div>
 
                         {/* Flat Preset Pills */}
                         <div className="grid grid-cols-5 gap-1 text-[10px] font-mono pt-1">
-                          {[0, 0.25, 0.5, 0.75, 1.0].map((v) => (
+                          {[
+                            { ratio: 0, label: '0%' },
+                            { ratio: 0.25, label: '25%' },
+                            { ratio: 0.5, label: '50%' },
+                            { ratio: 0.75, label: '75%' },
+                            { ratio: 1.0, label: '100%' },
+                          ].map(({ ratio, label }) => (
                             <button
-                              key={v}
+                              key={ratio}
                               type="button"
                               onClick={() =>
                                 onUpdateComponent(selectedComp.id, {
-                                  props: { ...(selectedComp.props || {}), value: v },
+                                  props: { ...(selectedComp.props || {}), value: ratio },
                                 })
                               }
                               className={`h-5.5 rounded-full border transition-colors cursor-pointer flex items-center justify-center tabular-nums ${
-                                Math.abs(wiperVal - v) < 0.05
+                                Math.abs(wiperVal - ratio) < 0.05
                                   ? 'bg-white border-white text-zinc-950 font-semibold shadow-xs'
                                   : 'bg-[#141416] border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                               }`}
                             >
-                              {(v * 5).toFixed(1)}V
+                              {label}
                             </button>
                           ))}
                         </div>
 
                         <div className="flex items-center justify-between pt-1 border-t border-zinc-800/40">
                           <span className="text-zinc-400 text-xs">Total Track</span>
-                          <span className="font-mono text-zinc-300">10&nbsp;kΩ (Linear B)</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all] shrink-0">
+                            {formatR(totalTrackOhms)} (Linear B)
+                          </span>
                         </div>
                       </div>
                     );
@@ -803,24 +823,42 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
 
               {openSections.pins && (
                 <div className="pt-2 space-y-1 text-xs">
-                  {selectedComp.kind === 'potentiometer' && (
-                    <>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Pin 1 (GND):</span>
-                        <span className="font-mono text-zinc-300">0.00 V</span>
-                      </div>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Pin 2 (Wiper/SIG):</span>
-                        <span className="font-mono text-zinc-100 font-semibold">
-                          {(((selectedComp.props?.value ?? 0.5)) * 5.0).toFixed(2)} V
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Pin 3 (VCC):</span>
-                        <span className="font-mono text-zinc-300">5.00 V</span>
-                      </div>
-                    </>
-                  )}
+                  {selectedComp.kind === 'potentiometer' && (() => {
+                    const v1 = pinVoltages?.[`${selectedComp.id}:1`];
+                    const v2 = pinVoltages?.[`${selectedComp.id}:2`];
+                    const v3 = pinVoltages?.[`${selectedComp.id}:3`];
+                    const iComp = branchCurrents?.[selectedComp.id];
+                    return (
+                      <>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 1 (Terminal 1):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums">
+                            {typeof v1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 2 (Wiper):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums">
+                            {typeof v2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 3 (Terminal 2):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums">
+                            {typeof v3 === 'number' ? v3.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        {typeof iComp === 'number' && iComp > 0.00001 && (
+                          <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                            <span className="font-mono text-zinc-400">Current (I):</span>
+                            <span className="font-mono text-emerald-400 font-semibold tabular-nums">
+                              {(iComp * 1000).toFixed(1)}&nbsp;mA
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {selectedComp.kind === 'pushbutton' && (
                     <>

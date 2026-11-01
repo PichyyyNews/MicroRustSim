@@ -377,6 +377,15 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           let lastY = innerBottom;
           let started = false;
 
+          // If the oldest sample starts after tStart (e.g. recently cleared or newly active channel),
+          // anchor the trace from the left gutter at the initial value so it never awkwardly hangs in mid-air
+          if (hist[0][0] > tStart) {
+            const firstNorm = Math.min(ch.maxVal, Math.max(0.0, hist[0][1])) / (ch.maxVal || 5.0);
+            const firstY = innerBottom - firstNorm * innerHeight;
+            ctx.moveTo(leftGutter, firstY);
+            started = true;
+          }
+
           for (let i = 0; i < hist.length; i++) {
             const [t, v] = hist[i];
             if (t < tStart && i < hist.length - 1 && hist[i + 1][0] < tStart) {
@@ -397,6 +406,12 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             }
             lastX = x;
             lastY = y;
+          }
+
+          // Ensure the trace connects to the current leading edge (NOW)
+          if (started && lastX < leftGutter + plotWidth) {
+            lastX = leftGutter + plotWidth;
+            ctx.lineTo(lastX, lastY);
           }
           ctx.stroke();
 
@@ -475,6 +490,14 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
         let lastY = y0;
         let started = false;
 
+        // If the oldest sample starts after tStart, anchor the trace from the left gutter at the initial value
+        if (hist[0][0] > tStart) {
+          const firstNorm = Math.min(ch.maxVal, Math.max(0.0, hist[0][1])) / (ch.maxVal || 5.0);
+          const firstY = y0 - firstNorm * (y0 - y5);
+          ctx.moveTo(leftGutter, firstY);
+          started = true;
+        }
+
         for (let i = 0; i < hist.length; i++) {
           const [t, v] = hist[i];
           if (t < tStart && i < hist.length - 1 && hist[i + 1][0] < tStart) {
@@ -495,6 +518,12 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           }
           lastX = x;
           lastY = y;
+        }
+
+        // Ensure the trace connects to the current leading edge (NOW)
+        if (started && lastX < leftGutter + plotWidth) {
+          lastX = leftGutter + plotWidth;
+          ctx.lineTo(lastX, lastY);
         }
         ctx.stroke();
 

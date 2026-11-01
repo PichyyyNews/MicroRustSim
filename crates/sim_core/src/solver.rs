@@ -548,18 +548,11 @@ impl MnaCircuitSolver {
             let vcc_node = p3;
 
             let alpha = (pot.value as f64).clamp(0.0, 1.0);
-            if alpha <= 1e-6 {
-                stamp_conductance(&mut g_base, n, p2, gnd_node, 1e6);
-                stamp_conductance(&mut g_base, n, vcc_node, p2, 1.0 / 10000.0);
-            } else if alpha >= 1.0 - 1e-6 {
-                stamp_conductance(&mut g_base, n, vcc_node, p2, 1e6);
-                stamp_conductance(&mut g_base, n, p2, gnd_node, 1.0 / 10000.0);
-            } else {
-                let r_top = (1.0 - alpha) * 10000.0;
-                let r_bot = alpha * 10000.0;
-                stamp_conductance(&mut g_base, n, vcc_node, p2, 1.0 / r_top);
-                stamp_conductance(&mut g_base, n, p2, gnd_node, 1.0 / r_bot);
-            }
+            let r_min = 0.01; // 10 milliohm minimum wiper contact resistance
+            let r_top = ((1.0 - alpha) * 10000.0).max(r_min);
+            let r_bot = (alpha * 10000.0).max(r_min);
+            stamp_conductance(&mut g_base, n, vcc_node, p2, 1.0 / r_top);
+            stamp_conductance(&mut g_base, n, p2, gnd_node, 1.0 / r_bot);
 
             if is_standalone_sensor {
                 stamp_conductance(&mut g_base, n, pwr5v_idx, vcc_node, 1e3);
@@ -819,22 +812,23 @@ impl MnaCircuitSolver {
 
         // Potentiometers
         for (pot_id, _) in pots {
-            let v_gnd = if pot_gnd_wired.contains(pot_id) {
-                node_volt_clean(get_node_idx(pot_id, "1"))
-            } else {
+            let is_standalone_sensor = !pot_vcc_wired.contains(pot_id) && !pot_gnd_wired.contains(pot_id);
+            let v_p1 = if is_standalone_sensor {
                 0.0
+            } else {
+                node_volt_clean(get_node_idx(pot_id, "1"))
             };
-            let v_sig = node_volt_clean(get_node_idx(pot_id, "2"));
-            let v_vcc = node_volt_clean(get_node_idx(pot_id, "3"));
+            let v_p2 = node_volt_clean(get_node_idx(pot_id, "2"));
+            let v_p3 = node_volt_clean(get_node_idx(pot_id, "3"));
 
             for p in &["1", "gnd"] {
-                pin_voltages.insert(PinId::new(pot_id, *p), v_gnd);
+                pin_voltages.insert(PinId::new(pot_id, *p), v_p1);
             }
             for p in &["2", "sig", "wiper", "SIG", "WIPER"] {
-                pin_voltages.insert(PinId::new(pot_id, *p), v_sig);
+                pin_voltages.insert(PinId::new(pot_id, *p), v_p2);
             }
             for p in &["3", "vcc", "5v", "VCC", "5V"] {
-                pin_voltages.insert(PinId::new(pot_id, *p), v_vcc);
+                pin_voltages.insert(PinId::new(pot_id, *p), v_p3);
             }
         }
 

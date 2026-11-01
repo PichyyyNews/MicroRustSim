@@ -17,7 +17,9 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
 
   // Map 0.0..1.0 to -135deg..+135deg (270 degrees sweep)
   const angle = -135 + safeVal * 270;
-  const voltage = (safeVal * 5.0).toFixed(2);
+  const percent = Math.round(safeVal * 100);
+  const r12 = (safeVal * 10).toFixed(1);
+  const r23 = ((1 - safeVal) * 10).toFixed(1);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isInteractive) return;
@@ -53,7 +55,7 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
       <div
         className="w-10 h-10 rounded-full bg-zinc-800 border-2 border-zinc-600 shadow-md relative flex items-center justify-center cursor-ns-resize"
         onMouseDown={handleMouseDown}
-        title={`Rotate Wiper: ${voltage}V (Drag Up/Down)`}
+        title={`Rotate Wiper: ${percent}% (R1-2: ${r12}kΩ, R2-3: ${r23}kΩ) (Drag Up/Down)`}
       >
         {/* Rotating dial container that orbits strictly around the knob center */}
         <div
@@ -71,13 +73,13 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
         <div className="w-3.5 h-3.5 rounded-full bg-zinc-600 border border-zinc-500 shadow-inner z-10" />
       </div>
 
-      <span className="text-[9px] font-mono text-zinc-400 mt-1">{voltage}V</span>
+      <span className="text-[9px] font-mono text-zinc-400 mt-1 whitespace-nowrap tabular-nums">{percent}%</span>
 
-      {/* 3 Leads at the bottom: 1 (GND), 2 (WIPER), 3 (VCC) */}
+      {/* 3 Leads at the bottom: 1 (Terminal 1), 2 (Wiper), 3 (Terminal 2) */}
       <div className="flex justify-between w-8 mt-0.5">
-        {/* GND */}
+        {/* Terminal 1 */}
         <div
-          title="GND (Pin 1)"
+          title="Terminal 1 (Pin 1)"
           className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
@@ -87,9 +89,9 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
           <div className="w-1 h-1 bg-zinc-600 rounded-full" />
         </div>
 
-        {/* WIPER */}
+        {/* Wiper */}
         <div
-          title="Wiper ADC (Pin 2)"
+          title="Wiper (Pin 2)"
           className="w-2 h-3.5 bg-zinc-300 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
@@ -99,9 +101,9 @@ export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInt
           <div className="w-1 h-1 bg-zinc-500 rounded-full" />
         </div>
 
-        {/* VCC */}
+        {/* Terminal 2 */}
         <div
-          title="5V VCC (Pin 3)"
+          title="Terminal 2 (Pin 3)"
           className="w-2 h-3.5 bg-zinc-400 hover:bg-white hover:scale-110 hover:shadow-[0_0_4px_rgba(255,255,255,0.85)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair rounded-b flex items-end justify-center shadow"
           onMouseDown={(e) => {
             e.stopPropagation();
