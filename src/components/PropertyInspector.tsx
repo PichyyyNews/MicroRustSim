@@ -4,6 +4,7 @@ import {
   GoCheck,
   GoChevronDown,
   GoChevronRight,
+  GoAlert,
 } from 'react-icons/go';
 import {
   RotateCw,
@@ -17,7 +18,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Badge } from './ui/badge';
-import { CircuitComponent, CircuitWire } from '../types';
+import { CircuitComponent, CircuitWire, CircuitFault } from '../types';
 
 export interface PropertyInspectorProps {
   selectedCompId: string | null;
@@ -28,6 +29,8 @@ export interface PropertyInspectorProps {
   ledBrightness?: Record<string, number>;
   pinVoltages?: Record<string, number>;
   branchCurrents?: Record<string, number>;
+  circuitFaults?: CircuitFault[];
+  damagedComponents?: Set<string>;
   onUpdateComponent: (id: string, updates: Partial<CircuitComponent>) => void;
   onUpdateWire: (id: string, updates: Partial<CircuitWire>) => void;
   onDeleteComponent: (id: string) => void;
@@ -64,14 +67,122 @@ function getResistorBands(ohms: number): [string, string, string, string] {
   return [b1, b2, b3, b4];
 }
 
-const LED_PRESET_COLORS = [
-  { name: 'Red', hex: '#ef4444', vf: 2.0 },
-  { name: 'Green', hex: '#22c55e', vf: 2.2 },
-  { name: 'Blue', hex: '#3b82f6', vf: 3.2 },
-  { name: 'Yellow', hex: '#eab308', vf: 2.1 },
-  { name: 'White', hex: '#f8fafc', vf: 3.3 },
-  { name: 'Orange', hex: '#f97316', vf: 2.0 },
+export interface LedColorPreset {
+  name: string;
+  hex: string;
+  vf: number;
+  minVf: number;
+  maxVf: number;
+  presets: number[];
+}
+
+// Physical semiconductor bandgap limits strictly enforced:
+// Red/Orange/Yellow: <= 2.4V (standard default 2.2V for Red)
+// Green: 2.0V - 3.2V
+// Blue/White: 3.0V - 3.4V
+const LED_PRESET_COLORS: LedColorPreset[] = [
+  { name: 'Red', hex: '#ef4444', vf: 2.2, minVf: 1.6, maxVf: 2.4, presets: [1.8, 2.0, 2.2, 2.4] },
+  { name: 'Orange', hex: '#f97316', vf: 2.0, minVf: 1.6, maxVf: 2.4, presets: [1.8, 2.0, 2.2, 2.4] },
+  { name: 'Yellow', hex: '#eab308', vf: 2.1, minVf: 1.6, maxVf: 2.4, presets: [1.8, 2.0, 2.1, 2.3] },
+  { name: 'Green', hex: '#22c55e', vf: 2.2, minVf: 2.0, maxVf: 3.2, presets: [2.0, 2.2, 2.8, 3.2] },
+  { name: 'Blue', hex: '#3b82f6', vf: 3.2, minVf: 3.0, maxVf: 3.4, presets: [3.0, 3.2, 3.4] },
+  { name: 'White', hex: '#f8fafc', vf: 3.2, minVf: 3.0, maxVf: 3.4, presets: [3.0, 3.2, 3.4] },
 ];
+
+function getLedColorConfig(colorHexOrName?: string): LedColorPreset {
+  if (!colorHexOrName) return LED_PRESET_COLORS[0];
+  const norm = colorHexOrName.toLowerCase().trim();
+  return (
+    LED_PRESET_COLORS.find(
+      (c) => c.hex.toLowerCase() === norm || c.name.toLowerCase() === norm
+    ) || LED_PRESET_COLORS[0]
+  );
+}
+
+function formatTimeConstant(tau: number): string {
+  if (tau >= 1.0) return `${tau.toFixed(2)}\u00A0s`;
+  if (tau >= 1e-3) return `${(tau * 1e3).toFixed(1)}\u00A0ms`;
+  if (tau >= 1e-6) return `${(tau * 1e6).toFixed(1)}\u00A0µs`;
+  return `${(tau * 1e9).toFixed(1)}\u00A0ns`;
+}
+
+function formatStoredCharge(coulombs: number): string {
+  if (coulombs >= 1e-3) return `${(coulombs * 1e3).toFixed(2)}\u00A0mC`;
+  if (coulombs >= 1e-6) return `${(coulombs * 1e6).toFixed(2)}\u00A0µC`;
+  if (coulombs >= 1e-9) return `${(coulombs * 1e9).toFixed(2)}\u00A0nC`;
+  return `${(coulombs * 1e12).toFixed(1)}\u00A0pC`;
+}
+
+function formatStoredEnergy(joules: number): string {
+  if (joules >= 1.0) return `${joules.toFixed(3)}\u00A0J`;
+  if (joules >= 1e-3) return `${(joules * 1e3).toFixed(2)}\u00A0mJ`;
+  if (joules >= 1e-6) return `${(joules * 1e6).toFixed(2)}\u00A0µJ`;
+  if (joules >= 1e-9) return `${(joules * 1e9).toFixed(2)}\u00A0nJ`;
+  return `${(joules * 1e12).toFixed(1)}\u00A0pJ`;
+}
+
+function formatPower(watts: number): string {
+  if (watts >= 1.0) return `${watts.toFixed(2)}\u00A0W`;
+  if (watts >= 1e-3) return `${(watts * 1e3).toFixed(1)}\u00A0mW`;
+  if (watts >= 1e-6) return `${(watts * 1e6).toFixed(1)}\u00A0µW`;
+  return `0.0\u00A0mW`;
+}
+
+function calculateCapacitorTimeConstant(
+  capComp: CircuitComponent,
+  allComponents: CircuitComponent[],
+  allWires: CircuitWire[]
+): { req: number | null; tau: number | null; sourceDescription: string | null } {
+  const cap = typeof capComp.props?.capacitance === 'number' ? capComp.props.capacitance : 10e-6;
+
+  const connectedWires = allWires.filter(
+    (w) =>
+      (w.fromComp === capComp.id && (w.fromPin === '1' || w.fromPin === '2')) ||
+      (w.toComp === capComp.id && (w.toPin === '1' || w.toPin === '2'))
+  );
+
+  let detectedR: number | null = null;
+  let sourceDesc: string | null = null;
+
+  for (const wire of connectedWires) {
+    const isFrom = wire.fromComp === capComp.id;
+    const targetCompId = isFrom ? wire.toComp : wire.fromComp;
+    const targetComp = allComponents.find((c) => c.id === targetCompId);
+
+    if (targetComp) {
+      if (targetComp.kind === 'resistor') {
+        const ohms = typeof targetComp.props?.ohms === 'number' ? targetComp.props.ohms : 220;
+        detectedR = (detectedR || 0) + ohms;
+        sourceDesc = `${targetComp.id}\u00A0(${ohms}\u00A0Ω)`;
+      } else if (targetComp.kind === 'potentiometer') {
+        const totalR = typeof targetComp.props?.total_resistance_ohms === 'number' ? targetComp.props.total_resistance_ohms : 10000;
+        const val = typeof targetComp.props?.value === 'number' ? targetComp.props.value : 0.5;
+        const rEff = Math.max(1, Math.round(totalR * val));
+        detectedR = (detectedR || 0) + rEff;
+        sourceDesc = `${targetComp.id}\u00A0(~${rEff}\u00A0Ω)`;
+      } else if (targetComp.kind === 'arduino_uno') {
+        const pinName = isFrom ? wire.toPin : wire.fromPin;
+        if (pinName === '5V') {
+          detectedR = (detectedR || 0) + 1.0;
+          sourceDesc = '5V\u00A0Rail\u00A0(R_int\u00A0~1.0\u00A0Ω)';
+        } else if (!pinName.startsWith('GND')) {
+          detectedR = (detectedR || 0) + 30.0;
+          sourceDesc = `GPIO\u00A0${pinName}\u00A0(R_out\u00A0~30\u00A0Ω)`;
+        }
+      }
+    }
+  }
+
+  if (detectedR !== null && detectedR > 0) {
+    return {
+      req: detectedR,
+      tau: detectedR * cap,
+      sourceDescription: sourceDesc,
+    };
+  }
+
+  return { req: null, tau: null, sourceDescription: null };
+}
 
 export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   selectedCompId,
@@ -82,6 +193,8 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   ledBrightness,
   pinVoltages,
   branchCurrents,
+  circuitFaults,
+  damagedComponents,
   onUpdateComponent,
   onUpdateWire,
   onDeleteComponent,
@@ -93,6 +206,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
 
   // Collapsible section states
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    diagnostics: true,
     identity: true,
     transform: true,
     specs: true,
@@ -165,6 +279,110 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
         {/* State 2: Component Selected */}
         {selectedComp && (
           <div className="divide-y divide-[#1f1f23] animate-in fade-in duration-100">
+            {/* Component Diagnostics & Physical Health */}
+            {(() => {
+              const isDamaged = Boolean(
+                selectedComp.props?.is_damaged ||
+                selectedComp.props?.is_blown ||
+                damagedComponents?.has(selectedComp.id)
+              );
+              const compFaults = (circuitFaults || []).filter(
+                (f) =>
+                  f.component_id === selectedComp.id ||
+                  (selectedComp.kind === 'arduino_uno' &&
+                    (f.component_id.toLowerCase().includes('uno') ||
+                      f.component_id.toLowerCase().includes('mcu') ||
+                      f.component_id.toLowerCase().includes('arduino')))
+              );
+
+              return (
+                <div className="pb-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                      <GoAlert className={`w-3.5 h-3.5 ${isDamaged ? 'text-red-400' : compFaults.length > 0 ? 'text-amber-400' : 'text-emerald-500'}`} />
+                      <span>Diagnostics</span>
+                    </span>
+                    {isDamaged ? (
+                      <Badge variant="outline" className="border-red-500/60 text-red-400 bg-red-950/40 text-[10px] font-mono whitespace-nowrap shrink-0 [word-break:keep-all]">
+                        DAMAGED&nbsp;•&nbsp;BLOWN
+                      </Badge>
+                    ) : compFaults.length > 0 ? (
+                      <Badge variant="outline" className="border-amber-500/60 text-amber-300 bg-amber-950/40 text-[10px] font-mono whitespace-nowrap shrink-0 [word-break:keep-all]">
+                        {compFaults.length}&nbsp;ACTIVE&nbsp;FAULT{compFaults.length > 1 ? 'S' : ''}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-600/40 text-emerald-400 bg-emerald-950/20 text-[10px] font-mono whitespace-nowrap shrink-0 [word-break:keep-all]">
+                        HEALTHY
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Damaged Alert Box */}
+                  {isDamaged && (
+                    <div className="bg-red-950/30 border border-red-500/50 rounded-xl p-3 space-y-1.5 animate-in fade-in duration-100">
+                      <div className="flex items-center gap-1.5 text-red-400 font-semibold text-xs">
+                        <GoAlert className="w-4 h-4 shrink-0 text-red-400" />
+                        <span>Blown Open Circuit (ชิ้นส่วนเสียหายถาวร)</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        {selectedComp.kind === 'led'
+                          ? 'LED ไม่มีตัวต้านทานจำกัดกระแส ความร้อนสะสมจากกระแสเกิน Max Current ทำลายรอยต่อสารกึ่งตัวนำจนขาดเป็นวงจรเปิดถาวร'
+                          : selectedComp.kind === 'capacitor'
+                          ? 'ตัวเก็บประจุเสียหายถาวร (Breakdown Failure) จากแรงดันเกินพิกัด หรือต่ออิเล็กทรอไลต์กลับขั้วเป็นเวลานานจนไดอิเล็กทริกทะลุ'
+                          : selectedComp.kind === 'resistor'
+                          ? 'ตัวต้านทานเกิดความร้อนสะสมเกินพิกัด 0.25 W อย่างต่อเนื่องจนขดลวด/ฟิล์มต้านทานไหม้ขาด'
+                          : 'อุปกรณ์ได้รับความเสียหายทางกายภาพอย่างถาวร กลายเป็นวงจรเปิด ไม่นำกระแสไฟฟ้า'}
+                      </p>
+                      <div className="text-[10px] text-zinc-400 font-mono pt-1 border-t border-red-900/40">
+                        วิธีแก้ไข: กด Reset MCU เพื่อเปลี่ยนอุปกรณ์และเริ่มการจำลองใหม่
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Active Electrical Limit Faults with Educational Explanations */}
+                  {compFaults.map((f, idx) => (
+                    <div key={idx} className="bg-amber-950/25 border border-amber-500/40 rounded-xl p-2.5 space-y-1.5 animate-in fade-in duration-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+                          <GoAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>
+                            {f.fault_type === 'ShortCircuit'
+                              ? 'ลัดวงจร (Short Circuit)'
+                              : f.fault_type === 'Overcurrent'
+                              ? 'กระแสเกิน (Overcurrent)'
+                              : 'ต่อกลับขั้ว (Reverse Polarity)'}
+                          </span>
+                        </span>
+                        <Badge variant="outline" className="border-amber-600/40 text-amber-300 font-mono text-[10px] whitespace-nowrap shrink-0 [word-break:keep-all]">
+                          Pin&nbsp;{f.pin_name}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-zinc-200 leading-relaxed font-mono">
+                        {f.description}
+                      </p>
+                      <div className="text-[10px] text-amber-200/90 leading-relaxed pt-1 border-t border-amber-900/30">
+                        {selectedComp.kind === 'led' && f.fault_type === 'Overcurrent' && (
+                          <span>คำอธิบายฟิสิกส์: LED ไม่มีตัวต้านทานจำกัดกระแส (Current-Limiting Resistor) เมื่อแรงดันสูงกว่า Vf เล็กน้อย กระแสจะพุ่งสูงแบบเอกซ์โพเนนเชียลตามสมการ Shockley ทำให้เกิดความเสียหาย</span>
+                        )}
+                        {selectedComp.kind === 'capacitor' && f.fault_type === 'ReversePolarity' && (
+                          <span>คำอธิบายฟิสิกส์: ตัวเก็บประจุอิเล็กทรอไลต์ต่อกลับขั้ว ชั้นฉนวนออกไซด์ Al₂O₃ จะสลายตัวเมื่อมีแรงดันย้อนกลับ ทำให้กระแสรั่วไหลพุ่งสูงอย่างรวดเร็วและระเบิด</span>
+                        )}
+                        {selectedComp.kind === 'capacitor' && f.fault_type === 'Overcurrent' && (
+                          <span>คำอธิบายฟิสิกส์: แรงดันตกคร่อมสูงเกินพิกัดฉนวนไดอิเล็กทริก (Dielectric Breakdown)</span>
+                        )}
+                        {selectedComp.kind === 'arduino_uno' && f.fault_type === 'ShortCircuit' && (
+                          <span>คำอธิบายฟิสิกส์: รางไฟ 5V ลัดวงจรลง GND โดยตรง กระแสพุ่งเกิน 500mA ฟิวส์รีเซ็ตได้ (PTC Polyfuse) ทำงานและตัดไฟเพื่อความปลอดภัย</span>
+                        )}
+                        {selectedComp.kind === 'arduino_uno' && f.fault_type === 'Overcurrent' && (
+                          <span>คำอธิบายฟิสิกส์: ขา GPIO จ่าย/ดึงกระแสเกิน Absolute Maximum Rating (40mA ต่อขา หรือ 200mA รวม) เสี่ยงต่อความเสียหายของทรานซิสเตอร์ภายในชิป</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Section 1: Identity */}
             <div className="pb-3">
               <button
@@ -636,88 +854,105 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                   })()}
 
                   {/* LED */}
-                  {selectedComp.kind === 'led' && (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-zinc-500">Color</span>
-                        <div className="flex items-center gap-1.5">
-                          {LED_PRESET_COLORS.map((p) => {
-                            const isSelected = (selectedComp.props?.color || '#ef4444') === p.hex;
-                            return (
-                              <button
-                                key={p.name}
-                                type="button"
-                                title={`${p.name} (Vf: ${p.vf}V)`}
-                                onClick={() =>
-                                  onUpdateComponent(selectedComp.id, {
-                                    props: { ...(selectedComp.props || {}), color: p.hex, vf: p.vf },
-                                  })
-                                }
-                                className={`w-5 h-5 rounded-full flex items-center justify-center border transition-transform hover:scale-115 ${
-                                  isSelected ? 'border-white scale-110' : 'border-transparent'
-                                }`}
-                                style={{ backgroundColor: p.hex }}
-                              >
-                                {isSelected && <GoCheck className="w-2.5 h-2.5 text-black" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                  {selectedComp.kind === 'led' && (() => {
+                    const ledColor = selectedComp.props?.color || '#ef4444';
+                    const ledColorCfg = getLedColorConfig(ledColor);
+                    const currentVf = typeof selectedComp.props?.vf === 'number' ? selectedComp.props.vf : ledColorCfg.vf;
 
-                      {/* Interactive Forward Drop (Vf) */}
-                      <div className="space-y-1.5 pt-1">
+                    return (
+                      <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-zinc-500">Forward Drop (Vf)</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0.5"
-                              max="5.0"
-                              step="0.1"
-                              value={selectedComp.props?.vf ?? 2.0}
-                              onChange={(e) => {
-                                const vfVal = Math.max(0.5, Math.min(5.0, parseFloat(e.target.value) || 2.0));
-                                onUpdateComponent(selectedComp.id, {
-                                  props: { ...(selectedComp.props || {}), vf: vfVal },
-                                });
-                              }}
-                              className="w-16 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
-                            />
-                            <span className="text-zinc-400 font-mono text-[11px]">V</span>
+                          <span className="text-zinc-500">Color</span>
+                          <div className="flex items-center gap-1.5">
+                            {LED_PRESET_COLORS.map((p) => {
+                              const isSelected = ledColor.toLowerCase() === p.hex.toLowerCase() || ledColor.toLowerCase() === p.name.toLowerCase();
+                              return (
+                                <button
+                                  key={p.name}
+                                  type="button"
+                                  title={`${p.name} (Vf: ${p.vf}\u00A0V, max ${p.maxVf}\u00A0V)`}
+                                  onClick={() =>
+                                    onUpdateComponent(selectedComp.id, {
+                                      props: {
+                                        ...(selectedComp.props || {}),
+                                        color: p.hex,
+                                        vf: p.vf, // Synchronize Vf to default of newly selected color
+                                      },
+                                    })
+                                  }
+                                  className={`w-5 h-5 rounded-full flex items-center justify-center border transition-transform hover:scale-115 ${
+                                    isSelected ? 'border-white scale-110' : 'border-transparent'
+                                  }`}
+                                  style={{ backgroundColor: p.hex }}
+                                >
+                                  {isSelected && <GoCheck className="w-2.5 h-2.5 text-black" />}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
-                        {/* Quick Vf Presets */}
-                        <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono">
-                          <span className="text-zinc-500 mr-0.5">Presets:</span>
-                          {[1.8, 2.0, 2.2, 3.0, 3.2].map((presetVf) => (
-                            <button
-                              key={presetVf}
-                              type="button"
-                              onClick={() =>
-                                onUpdateComponent(selectedComp.id, {
-                                  props: { ...(selectedComp.props || {}), vf: presetVf },
-                                })
-                              }
-                              className={`px-1.5 py-0.5 rounded border transition-colors ${
-                                (selectedComp.props?.vf ?? 2.0) === presetVf
-                                  ? 'bg-zinc-800 border-zinc-500 text-white font-medium'
-                                  : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
-                              }`}
-                            >
-                              {presetVf.toFixed(1)}V
-                            </button>
-                          ))}
+                        {/* Interactive Forward Drop (Vf) strictly bound to semiconductor bandgap limits */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-zinc-500">Forward Drop (Vf)</span>
+                              <div className="text-[10px] text-zinc-500 font-mono">
+                                Bandgap limit: {ledColorCfg.minVf.toFixed(1)}–{ledColorCfg.maxVf.toFixed(1)}&nbsp;V
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={ledColorCfg.minVf}
+                                max={ledColorCfg.maxVf}
+                                step="0.05"
+                                value={currentVf}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  const safe = isNaN(parsed) ? ledColorCfg.vf : parsed;
+                                  const clamped = Math.max(ledColorCfg.minVf, Math.min(ledColorCfg.maxVf, safe));
+                                  onUpdateComponent(selectedComp.id, {
+                                    props: { ...(selectedComp.props || {}), vf: clamped },
+                                  });
+                                }}
+                                className="w-16 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                              />
+                              <span className="text-zinc-400 font-mono text-[11px] whitespace-nowrap [word-break:keep-all]">&nbsp;V</span>
+                            </div>
+                          </div>
+
+                          {/* Quick Vf Presets strictly filtered by semiconductor physics (eliminating invalid 3.2V on Red) */}
+                          <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono">
+                            <span className="text-zinc-500 mr-0.5">Presets:</span>
+                            {ledColorCfg.presets.map((presetVf) => (
+                              <button
+                                key={presetVf}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateComponent(selectedComp.id, {
+                                    props: { ...(selectedComp.props || {}), vf: presetVf },
+                                  })
+                                }
+                                className={`px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap [word-break:keep-all] ${
+                                  Math.abs(currentVf - presetVf) < 0.01
+                                    ? 'bg-zinc-800 border-zinc-500 text-white font-medium'
+                                    : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                                }`}
+                              >
+                                {presetVf.toFixed(1)}&nbsp;V
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between py-0.5">
+                          <span className="text-zinc-500">Max Current</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">20&nbsp;mA</span>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-between py-0.5">
-                        <span className="text-zinc-500">Max Current</span>
-                        <span className="font-mono text-zinc-300">20 mA</span>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Text Label Controls */}
                   {selectedComp.kind === 'text_label' && (
@@ -947,91 +1182,200 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     const v2 = smoothVal(`${selectedComp.id}:2`, rawV2);
                     const v3 = smoothVal(`${selectedComp.id}:3`, rawV3);
                     const iComp = smoothVal(`${selectedComp.id}:i`, rawIComp, 0.0003);
+                    const vDrop = Math.abs(v1 - v3);
+                    const pPot = vDrop * Math.abs(iComp);
+                    const val = typeof selectedComp.props?.value === 'number' ? selectedComp.props.value : 0.5;
+
                     return (
                       <>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Pin 1 (Terminal 1):</span>
+                          <span className="font-mono text-zinc-400">Pin 1 (Terminal A):</span>
                           <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
                             {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Pin 2 (Wiper):</span>
+                          <span className="font-mono text-zinc-400">Pin 2 (Wiper W):</span>
                           <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
                             {typeof rawV2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Pin 3 (Terminal 2):</span>
+                          <span className="font-mono text-zinc-400">Pin 3 (Terminal B):</span>
                           <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
                             {typeof rawV3 === 'number' ? v3.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
-                        {typeof rawIComp === 'number' && iComp > 0.00001 && (
-                          <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
-                            <span className="font-mono text-zinc-400">Current (I):</span>
-                            <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
-                              {(iComp * 1000).toFixed(1)}&nbsp;mA
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Wiper Position:</span>
+                          <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {(val * 100).toFixed(1)}&nbsp;%
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Track Current (I):</span>
+                          <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {(Math.abs(iComp) * 1000).toFixed(1)}&nbsp;mA
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Power Dissipation (P):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {formatPower(pPot)}
+                          </span>
+                        </div>
                       </>
                     );
                   })()}
 
-                  {selectedComp.kind === 'pushbutton' && (
-                    <>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Pin 1a / 1b:</span>
-                        <span className="font-mono text-zinc-300">GND (Reference)</span>
-                      </div>
-                      <div className="flex justify-between py-0.5">
-                        <span className="font-mono text-zinc-400">Pin 2a / 2b:</span>
-                        <span className="font-mono text-zinc-100">
-                          {isInspectorButtonPressed || Boolean(selectedComp.props?.pressed)
-                            ? '0.00 V (Active LOW)'
-                            : '5.00 V (Pull-up Active)'}
-                        </span>
-                      </div>
-                    </>
-                  )}
+                  {selectedComp.kind === 'pushbutton' && (() => {
+                    const isPressed = isInspectorButtonPressed || Boolean(selectedComp.props?.pressed);
+                    const rawV1 = pinVoltages?.[`${selectedComp.id}:1a`] ?? pinVoltages?.[`${selectedComp.id}:1`];
+                    const rawV2 = pinVoltages?.[`${selectedComp.id}:2a`] ?? pinVoltages?.[`${selectedComp.id}:2`];
+                    const v1 = smoothVal(`${selectedComp.id}:1a`, rawV1);
+                    const v2 = smoothVal(`${selectedComp.id}:2a`, rawV2);
+
+                    return (
+                      <>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 1a / 1b:</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 2a / 2b:</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV2 === 'number' ? v2.toFixed(2) : (isPressed ? '0.00' : '5.00')}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Contact State:</span>
+                          <span className={`font-mono font-semibold tabular-nums whitespace-nowrap [word-break:keep-all] ${isPressed ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                            {isPressed ? 'CLOSED (≤\u00A00.05\u00A0Ω)' : 'OPEN (≥\u00A0100\u00A0MΩ)'}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {selectedComp.kind === 'led' && (() => {
                     const isLit = litLeds?.has(selectedComp.id);
                     const b = isLit ? (ledBrightness?.[selectedComp.id] ?? 1.0) : 0;
-                    const estCurrentMa = isLit ? (b * 15).toFixed(1) : '0.0';
+                    const rawVa = pinVoltages?.[`${selectedComp.id}:anode`] ?? pinVoltages?.[`${selectedComp.id}:1`];
+                    const rawVc = pinVoltages?.[`${selectedComp.id}:cathode`] ?? pinVoltages?.[`${selectedComp.id}:2`];
+                    const va = smoothVal(`${selectedComp.id}:va`, rawVa);
+                    const vc = smoothVal(`${selectedComp.id}:vc`, rawVc);
+                    const vd = Math.max(0, va - vc);
+                    const rawI = branchCurrents?.[selectedComp.id];
+                    const iComp = smoothVal(`${selectedComp.id}:i`, rawI, 0.0003);
+                    const currentA = typeof rawI === 'number' ? Math.abs(rawI) : (isLit ? (b * 0.015) : 0.0);
+                    const iMa = currentA * 1000;
+                    const pWatts = vd * currentA;
+
                     return (
                       <>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Emission:</span>
-                          <span className={`font-mono font-semibold ${isLit ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                          <span className="font-mono text-zinc-400">Emission State:</span>
+                          <span className={`font-mono font-semibold tabular-nums whitespace-nowrap [word-break:keep-all] ${isLit ? 'text-emerald-400' : 'text-zinc-500'}`}>
                             {isLit ? `ON (${Math.round(b * 100)}%)` : 'OFF'}
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Current (est.):</span>
-                          <span className="font-mono text-zinc-300">{estCurrentMa} mA</span>
+                          <span className="font-mono text-zinc-400">Anode (+) Potential:</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawVa === 'number' ? va.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Anode (+):</span>
-                          <span className="font-mono text-zinc-300">Logic Drive</span>
+                          <span className="font-mono text-zinc-400">Cathode (–) Potential:</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawVc === 'number' ? vc.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Voltage Drop (Vd):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {vd.toFixed(2)}&nbsp;V
+                          </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Cathode (–):</span>
-                          <span className="font-mono text-zinc-300">GND Return</span>
+                          <span className="font-mono text-zinc-400">Forward Current (I):</span>
+                          <span className={`font-mono font-semibold tabular-nums whitespace-nowrap [word-break:keep-all] ${iMa > 30.0 ? 'text-red-400' : iMa > 20.0 ? 'text-amber-400' : isLit ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                            {iMa.toFixed(1)}&nbsp;mA
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Power Dissipation (P = V*I):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {formatPower(pWatts)}
+                          </span>
                         </div>
                       </>
                     );
                   })()}
 
-                  {selectedComp.kind === 'resistor' && (
-                    <div className="flex justify-between py-0.5">
-                      <span className="font-mono text-zinc-400">Impedance:</span>
-                      <span className="font-mono text-zinc-300">
-                        {selectedComp.props?.ohms || 220} Ω
-                      </span>
-                    </div>
-                  )}
+                  {selectedComp.kind === 'resistor' && (() => {
+                    const ohms = typeof selectedComp.props?.ohms === 'number' ? selectedComp.props.ohms : 220;
+                    const rawV1 = pinVoltages?.[`${selectedComp.id}:1`];
+                    const rawV2 = pinVoltages?.[`${selectedComp.id}:2`];
+                    const v1 = smoothVal(`${selectedComp.id}:1`, rawV1);
+                    const v2 = smoothVal(`${selectedComp.id}:2`, rawV2);
+                    const deltaV = Math.abs(v1 - v2);
+                    const rawI = branchCurrents?.[selectedComp.id];
+                    const iComp = smoothVal(`${selectedComp.id}:i`, rawI, 0.0003);
+                    const currentA = typeof rawI === 'number' ? Math.abs(rawI) : (deltaV / ohms);
+                    const currentMa = currentA * 1000;
+                    const pWatts = deltaV * currentA;
+                    const isOverpower = pWatts > 0.25;
+
+                    return (
+                      <>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Resistance (R):</span>
+                          <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {ohms}&nbsp;Ω
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Lead 1 Potential:</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Lead 2 Potential:</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Voltage Drop (ΔV):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {deltaV.toFixed(2)}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Branch Current (I):</span>
+                          <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {currentMa.toFixed(1)}&nbsp;mA
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Power Dissipation (P = V*I):</span>
+                          <span className={`font-mono font-semibold tabular-nums whitespace-nowrap [word-break:keep-all] ${isOverpower ? 'text-red-400' : 'text-zinc-200'}`}>
+                            {formatPower(pWatts)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Rated Power:</span>
+                          <span className="font-mono text-zinc-400 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            0.25&nbsp;W (250&nbsp;mW)
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {selectedComp.kind === 'capacitor' && (() => {
                     const rawV1 = pinVoltages?.[`${selectedComp.id}:1`];
@@ -1040,17 +1384,32 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     const v1 = smoothVal(`${selectedComp.id}:1`, rawV1);
                     const v2 = smoothVal(`${selectedComp.id}:2`, rawV2);
                     const vc = v1 - v2;
+                    const absVc = Math.abs(vc);
                     const iComp = smoothVal(`${selectedComp.id}:i`, rawI, 0.0003);
+                    const cap = typeof selectedComp.props?.capacitance === 'number' ? selectedComp.props.capacitance : 10e-6;
+                    const isPolarized = Boolean(selectedComp.props?.polarized);
+                    const rating = typeof selectedComp.props?.voltageRating === 'number' ? selectedComp.props.voltageRating : (isPolarized ? 25 : 50);
+
+                    // Physics Metrics:
+                    // Stored Charge Q = C * |V|
+                    const qCoulombs = cap * absVc;
+                    // Stored Energy E = 0.5 * C * V^2
+                    const energyJoules = 0.5 * cap * vc * vc;
+                    // Power Dissipation P = |V * I|
+                    const pWatts = absVc * Math.abs(iComp);
+                    // Circuit Time Constant tau = Req * C
+                    const tauInfo = calculateCapacitorTimeConstant(selectedComp, components, wires);
+
                     return (
                       <>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Pin 1 ({selectedComp.props?.polarized ? 'Anode +' : 'Lead 1'}):</span>
+                          <span className="font-mono text-zinc-400">Pin 1 ({isPolarized ? 'Anode +' : 'Lead 1'}):</span>
                           <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
                             {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
-                          <span className="font-mono text-zinc-400">Pin 2 ({selectedComp.props?.polarized ? 'Cathode -' : 'Lead 2'}):</span>
+                          <span className="font-mono text-zinc-400">Pin 2 ({isPolarized ? 'Cathode -' : 'Lead 2'}):</span>
                           <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
                             {typeof rawV2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
                           </span>
@@ -1061,14 +1420,46 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                             {vc.toFixed(2)}&nbsp;V
                           </span>
                         </div>
-                        {typeof rawI === 'number' && Math.abs(iComp) > 0.00001 && (
-                          <div className="flex justify-between py-0.5">
-                            <span className="font-mono text-zinc-400">Current (Ic):</span>
-                            <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
-                              {(iComp * 1000).toFixed(1)}&nbsp;mA
-                            </span>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Capacitor Current (Ic):</span>
+                          <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {(Math.abs(iComp) * 1000).toFixed(1)}&nbsp;mA
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Power Dissipation (P = V*I):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {formatPower(pWatts)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Stored Charge (Q = C·V):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {formatStoredCharge(qCoulombs)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Stored Energy (E = ½C·V²):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {formatStoredEnergy(energyJoules)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Time Constant (τ = R_eq·C):</span>
+                          <span className="font-mono text-cyan-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {tauInfo.tau !== null ? formatTimeConstant(tauInfo.tau) : 'Open Circuit (τ → ∞)'}
+                          </span>
+                        </div>
+                        {tauInfo.sourceDescription && (
+                          <div className="flex justify-between py-0.5 text-[11px] text-zinc-500">
+                            <span className="font-mono">R_eq Path:</span>
+                            <span className="font-mono text-zinc-400 tabular-nums whitespace-nowrap [word-break:keep-all]">{tauInfo.sourceDescription}</span>
                           </div>
                         )}
+                        <div className="flex justify-between py-0.5 text-[11px] text-zinc-500">
+                          <span className="font-mono">Voltage Rating:</span>
+                          <span className="font-mono text-zinc-400 tabular-nums whitespace-nowrap [word-break:keep-all]">{rating}&nbsp;V</span>
+                        </div>
                       </>
                     );
                   })()}

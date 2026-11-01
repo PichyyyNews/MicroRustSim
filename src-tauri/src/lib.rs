@@ -38,6 +38,8 @@ pub struct StepResult {
     pub mcu_pin_voltages: HashMap<String, f32>,
     pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
+    #[serde(default)]
+    pub damaged_components: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +74,7 @@ pub enum SimCommand {
     WriteSerial { input: String },
     SyncWire { wire: Wire },
     RemoveWire { id: String },
-    AddLed { id: String, color: String },
+    AddLed { id: String, color: String, vf: Option<f32> },
     AddResistor { id: String, ohms: f32 },
     AddButton { id: String },
     AddPot { id: String },
@@ -209,8 +211,8 @@ fn remove_wire(id: String, state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn add_led(id: String, color: String, state: State<'_, AppState>) {
-    let _ = state.sim_tx.send(SimCommand::AddLed { id, color });
+fn add_led(id: String, color: String, vf: Option<f32>, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::AddLed { id, color, vf });
 }
 
 #[tauri::command]
@@ -528,6 +530,23 @@ pub fn run() {
                     let branch_currents = engine.branch_currents.clone();
                     let faults = engine.faults.clone();
 
+                    let mut damaged_components = Vec::new();
+                    for (id, l) in &engine.leds {
+                        if l.is_blown {
+                            damaged_components.push(id.clone());
+                        }
+                    }
+                    for (id, r) in &engine.resistors {
+                        if r.is_blown {
+                            damaged_components.push(id.clone());
+                        }
+                    }
+                    for (id, c) in &engine.capacitors {
+                        if c.is_damaged {
+                            damaged_components.push(id.clone());
+                        }
+                    }
+
                     let _ = reply.send(StepResult {
                         pin13,
                         lit_leds,
@@ -538,6 +557,7 @@ pub fn run() {
                         mcu_pin_voltages,
                         branch_currents,
                         faults,
+                        damaged_components,
                     });
                 }
                 SimCommand::PressButton { id, pressed } => {
@@ -565,8 +585,12 @@ pub fn run() {
                     engine.remove_wire(&id);
                     engine.resolve_electrical_nets();
                 }
-                SimCommand::AddLed { id, color } => {
-                    engine.leds.insert(id.clone(), components::LedComponent::new(id, color));
+                SimCommand::AddLed { id, color, vf } => {
+                    let mut led = components::LedComponent::new(id.clone(), color);
+                    if let Some(vf_val) = vf {
+                        led.custom_forward_voltage = Some(vf_val);
+                    }
+                    engine.leds.insert(id, led);
                     engine.resolve_electrical_nets();
                 }
                 SimCommand::AddResistor { id, ohms } => {
@@ -820,6 +844,7 @@ mod tests {
             mcu_pin_voltages,
             branch_currents: HashMap::new(),
             faults,
+            damaged_components: Vec::new(),
         };
 
         let json_str = serde_json::to_string_pretty(&original).expect("StepResult must serialize to JSON");
@@ -912,6 +937,7 @@ mod tests {
             mcu_pin_voltages: engine.mcu_pin_voltages_map(),
             branch_currents: engine.branch_currents.clone(),
             faults: engine.faults.clone(),
+            damaged_components: Vec::new(),
         };
 
         assert!(step_res.lit_leds.contains(&"led1".to_string()));
@@ -943,6 +969,7 @@ mod tests {
             mcu_pin_voltages: engine.mcu_pin_voltages_map(),
             branch_currents: engine.branch_currents.clone(),
             faults: engine.faults.clone(),
+            damaged_components: Vec::new(),
         };
 
         assert!(!faulted_step_res.faults.is_empty(), "Short circuit must generate fault in StepResult");

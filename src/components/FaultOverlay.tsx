@@ -9,6 +9,7 @@ import { GoAlert } from 'react-icons/go';
 
 export interface FaultOverlayProps {
   faults: CircuitFault[];
+  damagedComponents?: Set<string>;
   getPinWorldPos: (compId: string, pinName: string) => { x: number; y: number } | null;
   components?: CircuitComponent[];
   onHoverFault?: (description: string) => void;
@@ -48,11 +49,14 @@ function resolveCompId(compId: string, components?: CircuitComponent[]): string 
  */
 export const FaultOverlay: React.FC<FaultOverlayProps> = ({
   faults,
+  damagedComponents,
   getPinWorldPos,
   components,
   onHoverFault,
 }) => {
-  if (!faults || faults.length === 0) {
+  const hasFaults = faults && faults.length > 0;
+  const hasDamaged = damagedComponents && damagedComponents.size > 0;
+  if (!hasFaults && !hasDamaged) {
     return null;
   }
 
@@ -118,6 +122,28 @@ export const FaultOverlay: React.FC<FaultOverlayProps> = ({
     }
   }
 
+  if (damagedComponents && components) {
+    for (const compId of damagedComponents) {
+      const comp = components.find((c) => c.id === compId);
+      if (comp) {
+        indicators.push({
+          key: `damaged-${compId}`,
+          x: comp.x + 20,
+          y: comp.y + 10,
+          fault: {
+            fault_type: 'Overcurrent',
+            component_id: compId,
+            pin_name: 'body',
+            description: `ชิ้นส่วนเสียหายถาวร (Blown Open Circuit): อุปกรณ์ ${compId} ชำรุดเนื่องจากความร้อนสะสม/กระแสเกินพิกัด วงจรเปิด ไม่นำกระแสไฟฟ้าอีกต่อไป`,
+            current_ma: 0,
+            voltage: 0,
+          },
+          title: 'Damaged Component (Blown Open Circuit)',
+        });
+      }
+    }
+  }
+
   return (
     <div className="absolute inset-0 pointer-events-none z-40 select-none">
       {indicators.map((ind) => (
@@ -127,7 +153,11 @@ export const FaultOverlay: React.FC<FaultOverlayProps> = ({
               <div
                 role="alert"
                 aria-label={`${ind.title}: ${ind.fault.description}`}
-                className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-red-950 animate-pulse cursor-help pointer-events-auto shadow-[0_0_8px_#ef4444] transition-transform hover:scale-125"
+                className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 cursor-help pointer-events-auto transition-transform hover:scale-125 ${
+                  ind.title.includes('Damaged')
+                    ? 'w-3 h-3 bg-red-600 ring-red-950 animate-pulse shadow-[0_0_12px_#dc2626]'
+                    : 'w-2.5 h-2.5 bg-red-500 ring-red-950 animate-pulse shadow-[0_0_8px_#ef4444]'
+                }`}
                 style={{ left: `${ind.x}px`, top: `${ind.y}px` }}
                 onMouseEnter={() => onHoverFault?.(ind.fault.description)}
                 onMouseLeave={() => onHoverFault?.('')}

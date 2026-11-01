@@ -143,5 +143,6 @@ export interface StepResult {
   mcu_pin_voltages?: Record<string, number>;
   branch_currents?: Record<string, number>;
   faults?: CircuitFault[];
+  damaged_components?: string[];
 }
 
