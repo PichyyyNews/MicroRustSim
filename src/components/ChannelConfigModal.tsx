@@ -5,6 +5,7 @@ import {
   ToggleLeft,
   Cpu,
   Zap,
+  Activity,
   Check,
   X,
   Search,
@@ -139,6 +140,11 @@ export function buildDiagramChannels(
     } else if (comp.kind === 'resistor') {
       pinConn = `${comp.props?.ohms || 220}\u00A0Ω Limiter`;
       compDetails = 'Series Current Limiting Resistor';
+    } else if (comp.kind === 'capacitor') {
+      const farads = comp.props?.capacitance || 10e-6;
+      const str = farads >= 1e-6 ? `${(farads * 1e6).toFixed(0)}\u00A0µF` : `${(farads * 1e9).toFixed(0)}\u00A0nF`;
+      pinConn = `${str} Storage Element`;
+      compDetails = `${comp.props?.polarized ? 'Electrolytic' : 'Ceramic'} Capacitor (${str})`;
     }
 
     let label = `${comp.kind.toUpperCase()} (${comp.id})`;
@@ -146,6 +152,7 @@ export function buildDiagramChannels(
     if (comp.kind === 'pushbutton') label = `Button (${comp.id})`;
     if (comp.kind === 'potentiometer') label = `Pot Wiper (${comp.id})`;
     if (comp.kind === 'resistor') label = `Resistor (${comp.id})`;
+    if (comp.kind === 'capacitor') label = `Capacitor (${comp.id})`;
 
     const isConnected = compWires.length > 0;
     const existing = savedMap.get(channelId);
@@ -307,7 +314,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
         if (activeTab === 'input' && (c.kind === 'pushbutton' || c.kind === 'potentiometer'))
           return { ...c, enabled: true };
         if (activeTab === 'mcu' && c.kind === 'mcu') return { ...c, enabled: true };
-        if (activeTab === 'passive' && c.kind === 'resistor') return { ...c, enabled: true };
+        if (activeTab === 'passive' && (c.kind === 'resistor' || c.kind === 'capacitor')) return { ...c, enabled: true };
         return c;
       })
     );
@@ -324,7 +331,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
       led: localConfigs.filter((c) => c.kind === 'led').length,
       input: localConfigs.filter((c) => c.kind === 'pushbutton' || c.kind === 'potentiometer').length,
       mcu: localConfigs.filter((c) => c.kind === 'mcu').length,
-      passive: localConfigs.filter((c) => c.kind === 'resistor').length,
+      passive: localConfigs.filter((c) => c.kind === 'resistor' || c.kind === 'capacitor').length,
     };
   }, [localConfigs]);
 
@@ -339,7 +346,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     { id: 'led', label: 'Outputs & LEDs', icon: Lightbulb, count: counts.led },
     { id: 'input', label: 'Inputs & Switches', icon: ToggleLeft, count: counts.input },
     { id: 'mcu', label: 'MCU Pins (Uno)', icon: Cpu, count: counts.mcu },
-    { id: 'passive', label: 'Passives & Resistors', icon: Zap, count: counts.passive },
+    { id: 'passive', label: 'Passives & Capacitors', icon: Zap, count: counts.passive },
   ];
 
   // Filtered list based on active category and search query
@@ -352,7 +359,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     } else if (activeTab === 'mcu') {
       list = list.filter((c) => c.kind === 'mcu');
     } else if (activeTab === 'passive') {
-      list = list.filter((c) => c.kind === 'resistor');
+      list = list.filter((c) => c.kind === 'resistor' || c.kind === 'capacitor');
     }
 
     if (!searchQuery.trim()) return list;
@@ -539,6 +546,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                           {cfg.kind === 'pushbutton' && <ToggleLeft className="w-3.5 h-3.5 text-zinc-200" />}
                           {cfg.kind === 'potentiometer' && <Zap className="w-3.5 h-3.5 text-zinc-200" />}
                           {cfg.kind === 'resistor' && <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-200" />}
+                          {cfg.kind === 'capacitor' && <Activity className="w-3.5 h-3.5 text-zinc-200" />}
                           {cfg.kind === 'mcu' && <Cpu className="w-3.5 h-3.5 text-zinc-200" />}
                         </div>
 

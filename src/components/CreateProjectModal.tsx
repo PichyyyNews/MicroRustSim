@@ -10,6 +10,7 @@ import {
   AlertCircle,
   X,
   Cpu,
+  Activity,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -275,6 +276,103 @@ void loop() {
     },
   },
   {
+    id: 'rc_timing',
+    name: 'RC Timing & Capacitor Charge',
+    badge: 'Reactive RC',
+    description: 'Capacitor charging & discharging through 10 kΩ resistor. Demonstrates RC time constant (τ = R·C) with real-time ADC & waveform curves.',
+    icon: Activity,
+    sketch: `#include "config.h"
+
+// MicroRustSim RC Circuit Template
+// Demonstrates Capacitor Charge & Discharge Dynamics (Tau = R * C)
+// Drive Pin: 9 | Sensor Pin: A0 (Capacitor Voltage) | Indicator: Pin 13
+
+unsigned long lastCycleTime = 0;
+bool isCharging = true;
+
+void setup() {
+  pinMode(DRIVE_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  Serial.begin(SYSTEM_BAUD);
+  
+  Serial.println("[MicroRustSim] RC Circuit Template Initialized.");
+  Serial.println("[RC Physics] R = 10 kOhm, C = 10 uF, Time Constant (Tau) = 100 ms");
+  Serial.println("-----------------------------------------------------------------");
+  
+  // Start with charging phase
+  digitalWrite(DRIVE_PIN, HIGH);
+  lastCycleTime = millis();
+}
+
+void loop() {
+  unsigned long now = millis();
+  unsigned long elapsed = now - lastCycleTime;
+
+  // Read instantaneous capacitor voltage via 10-bit ADC
+  int adcRaw = analogRead(CAP_SENSE_PIN);
+  float vCap = (adcRaw / 1023.0f) * 5.0f;
+
+  // Toggle built-in LED when capacitor reaches half supply (> 2.5V)
+  digitalWrite(LED_PIN, vCap >= 2.5f ? HIGH : LOW);
+
+  // Switch between Charging and Discharging every 800 ms (> 5 Tau for complete curve)
+  if (elapsed >= 800) {
+    isCharging = !isCharging;
+    digitalWrite(DRIVE_PIN, isCharging ? HIGH : LOW);
+    lastCycleTime = now;
+    elapsed = 0;
+    
+    Serial.println();
+    if (isCharging) {
+      Serial.println(">>> [PHASE] CHARGING (Pin 9 -> 5V) <<<");
+    } else {
+      Serial.println(">>> [PHASE] DISCHARGING (Pin 9 -> 0V) <<<");
+    }
+  }
+
+  // Print telemetry every 100 ms (~1 Tau step)
+  static unsigned long lastPrint = 0;
+  if (now - lastPrint >= 100) {
+    lastPrint = now;
+    Serial.print(isCharging ? "  [CHARGING]   t=" : "  [DISCHARGE]  t=");
+    Serial.print(elapsed);
+    Serial.print("ms | V_cap = ");
+    Serial.print(vCap, 2);
+    Serial.print(" V (");
+    Serial.print((vCap / 5.0f) * 100.0f, 1);
+    Serial.print("%) | ADC = ");
+    Serial.println(adcRaw);
+  }
+
+  delay(20);
+}
+`,
+    config: `#pragma once
+
+#define DRIVE_PIN 9
+#define CAP_SENSE_PIN A0
+#define LED_PIN 13
+#define SYSTEM_BAUD 9600
+`,
+    diagram: {
+      version: 1,
+      author: 'MicroRustSim',
+      editor: 'wokwi',
+      parts: [
+        { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
+        { type: 'wokwi-breadboard-half', id: 'bb1', top: 220, left: 560, attrs: {} },
+        { type: 'wokwi-resistor', id: 'r1', top: 100, left: 580, attrs: { value: '10000' } },
+        { type: 'wokwi-capacitor', id: 'cap1', top: 180, left: 660, attrs: { capacitance: '10e-6', polarized: 'true', voltageRating: '25' } },
+      ],
+      connections: [
+        ['uno1:9', 'r1:1', '#a855f7', []],
+        ['r1:2', 'cap1:1', '#ef4444', []],
+        ['uno1:A0', 'cap1:1', '#eab308', []],
+        ['cap1:2', 'uno1:GND.1', '#18181b', []],
+      ],
+    },
+  },
+  {
     id: 'empty',
     name: 'Empty Breadboard Circuit',
     badge: 'Clean Canvas',
@@ -480,7 +578,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 Starter Template
               </span>
               <span className="text-[10px] font-mono text-zinc-500 tabular-nums">
-                5 Circuits Available
+                {PROJECT_TEMPLATES.length} Circuits Available
               </span>
             </div>
 

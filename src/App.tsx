@@ -878,6 +878,7 @@ export default function App() {
             else if (p.type?.includes('resistor')) kind = 'resistor';
             else if (p.type?.includes('pushbutton') || p.type?.includes('btn')) kind = 'pushbutton';
             else if (p.type?.includes('potentiometer') || p.type?.includes('pot')) kind = 'potentiometer';
+            else if (p.type?.includes('capacitor') || p.type?.includes('cap')) kind = 'capacitor';
 
             const { rotation, flipped, ...restProps } = p.attrs || {};
             // For potentiometers, Wokwi diagram.json attrs.value represents total resistance (e.g. "10000")
@@ -892,6 +893,18 @@ export default function App() {
                 restProps.value = Math.max(0, Math.min(1, numVal));
               } else {
                 restProps.value = 0.5;
+              }
+            } else if (kind === 'capacitor') {
+              if (restProps.capacitance !== undefined) {
+                const parsedCap = typeof restProps.capacitance === 'number' ? restProps.capacitance : parseFloat(String(restProps.capacitance));
+                if (!isNaN(parsedCap)) restProps.capacitance = parsedCap;
+              }
+              if (restProps.polarized !== undefined) {
+                restProps.polarized = restProps.polarized === true || String(restProps.polarized).toLowerCase() === 'true';
+              }
+              if (restProps.voltageRating !== undefined) {
+                const parsedRating = typeof restProps.voltageRating === 'number' ? restProps.voltageRating : parseFloat(String(restProps.voltageRating));
+                if (!isNaN(parsedRating)) restProps.voltageRating = parsedRating;
               }
             }
             return {
@@ -1711,6 +1724,11 @@ export default function App() {
                 const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
                 const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
                 v = Math.abs(v1 - v2);
+              } else if (cfg.kind === 'capacitor') {
+                // Differential voltage across capacitor element: |V(1) - V(2)|
+                const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? res.pin_voltages?.[`${cfg.targetId}:pos`] ?? res.pin_voltages?.[`${cfg.targetId}:anode`] ?? 0.0;
+                const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:neg`] ?? res.pin_voltages?.[`${cfg.targetId}:cathode`] ?? 0.0;
+                v = Math.max(0.0, v1 - v2);
               }
 
               if (!waveformHistoriesRef.current[cfg.id]) {
