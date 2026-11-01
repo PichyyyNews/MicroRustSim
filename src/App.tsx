@@ -73,6 +73,11 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
 
 import { ArduinoUno, ARDUINO_PINS } from './components/ArduinoUno';
 import { Breadboard } from './components/Breadboard';
@@ -569,6 +574,7 @@ export default function App() {
   const [pin2History, setPin2History] = useState<[number, number][]>([]);
   const [pinA0History, setPinA0History] = useState<[number, number][]>([]);
   const [circuitFaults, setCircuitFaults] = useState<CircuitFault[]>([]);
+  const [damagedComponents, setDamagedComponents] = useState<Set<string>>(new Set());
   const [branchCurrents, setBranchCurrents] = useState<Record<string, number>>({});
   const [pinVoltages, setPinVoltages] = useState<Record<string, number>>({});
   const simTimeRef = useRef<number>(0);
@@ -668,7 +674,7 @@ export default function App() {
   const [components, setComponents] = useState<CircuitComponent[]>([
     { id: 'uno1', kind: 'arduino_uno', x: 80, y: 120, props: {} },
     { id: 'bb1', kind: 'breadboard', x: 420, y: 120, props: {} },
-    { id: 'led1', kind: 'led', x: 500, y: 50, props: { color: 'red' } },
+    { id: 'led1', kind: 'led', x: 500, y: 50, props: { color: 'red', vf: 2.2 } },
     { id: 'r1', kind: 'resistor', x: 590, y: 65, props: { ohms: 220 } },
     { id: 'btn1', kind: 'pushbutton', x: 690, y: 60, props: {} },
     { id: 'pot1', kind: 'potentiometer', x: 790, y: 50, props: { value: 0.5 } },
@@ -1297,6 +1303,7 @@ export default function App() {
 
   // --- Parametric Property Updates ---
   const handleUpdateComponent = useCallback((id: string, updates: Partial<CircuitComponent>) => {
+    let updatedComp: CircuitComponent | undefined;
     setComponents((prev) =>
       prev.map((c) => {
         if (c.id !== id) return c;
@@ -1304,6 +1311,7 @@ export default function App() {
         if (updates.props) {
           next.props = { ...c.props, ...updates.props };
         }
+        updatedComp = next;
         return next;
       })
     );
@@ -1312,8 +1320,15 @@ export default function App() {
     if (updates.props?.ohms !== undefined) {
       tauriInvoke('add_resistor', { id, ohms: updates.props.ohms });
     }
-    if (updates.props?.color !== undefined) {
-      tauriInvoke('add_led', { id, color: updates.props.color });
+    if (updates.props?.color !== undefined || updates.props?.vf !== undefined || updates.props?.forwardVoltage !== undefined) {
+      const color = updates.props?.color ?? updatedComp?.props?.color ?? '#ef4444';
+      const rawVf = updates.props?.vf ?? updates.props?.forwardVoltage ?? updatedComp?.props?.vf ?? updatedComp?.props?.forwardVoltage ?? 2.2;
+      tauriInvoke('add_led', { id, color, vf: Number(rawVf) });
+    }
+    if (updates.props?.capacitance !== undefined || updates.props?.farads !== undefined || updates.props?.polarized !== undefined) {
+      const farads = updates.props?.capacitance ?? updates.props?.farads ?? updatedComp?.props?.capacitance ?? 10e-6;
+      const polarized = updates.props?.polarized ?? updatedComp?.props?.polarized ?? true;
+      tauriInvoke('add_capacitor', { id, farads: Number(farads), polarized: Boolean(polarized) });
     }
     if (updates.props?.value !== undefined) {
       tauriInvoke('set_potentiometer', { id, value: updates.props.value });
@@ -1672,6 +1687,9 @@ export default function App() {
             setLitLeds(new Set(res.lit_leds));
             setLedBrightness(res.led_brightness || {});
             setCircuitFaults(res.faults || []);
+            if (res.damaged_components) {
+              setDamagedComponents(new Set(res.damaged_components));
+            }
             if (res.branch_currents) {
               setBranchCurrents(res.branch_currents);
             }
@@ -2248,7 +2266,11 @@ export default function App() {
       // Sync to backend engine
       for (const comp of newComps) {
         if (comp.kind === 'led') {
-          tauriInvoke('add_led', { id: comp.id, color: comp.props?.color || '#ef4444' });
+          tauriInvoke('add_led', {
+            id: comp.id,
+            color: comp.props?.color || '#ef4444',
+            vf: comp.props?.vf ?? 2.2,
+          });
         } else if (comp.kind === 'resistor') {
           tauriInvoke('add_resistor', { id: comp.id, ohms: comp.props?.ohms || 220 });
         } else if (comp.kind === 'pushbutton') {
@@ -2280,7 +2302,11 @@ export default function App() {
 
     // Sync to backend engine
     if (newComp.kind === 'led') {
-      tauriInvoke('add_led', { id: newComp.id, color: newComp.props?.color || '#ef4444' });
+      tauriInvoke('add_led', {
+        id: newComp.id,
+        color: newComp.props?.color || '#ef4444',
+        vf: newComp.props?.vf ?? 2.2,
+      });
     } else if (newComp.kind === 'resistor') {
       tauriInvoke('add_resistor', { id: newComp.id, ohms: newComp.props?.ohms || 220 });
     } else if (newComp.kind === 'pushbutton') {
@@ -2312,8 +2338,8 @@ export default function App() {
         setStatusMessage('Added Breadboard');
       } else if (type === 'led') {
         const id = `led_${components.length + 1}`;
-        setComponents((prev) => [...prev, { id, kind: 'led', x: 500, y: 80, props: { color: '#ef4444', vf: 2.0 } }]);
-        tauriInvoke('add_led', { id, color: '#ef4444' });
+        setComponents((prev) => [...prev, { id, kind: 'led', x: 500, y: 80, props: { color: '#ef4444', vf: 2.2 } }]);
+        tauriInvoke('add_led', { id, color: '#ef4444', vf: 2.2 });
         setSelectedCompId(id);
         setSelectedWireId(null);
         setStatusMessage('Added Red LED');
@@ -3694,6 +3720,7 @@ export default function App() {
                         setLitLeds(new Set());
                         setLedBrightness({});
                         setCircuitFaults([]);
+                        setDamagedComponents(new Set());
                         setLogicHistory([]);
                         setPin2History([]);
                         setPinA0History([]);
@@ -4041,6 +4068,151 @@ export default function App() {
                     } (O)`}
               </TooltipContent>
             </Tooltip>
+
+            {/* Clean 1px Zinc Divider */}
+            <div className="w-[1px] h-3.5 bg-[#242428] shrink-0 mx-1" />
+
+            {/* Category 5: Physics Non-idealities & Realism Mode */}
+            <Popover>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      type="button"
+                      className={`h-7 px-2.5 flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer border ${
+                        powerConfig.mode === 'realistic'
+                          ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20'
+                          : 'bg-transparent border-[#242428] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden sm:inline">Physics</span>
+                      <Badge
+                        variant="outline"
+                        className={`h-4.5 px-1.5 text-[10px] uppercase font-mono tracking-wider whitespace-nowrap shrink-0 tabular-nums border-none ${
+                          powerConfig.mode === 'realistic'
+                            ? 'bg-amber-500/20 text-amber-200'
+                            : 'bg-zinc-800/80 text-zinc-400'
+                        }`}
+                      >
+                        {powerConfig.mode === 'realistic' ? 'Realistic' : 'Ideal'}
+                      </Badge>
+                    </PopoverTrigger>
+                  }
+                />
+                <TooltipContent className="text-xs">
+                  Physical Non-idealities (Ripple, Pink Noise, Sag, PRNG Seed)
+                </TooltipContent>
+              </Tooltip>
+
+              <PopoverContent align="start" className="w-80 bg-[#141417] border border-[#242428] shadow-xl p-3.5 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-4 h-4 text-zinc-300" />
+                    <span className="font-semibold text-xs text-zinc-100">Physical Non-idealities</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = powerConfig.mode === 'realistic' ? 'ideal' : 'realistic';
+                      handleUpdatePowerConfig({
+                        ...powerConfig,
+                        mode: nextMode,
+                      });
+                    }}
+                    className={`h-6 px-2.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer border ${
+                      powerConfig.mode === 'realistic'
+                        ? 'bg-amber-500 text-black font-semibold border-amber-400 hover:bg-amber-400'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                    }`}
+                  >
+                    {powerConfig.mode === 'realistic' ? 'Active' : 'Enable'}
+                  </button>
+                </div>
+
+                <div className="bg-[#1c1c20] rounded-lg p-2.5 space-y-2 border border-zinc-800/60">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-300">Power Ripple (100Hz)</span>
+                    <button
+                      type="button"
+                      disabled={powerConfig.mode !== 'realistic'}
+                      onClick={() => handleUpdatePowerConfig({ ...powerConfig, enable_ripple: !powerConfig.enable_ripple })}
+                      className={`text-[11px] px-2 py-0.5 rounded font-mono ${
+                        powerConfig.enable_ripple && powerConfig.mode === 'realistic'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'text-zinc-500'
+                      }`}
+                    >
+                      {powerConfig.enable_ripple ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-300">ADC Pink Noise</span>
+                    <button
+                      type="button"
+                      disabled={powerConfig.mode !== 'realistic'}
+                      onClick={() => handleUpdatePowerConfig({ ...powerConfig, enable_noise: !powerConfig.enable_noise })}
+                      className={`text-[11px] px-2 py-0.5 rounded font-mono ${
+                        powerConfig.enable_noise && powerConfig.mode === 'realistic'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'text-zinc-500'
+                      }`}
+                    >
+                      {powerConfig.enable_noise ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-300">Rail Sag & Load Drop</span>
+                    <button
+                      type="button"
+                      disabled={powerConfig.mode !== 'realistic'}
+                      onClick={() => handleUpdatePowerConfig({ ...powerConfig, enable_sag: !powerConfig.enable_sag })}
+                      className={`text-[11px] px-2 py-0.5 rounded font-mono ${
+                        powerConfig.enable_sag && powerConfig.mode === 'realistic'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'text-zinc-500'
+                      }`}
+                    >
+                      {powerConfig.enable_sag ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Deterministic PRNG Seed Control */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-800/80">
+                  <div className="text-xs text-zinc-300">
+                    <div>PRNG Noise Seed</div>
+                    <div className="text-[10px] text-zinc-500 font-normal">Deterministic physics</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={powerConfig.seed ?? 42}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          handleUpdatePowerConfig({ ...powerConfig, seed: val });
+                        }
+                      }}
+                      className="w-16 h-6 px-1.5 text-xs text-right font-mono bg-[#1c1c20] border border-zinc-700 rounded text-zinc-200 focus:outline-none focus:border-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleUpdatePowerConfig({ ...powerConfig, seed: Math.floor(Math.random() * 9999) + 1 })}
+                      className="h-6 px-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 bg-zinc-800 rounded hover:bg-zinc-700 cursor-pointer"
+                    >
+                      Random
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-zinc-500 leading-tight">
+                  Deterministic physics (ESR, Shockley diode, internal R, load sag) are active at all times.
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Right Toolbar: VS Code-Style Command Search Bar directly above Components Palette */}
@@ -4056,6 +4228,7 @@ export default function App() {
                 setLitLeds(new Set());
                 setLedBrightness({});
                 setCircuitFaults([]);
+                setDamagedComponents(new Set());
                 setLogicHistory([]);
                 setPin2History([]);
                 setPinA0History([]);
