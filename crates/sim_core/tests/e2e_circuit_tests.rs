@@ -220,7 +220,7 @@ fn test_t1_pot_wiper_reverse_orientation() {
 #[test]
 fn test_t1_led_red_forward_voltage() {
     let led = LedComponent::new("led1", "red");
-    assert_eq!(led.forward_voltage(), 1.8, "Red LED Vf must be 1.8V");
+    assert_eq!(led.forward_voltage(), 2.2, "Red LED Vf must be 2.2V");
 
     let mut engine = SimulationEngine::new_with_uno();
     engine.leds.insert("led1".into(), led);

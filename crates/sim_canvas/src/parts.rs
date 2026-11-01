@@ -11,6 +11,7 @@ pub enum PartKind {
     Resistor { resistance: f32 },
     Pushbutton,
     Potentiometer { value: f32 },
+    Capacitor { capacitance: f32, is_polarized: bool },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +231,35 @@ impl VisualComponent {
         }
     }
 
+    pub fn new_capacitor(
+        id: impl Into<String>,
+        pos: Pos2,
+        capacitance: f32,
+        is_polarized: bool,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            kind: PartKind::Capacitor {
+                capacitance,
+                is_polarized,
+            },
+            pos,
+            size: Vec2::new(40.0, 50.0),
+            pins: vec![
+                VisualPin {
+                    name: "1".to_string(), // Positive / Anode
+                    rel_pos: Vec2::new(14.0, 46.0),
+                    is_analog: false,
+                },
+                VisualPin {
+                    name: "2".to_string(), // Negative / Cathode
+                    rel_pos: Vec2::new(26.0, 46.0),
+                    is_analog: false,
+                },
+            ],
+        }
+    }
+
     pub fn hit_test(&self, world_pos: Pos2) -> bool {
         Rect::from_min_size(self.pos, self.size).contains(world_pos)
     }
@@ -263,6 +293,9 @@ impl VisualComponent {
             PartKind::Resistor { resistance } => self.draw_resistor(painter, screen_rect, viewport, *resistance, is_selected),
             PartKind::Pushbutton => self.draw_pushbutton(painter, screen_rect, viewport, is_selected, is_active),
             PartKind::Potentiometer { value } => self.draw_potentiometer(painter, screen_rect, viewport, *value, is_selected),
+            PartKind::Capacitor { capacitance, is_polarized } => {
+                self.draw_capacitor(painter, screen_rect, viewport, *capacitance, *is_polarized, is_selected);
+            }
         }
 
         // Draw pin connection hot-spots
@@ -651,5 +684,134 @@ impl VisualComponent {
             [center, center + notch_dir * (dial_r - 4.0 * zoom)],
             Stroke::new(3.0 * zoom, Color32::from_rgb(250, 204, 21)),
         );
+    }
+
+    fn draw_capacitor(
+        &self,
+        painter: &Painter,
+        rect: Rect,
+        viewport: &crate::viewport::Viewport,
+        capacitance: f32,
+        is_polarized: bool,
+        is_selected: bool,
+    ) {
+        let zoom = viewport.zoom;
+        if is_selected {
+            painter.rect_stroke(
+                rect.expand(2.0 * zoom),
+                CornerRadius::same((4.0 * zoom) as u8),
+                Stroke::new(2.0 * zoom, Color32::from_rgb(59, 130, 246)),
+                egui::StrokeKind::Outside,
+            );
+        }
+
+        let p1_screen = viewport.world_to_screen(self.pin_world_pos(&self.pins[0]));
+        let p2_screen = viewport.world_to_screen(self.pin_world_pos(&self.pins[1]));
+        let lead_color = Color32::from_rgb(148, 163, 184);
+        let lead_width = (1.8 * zoom).clamp(1.0, 3.5);
+
+        if is_polarized {
+            // Electrolytic: Cylindrical Aluminum Can
+            let can_rect = Rect::from_min_size(
+                rect.min + Vec2::new(6.0 * zoom, 4.0 * zoom),
+                Vec2::new(28.0 * zoom, 34.0 * zoom),
+            );
+
+            // Leads extending down to pins
+            painter.line_segment(
+                [Pos2::new(p1_screen.x, can_rect.bottom()), p1_screen],
+                Stroke::new(lead_width, lead_color),
+            );
+            painter.line_segment(
+                [Pos2::new(p2_screen.x, can_rect.bottom()), p2_screen],
+                Stroke::new(lead_width, lead_color),
+            );
+
+            // Main can body (Dark slate cylinder)
+            painter.rect_filled(
+                can_rect,
+                CornerRadius::same((4.0 * zoom) as u8),
+                Color32::from_rgb(15, 23, 42),
+            );
+
+            // Negative stripe along right edge (pin 2 side)
+            let stripe_w = 7.0 * zoom;
+            let stripe_rect = Rect::from_min_size(
+                Pos2::new(can_rect.right() - stripe_w, can_rect.top()),
+                Vec2::new(stripe_w, can_rect.height()),
+            );
+            painter.rect_filled(
+                stripe_rect,
+                CornerRadius::same((2.0 * zoom) as u8),
+                Color32::from_rgb(203, 213, 225),
+            );
+            painter.text(
+                stripe_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "-",
+                FontId::new(9.0 * zoom, FontFamily::Monospace),
+                Color32::from_rgb(15, 23, 42),
+            );
+
+            // Silver top vent
+            let top_rect = Rect::from_min_size(
+                can_rect.min,
+                Vec2::new(can_rect.width(), 5.0 * zoom),
+            );
+            painter.rect_filled(
+                top_rect,
+                CornerRadius::same((3.0 * zoom) as u8),
+                Color32::from_rgb(148, 163, 184),
+            );
+
+            // Value text
+            let cap_label = if capacitance >= 1e-6 {
+                format!("{:.0}µF", capacitance * 1e6)
+            } else {
+                format!("{:.0}nF", capacitance * 1e9)
+            };
+            painter.text(
+                Pos2::new(can_rect.left() + 9.0 * zoom, can_rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                cap_label,
+                FontId::new(8.0 * zoom, FontFamily::Monospace),
+                Color32::from_rgb(241, 245, 249),
+            );
+        } else {
+            // Ceramic Disc
+            let disc_center = rect.min + Vec2::new(rect.width() * 0.5, 20.0 * zoom);
+            let disc_r = 13.0 * zoom;
+
+            // Leads
+            painter.line_segment(
+                [Pos2::new(p1_screen.x, disc_center.y + 10.0 * zoom), p1_screen],
+                Stroke::new(lead_width, lead_color),
+            );
+            painter.line_segment(
+                [Pos2::new(p2_screen.x, disc_center.y + 10.0 * zoom), p2_screen],
+                Stroke::new(lead_width, lead_color),
+            );
+
+            // Disc body
+            painter.circle_filled(disc_center, disc_r, Color32::from_rgb(217, 119, 6));
+            painter.circle_stroke(
+                disc_center,
+                disc_r,
+                Stroke::new(1.0 * zoom, Color32::from_rgb(180, 83, 9)),
+            );
+
+            let cap_label = if capacitance >= 1e-6 {
+                format!("{:.0}µ", capacitance * 1e6)
+            } else {
+                format!("{:.0}n", capacitance * 1e9)
+            };
+            painter.text(
+                disc_center,
+                egui::Align2::CENTER_CENTER,
+                cap_label,
+                FontId::new(8.0 * zoom, FontFamily::Monospace),
+                Color32::from_rgb(254, 243, 199),
+            );
+        }
     }
 }

@@ -71,6 +71,7 @@ impl SimRunner {
         self.engine.resistors.clear();
         self.engine.buttons.clear();
         self.engine.pots.clear();
+        self.engine.capacitors.clear();
 
         for c in comps {
             match &c.kind {
@@ -87,6 +88,12 @@ impl SimRunner {
                     let mut pot = components::PotentiometerComponent::new(c.id.clone());
                     pot.value = *value;
                     self.engine.pots.insert(c.id.clone(), pot);
+                }
+                sim_canvas::PartKind::Capacitor { capacitance, is_polarized } => {
+                    self.engine.capacitors.insert(
+                        c.id.clone(),
+                        components::CapacitorComponent::new(c.id.clone(), *capacitance, *is_polarized),
+                    );
                 }
                 _ => {}
             }

@@ -394,6 +394,19 @@ impl McuCore for ArduinoUnoCore {
 /// Component definitions and models
 pub mod components {
     use super::*;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PotentiometerTaper {
+        Linear,
+        AudioLog,
+    }
+
+    impl Default for PotentiometerTaper {
+        fn default() -> Self {
+            Self::Linear
+        }
+    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct LedComponent {
@@ -403,6 +416,16 @@ pub mod components {
         pub brightness: f32, // 0.0 to 1.0
         #[serde(default)]
         pub custom_forward_voltage: Option<f32>,
+        #[serde(default)]
+        pub is_blown: bool,
+        #[serde(default)]
+        pub damage_accumulator: f64,
+        #[serde(default)]
+        pub current_ma: f32,
+        #[serde(default)]
+        pub avg_current_ma: f32,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
     }
 
     impl LedComponent {
@@ -413,22 +436,104 @@ pub mod components {
                 is_lit: false,
                 brightness: 0.0,
                 custom_forward_voltage: None,
+                is_blown: false,
+                damage_accumulator: 0.0,
+                current_ma: 0.0,
+                avg_current_ma: 0.0,
+                terminal_nodes: HashMap::new(),
             }
         }
 
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
         pub fn forward_voltage(&self) -> f32 {
+            let c = self.color.to_lowercase();
             if let Some(vf) = self.custom_forward_voltage {
+                if c == "red" || c == "#ef4444" {
+                    // Semiconductor limit: Red GaAsP/AlInGaP bandgap restricts Vf <= 2.4V (fixing B3)
+                    return vf.min(2.4);
+                }
                 return vf;
             }
-            let c = self.color.to_lowercase();
             match c.as_str() {
-                "red" | "#ef4444" => 1.8,
+                "red" | "#ef4444" => 2.2, // Unified to 2.2V per PHYSICS_SPEC.md §4.3 and R3 (fixing B2)
                 "yellow" | "#eab308" => 2.0,
                 "orange" | "#f97316" => 2.0,
                 "green" | "#22c55e" => 2.2,
                 "blue" | "#3b82f6" => 3.2,
                 "white" | "#f8fafc" => 3.2,
-                _ => 2.0,
+                _ => 2.2,
+            }
+        }
+
+        pub fn series_rs(&self) -> f64 {
+            let c = self.color.to_lowercase();
+            match c.as_str() {
+                "red" | "#ef4444" | "orange" | "#f97316" => 8.0,
+                "yellow" | "#eab308" => 9.0,
+                "green" | "#22c55e" => 12.0,
+                "blue" | "#3b82f6" | "white" | "#f8fafc" => 15.0,
+                _ => 10.0,
+            }
+        }
+
+        pub fn saturation_current_is(&self) -> f64 {
+            let vf = self.forward_voltage() as f64;
+            let rs = self.series_rs();
+            let vt = crate::constants::V_THERMAL * crate::constants::LED_IDEALITY_FACTOR_N;
+            let i_test = crate::constants::LED_TEST_CURRENT_A; // 20mA
+            let arg = (vf - i_test * rs) / vt;
+            if arg > 0.0 && arg < 80.0 {
+                (i_test / (arg.exp() - 1.0)).max(1e-25)
+            } else {
+                1e-20
+            }
+        }
+
+        pub fn reverse_breakdown_voltage(&self) -> f64 {
+            -5.0
+        }
+
+        pub fn update_current_and_brightness(&mut self, current_a: f64, dt: f64) {
+            if self.is_blown {
+                self.current_ma = 0.0;
+                self.avg_current_ma = 0.0;
+                self.is_lit = false;
+                self.brightness = 0.0;
+                return;
+            }
+
+            self.current_ma = (current_a * 1000.0) as f32;
+
+            // Persistence of vision time averaging (tau ≈ 20 ms)
+            let tau = crate::constants::TAU_EYE_POV;
+            let alpha = 1.0 - (-dt / tau).exp();
+            self.avg_current_ma = ((1.0 - alpha) * self.avg_current_ma as f64 + alpha * self.current_ma as f64) as f32;
+
+            // Visible threshold at 50 uA (0.05 mA)
+            if self.avg_current_ma >= 0.05 {
+                self.is_lit = true;
+                self.brightness = (self.avg_current_ma / 15.0).clamp(0.01, 1.0);
+            } else {
+                self.is_lit = false;
+                self.brightness = 0.0;
+            }
+
+            // Thermal damage accumulator for overcurrent (> 50 mA)
+            if current_a > 0.050 {
+                let excess = (current_a - 0.050) / 0.050;
+                self.damage_accumulator += excess * excess * dt;
+                if self.damage_accumulator >= crate::constants::LED_DAMAGE_ACCUM_THRESHOLD || current_a > 0.200 {
+                    self.is_blown = true;
+                    self.is_lit = false;
+                    self.brightness = 0.0;
+                }
             }
         }
     }
@@ -437,6 +542,20 @@ pub mod components {
     pub struct ResistorComponent {
         pub id: String,
         pub resistance_ohms: f32, // e.g. 220.0, 1000.0, 10000.0
+        #[serde(default)]
+        pub tolerance_percent: f32, // 0.0 (nominal), 1.0 (metal film 1%), 5.0 (carbon film 5%)
+        #[serde(default = "default_resistor_power_rating")]
+        pub power_rating_watts: f32, // default 0.25 W
+        #[serde(default)]
+        pub energy_absorbed_j: f64,
+        #[serde(default)]
+        pub is_blown: bool,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    fn default_resistor_power_rating() -> f32 {
+        0.25
     }
 
     impl ResistorComponent {
@@ -444,7 +563,54 @@ pub mod components {
             Self {
                 id: id.into(),
                 resistance_ohms,
+                tolerance_percent: 0.0,
+                power_rating_watts: 0.25,
+                energy_absorbed_j: 0.0,
+                is_blown: false,
+                terminal_nodes: HashMap::new(),
             }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn actual_resistance(&self) -> f64 {
+            let nom = (self.resistance_ohms as f64).max(0.001);
+            if self.tolerance_percent > 0.0 {
+                let mut hash: u64 = 0x811c9dc5;
+                for b in self.id.bytes() {
+                    hash = (hash ^ (b as u64)).wrapping_mul(0x1000193);
+                }
+                let norm = ((hash % 20000) as f64 - 10000.0) / 10000.0; // [-1.0, 1.0]
+                let factor = 1.0 + norm * (self.tolerance_percent as f64 / 100.0);
+                (nom * factor).max(0.001)
+            } else {
+                nom
+            }
+        }
+
+        pub fn check_power(&mut self, voltage_drop: f64, dt: f64) -> (f64, bool) {
+            let r = self.actual_resistance();
+            let p = (voltage_drop * voltage_drop) / r;
+            let rated = self.power_rating_watts as f64;
+            let is_overpower = p > rated;
+
+            if is_overpower {
+                let excess_p = p - rated;
+                self.energy_absorbed_j += excess_p * dt;
+                if self.energy_absorbed_j >= crate::constants::RESISTOR_THERMAL_DAMAGE_J {
+                    self.is_blown = true;
+                }
+            } else if self.energy_absorbed_j > 0.0 {
+                self.energy_absorbed_j = (self.energy_absorbed_j - dt * 0.1).max(0.0);
+            }
+
+            (p, is_overpower || self.is_blown)
         }
     }
 
@@ -452,6 +618,18 @@ pub mod components {
     pub struct PushbuttonComponent {
         pub id: String,
         pub is_pressed: bool,
+        #[serde(default)]
+        pub bounce_enabled: bool,
+        #[serde(default = "default_pushbutton_bounce_ms")]
+        pub bounce_duration_ms: f32, // 1 to 5 ms
+        #[serde(default)]
+        pub bounce_timer_s: f64,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    fn default_pushbutton_bounce_ms() -> f32 {
+        3.0
     }
 
     impl PushbuttonComponent {
@@ -459,6 +637,26 @@ pub mod components {
             Self {
                 id: id.into(),
                 is_pressed: false,
+                bounce_enabled: false,
+                bounce_duration_ms: 3.0,
+                bounce_timer_s: 0.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn contact_resistance(&self) -> f64 {
+            if self.is_pressed {
+                crate::constants::R_PUSHBUTTON_ON // <= 0.1 ohm (0.05 ohm)
+            } else {
+                crate::constants::R_PUSHBUTTON_OFF // >= 100 Mohm (1e8 ohm)
             }
         }
     }
@@ -467,6 +665,22 @@ pub mod components {
     pub struct PotentiometerComponent {
         pub id: String,
         pub value: f32, // 0.0 to 1.0 (wiper position)
+        #[serde(default = "default_pot_total_r")]
+        pub total_resistance_ohms: f32, // default 10000.0
+        #[serde(default)]
+        pub taper: PotentiometerTaper,
+        #[serde(default = "default_pot_contact_rc")]
+        pub terminal_contact_resistance: f32, // default 1.0 ohm
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    fn default_pot_total_r() -> f32 {
+        10000.0
+    }
+
+    fn default_pot_contact_rc() -> f32 {
+        1.0
     }
 
     impl PotentiometerComponent {
@@ -474,7 +688,48 @@ pub mod components {
             Self {
                 id: id.into(),
                 value: 0.5,
+                total_resistance_ohms: 10000.0,
+                taper: PotentiometerTaper::Linear,
+                terminal_contact_resistance: 1.0,
+                terminal_nodes: HashMap::new(),
             }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn effective_wiper_ratio(&self) -> f64 {
+            let x = (self.value as f64).clamp(0.0, 1.0);
+            match self.taper {
+                PotentiometerTaper::Linear => x,
+                PotentiometerTaper::AudioLog => {
+                    // Audio log taper curve where x=0.5 corresponds to 10%
+                    if x <= 0.0 {
+                        0.0
+                    } else if x >= 1.0 {
+                        1.0
+                    } else {
+                        (10.0f64.powf(x) - 1.0) / 9.0
+                    }
+                }
+            }
+        }
+
+        pub fn r_top(&self, rc: f64) -> f64 {
+            let ratio = self.effective_wiper_ratio();
+            let total = (self.total_resistance_ohms as f64).max(10.0);
+            (1.0 - ratio) * total + rc
+        }
+
+        pub fn r_bot(&self, rc: f64) -> f64 {
+            let ratio = self.effective_wiper_ratio();
+            let total = (self.total_resistance_ohms as f64).max(10.0);
+            ratio * total + rc
         }
     }
 
@@ -486,17 +741,48 @@ pub mod components {
         pub voltage_rating: f32, // e.g. 25.0
         pub esr_ohms: f32, // e.g. 0.5
         pub voltage: f32, // instantaneous charged voltage across capacitor V(1) - V(2)
+        #[serde(default)]
+        pub leakage_resistance_ohms: f64,
+        #[serde(default)]
+        pub is_damaged: bool,
+        #[serde(default)]
+        pub reverse_damage_timer_s: f64,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
     }
 
     impl CapacitorComponent {
         pub fn new(id: impl Into<String>, capacitance_farads: f32, is_polarized: bool) -> Self {
+            let r_leak = if is_polarized { 2.0e7 } else { crate::constants::R_LEAK_CERAMIC };
             Self {
                 id: id.into(),
                 capacitance_farads,
                 is_polarized,
-                voltage_rating: if is_polarized { 25.0 } else { 50.0 },
-                esr_ohms: if is_polarized { 0.5 } else { 0.1 },
+                voltage_rating: if is_polarized { crate::constants::V_RAT_ELECTRO_DEF as f32 } else { crate::constants::V_RAT_CERAMIC_DEF as f32 },
+                esr_ohms: if is_polarized { crate::constants::ESR_ELECTRO_DEF as f32 } else { crate::constants::ESR_CERAMIC_DEF as f32 },
                 voltage: 0.0,
+                leakage_resistance_ohms: r_leak,
+                is_damaged: false,
+                reverse_damage_timer_s: 0.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn effective_leakage(&self) -> f64 {
+            if self.leakage_resistance_ohms > 0.0 {
+                self.leakage_resistance_ohms
+            } else if self.is_polarized {
+                2.0e7
+            } else {
+                crate::constants::R_LEAK_CERAMIC
             }
         }
     }
@@ -512,6 +798,14 @@ pub mod components {
             Self {
                 id: id.into(),
             }
+        }
+
+        pub fn clip_resistance() -> f64 {
+            crate::constants::R_BREADBOARD_CLIP // 0.010 ohm
+        }
+
+        pub fn wire_resistance() -> f64 {
+            crate::constants::R_JUMPER_WIRE // 0.020 ohm
         }
     }
 }
@@ -904,5 +1198,83 @@ mod tests {
         assert_eq!(engine.mcu.read_serial_output().len(), 0);
         engine.mcu.write_serial_input(b"HELLO_RX\n");
         engine.step_cycles(100);
+    }
+
+    #[test]
+    fn test_circuit_device_trait_implementations() {
+        use crate::device::CircuitDevice;
+
+        let r = components::ResistorComponent::new("r1", 220.0);
+        assert_eq!(r.id(), "r1");
+        assert_eq!(r.terminal_pins(), vec!["1", "2"]);
+        assert!(!r.is_damaged());
+
+        let pot = components::PotentiometerComponent::new("pot1");
+        assert_eq!(pot.id(), "pot1");
+        assert_eq!(pot.terminal_pins(), vec!["1", "2", "3"]);
+        assert!(!pot.is_damaged());
+
+        let led = components::LedComponent::new("led1", "red");
+        assert_eq!(led.id(), "led1");
+        assert_eq!(led.terminal_pins(), vec!["anode", "cathode"]);
+        assert!(!led.is_damaged());
+
+        let btn = components::PushbuttonComponent::new("btn1");
+        assert_eq!(btn.id(), "btn1");
+        assert_eq!(btn.terminal_pins().len(), 4);
+        assert!(!btn.is_damaged());
+
+        let cap = components::CapacitorComponent::new("c1", 10e-6, true);
+        assert_eq!(cap.id(), "c1");
+        assert_eq!(cap.terminal_pins(), vec!["1", "2"]);
+        assert!(!cap.is_damaged());
+    }
+
+    #[test]
+    fn test_resistor_tolerance_and_thermal_overload() {
+        let mut r = components::ResistorComponent::new("r_tol", 1000.0);
+        r.tolerance_percent = 5.0; // 5% carbon film
+        let r_actual = r.actual_resistance();
+        assert!(r_actual >= 950.0 && r_actual <= 1050.0);
+
+        // Apply 2.0 W (exceeds 0.25 W rating) for 2.0 seconds
+        let (_p, is_over) = r.check_power(45.0, 2.0); // 45V across ~1000 ohm ≈ 2.025 W
+        assert!(is_over);
+        assert!(r.energy_absorbed_j > 0.0);
+    }
+
+    #[test]
+    fn test_potentiometer_audio_taper_and_smoothness() {
+        let mut pot = components::PotentiometerComponent::new("pot_audio");
+        pot.taper = components::PotentiometerTaper::AudioLog;
+
+        pot.value = 0.0;
+        assert_eq!(pot.effective_wiper_ratio(), 0.0);
+
+        pot.value = 1.0;
+        assert_eq!(pot.effective_wiper_ratio(), 1.0);
+
+        pot.value = 0.5;
+        // Audio log at midpoint should be around 10% - 25%
+        let ratio_mid = pot.effective_wiper_ratio();
+        assert!(ratio_mid > 0.05 && ratio_mid < 0.35);
+
+        // Verify continuity of R_top and R_bot
+        let r_top = pot.r_top(1.0);
+        let r_bot = pot.r_bot(1.0);
+        assert!(r_top > 0.0 && r_bot > 0.0);
+    }
+
+    #[test]
+    fn test_capacitor_physical_models_and_leakage() {
+        let c_ceramic = components::CapacitorComponent::new("c_cer", 100e-9, false);
+        assert_eq!(c_ceramic.voltage_rating, 50.0);
+        assert_eq!(c_ceramic.esr_ohms, 0.02);
+        assert_eq!(c_ceramic.effective_leakage(), 1.0e9);
+
+        let c_electro = components::CapacitorComponent::new("c_el", 10e-6, true);
+        assert_eq!(c_electro.voltage_rating, 25.0);
+        assert_eq!(c_electro.esr_ohms, 0.50);
+        assert_eq!(c_electro.effective_leakage(), 2.0e7);
     }
 }

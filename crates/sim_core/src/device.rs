@@ -356,3 +356,445 @@ pub trait CircuitDevice: Send + Sync {
     /// Reset internal state, damage status, and restore factory defaults
     fn reset_device(&mut self);
 }
+
+use crate::components::{
+    BreadboardComponent, CapacitorComponent, LedComponent, PotentiometerComponent,
+    PushbuttonComponent, ResistorComponent,
+};
+use crate::constants::LED_MAX_CURRENT_A;
+
+impl CircuitDevice for ResistorComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        vec!["1".to_string(), "2".to_string()]
+    }
+
+    fn stamp_dc(&self, matrix: &mut MnaMatrix) {
+        if self.is_blown {
+            return;
+        }
+        let n1 = self.get_pin_node("1");
+        let n2 = self.get_pin_node("2");
+        let g = 1.0 / self.actual_resistance();
+        matrix.stamp_conductance(n1, n2, g);
+    }
+
+    fn stamp_transient(&self, matrix: &mut MnaMatrix, _context: &TimeContext) {
+        self.stamp_dc(matrix);
+    }
+
+    fn update_state(&mut self, voltages: &NodeVoltageLookup, dt: f64) {
+        let v1 = voltages.get_pin(&self.id, "1");
+        let v2 = voltages.get_pin(&self.id, "2");
+        self.check_power((v1 - v2).abs(), dt);
+    }
+
+    fn check_limits(&self, voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        let mut warnings = Vec::new();
+        let v1 = voltages.get_pin(&self.id, "1");
+        let v2 = voltages.get_pin(&self.id, "2");
+        let v_diff = (v1 - v2).abs();
+        let r = self.actual_resistance();
+        let p = (v_diff * v_diff) / r;
+        let rated = self.power_rating_watts as f64;
+
+        if self.is_blown {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::ExcessivePower,
+                message: format!("Resistor '{}' burned out from thermal overload", self.id),
+                value: p,
+                threshold: rated,
+                fatal: true,
+            });
+        } else if p > rated {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::ExcessivePower,
+                message: format!(
+                    "Resistor '{}' power dissipation ({:.3} W) exceeds rated power ({:.2} W)",
+                    self.id, p, rated
+                ),
+                value: p,
+                threshold: rated,
+                fatal: false,
+            });
+        }
+        warnings
+    }
+
+    fn is_damaged(&self) -> bool {
+        self.is_blown
+    }
+
+    fn reset_device(&mut self) {
+        self.is_blown = false;
+        self.energy_absorbed_j = 0.0;
+    }
+}
+
+impl CircuitDevice for PotentiometerComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        vec!["1".to_string(), "2".to_string(), "3".to_string()]
+    }
+
+    fn stamp_dc(&self, matrix: &mut MnaMatrix) {
+        let n1 = self.get_pin_node("1");
+        let n2 = self.get_pin_node("2");
+        let n3 = self.get_pin_node("3");
+        let rc = self.terminal_contact_resistance as f64;
+        let r_top = self.r_top(rc);
+        let r_bot = self.r_bot(rc);
+        matrix.stamp_conductance(n3, n2, 1.0 / r_top);
+        matrix.stamp_conductance(n2, n1, 1.0 / r_bot);
+    }
+
+    fn stamp_transient(&self, matrix: &mut MnaMatrix, _context: &TimeContext) {
+        self.stamp_dc(matrix);
+    }
+
+    fn update_state(&mut self, _voltages: &NodeVoltageLookup, _dt: f64) {}
+
+    fn check_limits(&self, voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        let mut warnings = Vec::new();
+        let v3 = voltages.get_pin(&self.id, "3");
+        let v2 = voltages.get_pin(&self.id, "2");
+        let rc = self.terminal_contact_resistance as f64;
+        let r_top = self.r_top(rc);
+        let i_top = (v3 - v2).abs() / r_top;
+        if i_top > 0.100 {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::Overcurrent,
+                message: format!(
+                    "Potentiometer '{}' wiper current ({:.1} mA) exceeds safe threshold",
+                    self.id,
+                    i_top * 1000.0
+                ),
+                value: i_top,
+                threshold: 0.100,
+                fatal: false,
+            });
+        }
+        warnings
+    }
+
+    fn is_damaged(&self) -> bool {
+        false
+    }
+
+    fn reset_device(&mut self) {}
+}
+
+impl CircuitDevice for LedComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        vec!["anode".to_string(), "cathode".to_string()]
+    }
+
+    fn stamp_dc(&self, matrix: &mut MnaMatrix) {
+        if self.is_blown {
+            return;
+        }
+        let na = self.get_pin_node("anode");
+        let nc = self.get_pin_node("cathode");
+        let rs = self.series_rs();
+        let gd = 1.0 / (rs + 1.0);
+        matrix.stamp_conductance(na, nc, gd);
+    }
+
+    fn stamp_transient(&self, matrix: &mut MnaMatrix, _context: &TimeContext) {
+        self.stamp_dc(matrix);
+    }
+
+    fn update_state(&mut self, voltages: &NodeVoltageLookup, dt: f64) {
+        let va = voltages.get_pin(&self.id, "anode");
+        let vc = voltages.get_pin(&self.id, "cathode");
+        let v_d = va - vc;
+        let vf = self.forward_voltage() as f64;
+        let rs = self.series_rs();
+        let is_sat = self.saturation_current_is();
+        let vt = crate::constants::V_THERMAL * crate::constants::LED_IDEALITY_FACTOR_N;
+        let current_a = crate::solver::solve_diode_current(v_d, vf, rs, is_sat, vt);
+        self.update_current_and_brightness(current_a, dt);
+    }
+
+    fn check_limits(&self, voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        let mut warnings = Vec::new();
+        let va = voltages.get_pin(&self.id, "anode");
+        let vc = voltages.get_pin(&self.id, "cathode");
+        let v_d = va - vc;
+
+        if self.is_blown {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::Overcurrent,
+                message: format!("LED '{}' destroyed by excessive forward current", self.id),
+                value: self.current_ma as f64 / 1000.0,
+                threshold: LED_MAX_CURRENT_A,
+                fatal: true,
+            });
+        } else if self.current_ma > (LED_MAX_CURRENT_A * 1000.0) as f32 {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::Overcurrent,
+                message: format!(
+                    "LED '{}' forward current ({:.1} mA) exceeds maximum rated current (30 mA)",
+                    self.id, self.current_ma
+                ),
+                value: self.current_ma as f64 / 1000.0,
+                threshold: LED_MAX_CURRENT_A,
+                fatal: false,
+            });
+        } else if v_d < -0.5 {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::ReversePolarity,
+                message: format!("LED '{}' is connected in reverse polarity (Vd = {:.2} V)", self.id, v_d),
+                value: v_d,
+                threshold: -0.5,
+                fatal: false,
+            });
+        }
+        warnings
+    }
+
+    fn is_damaged(&self) -> bool {
+        self.is_blown
+    }
+
+    fn reset_device(&mut self) {
+        self.is_blown = false;
+        self.damage_accumulator = 0.0;
+        self.current_ma = 0.0;
+        self.avg_current_ma = 0.0;
+        self.is_lit = false;
+        self.brightness = 0.0;
+    }
+}
+
+impl CircuitDevice for PushbuttonComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+        ]
+    }
+
+    fn stamp_dc(&self, matrix: &mut MnaMatrix) {
+        let n1 = self.get_pin_node("1");
+        let n2 = self.get_pin_node("2");
+        let n3 = self.get_pin_node("3");
+        let n4 = self.get_pin_node("4");
+
+        // Pins 1-2 tied, pins 3-4 tied internally
+        matrix.stamp_conductance(n1, n2, 1.0 / 0.001);
+        matrix.stamp_conductance(n3, n4, 1.0 / 0.001);
+
+        let r_sw = self.contact_resistance();
+        matrix.stamp_conductance(n1, n3, 1.0 / r_sw);
+    }
+
+    fn stamp_transient(&self, matrix: &mut MnaMatrix, _context: &TimeContext) {
+        self.stamp_dc(matrix);
+    }
+
+    fn update_state(&mut self, _voltages: &NodeVoltageLookup, _dt: f64) {}
+
+    fn check_limits(&self, _voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        Vec::new()
+    }
+
+    fn is_damaged(&self) -> bool {
+        false
+    }
+
+    fn reset_device(&mut self) {}
+}
+
+impl CircuitDevice for CapacitorComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        vec!["1".to_string(), "2".to_string()]
+    }
+
+    fn stamp_dc(&self, matrix: &mut MnaMatrix) {
+        if self.is_damaged {
+            return;
+        }
+        let n1 = self.get_pin_node("1");
+        let n2 = self.get_pin_node("2");
+        let r_total = (self.esr_ohms as f64) + self.effective_leakage();
+        matrix.stamp_conductance(n1, n2, 1.0 / r_total);
+    }
+
+    fn stamp_transient(&self, matrix: &mut MnaMatrix, context: &TimeContext) {
+        if self.is_damaged {
+            return;
+        }
+        let n1 = self.get_pin_node("1");
+        let n2 = self.get_pin_node("2");
+        let dt = context.dt.max(1e-9);
+        let c_farads = (self.capacitance_farads as f64).max(1e-12);
+        let esr = (self.esr_ohms as f64).max(0.01);
+        let r_leak = self.effective_leakage();
+
+        let g_c = c_farads / dt;
+        let g_p = g_c + (1.0 / r_leak);
+        let r_branch = esr + (1.0 / g_p);
+        let g_eff = 1.0 / r_branch;
+
+        let v_prev = self.voltage as f64;
+        let i_eq = g_c * v_prev;
+        let i_inj = i_eq / (1.0 + esr * g_p);
+
+        matrix.stamp_conductance(n1, n2, g_eff);
+        matrix.stamp_current_source(n2, n1, i_inj);
+    }
+
+    fn update_state(&mut self, voltages: &NodeVoltageLookup, dt: f64) {
+        if self.is_damaged {
+            return;
+        }
+        let v1 = voltages.get_pin(&self.id, "1");
+        let v2 = voltages.get_pin(&self.id, "2");
+        let v_term = v1 - v2;
+        let dt_eff = dt.max(1e-9);
+        let c_farads = (self.capacitance_farads as f64).max(1e-12);
+        let esr = (self.esr_ohms as f64).max(0.01);
+        let r_leak = self.effective_leakage();
+
+        let g_c = c_farads / dt_eff;
+        let g_p = g_c + (1.0 / r_leak);
+        let r_branch = esr + (1.0 / g_p);
+        let g_eff = 1.0 / r_branch;
+
+        let v_prev = self.voltage as f64;
+        let i_eq = g_c * v_prev;
+        let i_inj = i_eq / (1.0 + esr * g_p);
+
+        let i_cap = g_eff * v_term - i_inj;
+        let v_internal = v_term - i_cap * esr;
+        self.voltage = v_internal as f32;
+
+        if self.is_polarized {
+            if v_term < -0.5 {
+                self.reverse_damage_timer_s += dt;
+                if v_term < -1.5 && self.reverse_damage_timer_s >= 1.0 {
+                    self.is_damaged = true;
+                }
+            } else {
+                self.reverse_damage_timer_s = (self.reverse_damage_timer_s - dt).max(0.0);
+            }
+        }
+    }
+
+    fn check_limits(&self, voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        let mut warnings = Vec::new();
+        let v1 = voltages.get_pin(&self.id, "1");
+        let v2 = voltages.get_pin(&self.id, "2");
+        let v_term = v1 - v2;
+
+        if self.is_damaged {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::ReversePolarity,
+                message: format!(
+                    "Capacitor '{}' destroyed by reverse polarity breakdown",
+                    self.id
+                ),
+                value: v_term,
+                threshold: -1.0,
+                fatal: true,
+            });
+        } else if self.is_polarized && v_term < -0.5 {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::ReversePolarity,
+                message: format!(
+                    "Electrolytic capacitor '{}' connected in reverse polarity ({:.2} V)",
+                    self.id, v_term
+                ),
+                value: v_term,
+                threshold: -0.5,
+                fatal: false,
+            });
+        } else if v_term.abs() > self.voltage_rating as f64 {
+            warnings.push(DeviceWarning {
+                component_id: self.id.clone(),
+                warning_type: DeviceWarningType::Overvoltage,
+                message: format!(
+                    "Capacitor '{}' voltage ({:.2} V) exceeds rated voltage ({:.1} V)",
+                    self.id,
+                    v_term.abs(),
+                    self.voltage_rating
+                ),
+                value: v_term.abs(),
+                threshold: self.voltage_rating as f64,
+                fatal: false,
+            });
+        }
+        warnings
+    }
+
+    fn is_damaged(&self) -> bool {
+        self.is_damaged
+    }
+
+    fn reset_device(&mut self) {
+        self.is_damaged = false;
+        self.voltage = 0.0;
+        self.reverse_damage_timer_s = 0.0;
+    }
+}
+
+impl CircuitDevice for BreadboardComponent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn terminal_pins(&self) -> Vec<String> {
+        let mut pins = Vec::new();
+        for col in 1..=30 {
+            for row in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] {
+                pins.push(format!("{}{}", row, col));
+            }
+        }
+        pins
+    }
+
+    fn stamp_dc(&self, _matrix: &mut MnaMatrix) {}
+
+    fn stamp_transient(&self, _matrix: &mut MnaMatrix, _context: &TimeContext) {}
+
+    fn update_state(&mut self, _voltages: &NodeVoltageLookup, _dt: f64) {}
+
+    fn check_limits(&self, _voltages: &NodeVoltageLookup, _dt: f64) -> Vec<DeviceWarning> {
+        Vec::new()
+    }
+
+    fn is_damaged(&self) -> bool {
+        false
+    }
+
+    fn reset_device(&mut self) {}
+}

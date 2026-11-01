@@ -1039,6 +1039,12 @@ impl MnaCircuitSolver {
             }
         }
 
+        // Preserve capacitor currents before branch_currents.clear()
+        let preserved_cap_currents: HashMap<String, f32> = capacitors
+            .keys()
+            .filter_map(|id| branch_currents.get(id).map(|&i| (id.clone(), i)))
+            .collect();
+
         // Helper to query node voltage
         let node_volt = |u: Option<usize>| -> f64 {
             u.map(|i| if i < x.len() { x[i] } else { 0.0 }).unwrap_or(0.0)
@@ -1056,6 +1062,11 @@ impl MnaCircuitSolver {
         // 11. Compute branch currents and update LED physical states
         branch_currents.clear();
 
+        // Restore capacitor branch currents so steady-state leakage is observable
+        for (cap_id, i_cap) in preserved_cap_currents {
+            branch_currents.insert(cap_id, i_cap);
+        }
+
         for diode in &diode_branches {
             let va = node_volt(diode.anode);
             let vc = node_volt(diode.cathode);
@@ -1064,10 +1075,10 @@ impl MnaCircuitSolver {
             let id = solve_diode_current(v_tot, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt);
 
             if let Some(target_led) = leds.get_mut(&diode.id) {
-                if id >= 0.0003 {
+                if id >= 0.00005 {
                     target_led.is_lit = true;
                     // Luminous intensity scales with forward current
-                    target_led.brightness = ((id / 0.015) as f32).clamp(0.02, 1.0);
+                    target_led.brightness = ((id / 0.015) as f32).clamp(0.01, 1.0);
                 } else {
                     target_led.is_lit = false;
                     target_led.brightness = 0.0;

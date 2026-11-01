@@ -21,8 +21,8 @@ use sim_core::{
 #[test]
 fn test_adv_all_led_colors_forward_voltages() {
     let test_cases = [
-        ("red", 1.8),
-        ("#ef4444", 1.8),
+        ("red", 2.2),
+        ("#ef4444", 2.2),
         ("yellow", 2.0),
         ("#eab308", 2.0),
         ("orange", 2.0),
@@ -217,7 +217,7 @@ fn test_adv_led_operating_forward_bias_across_resistors() {
     // I_expected = (5.0 - Vf) / (R + R_driver + R_bulk) = (5.0 - Vf) / (R + 0.05 + 5.0)
     let resistor_values = [220.0, 330.0, 470.0, 1000.0, 2200.0, 4700.0];
     let colors = [
-        ("red", 1.8),
+        ("red", 2.2),
         ("yellow", 2.0),
         ("green", 2.2),
         ("blue", 3.2),
