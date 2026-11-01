@@ -5005,7 +5005,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.4 • Cycle-Accurate Simulator</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.5 • Cycle-Accurate Simulator</p>
                   </div>
                 </div>
                 <button
