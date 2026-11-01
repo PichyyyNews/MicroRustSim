@@ -11,23 +11,27 @@ interface PotentiometerProps {
 export const Potentiometer: React.FC<PotentiometerProps> = ({ value = 0.5, isInteractive = true, onValueChange, onPinMouseDown }) => {
   const isDragging = useRef(false);
 
+  // Strictly sanitize value to a normalized 0.0..1.0 numeric float (prevent string concatenation jumps from Wokwi attrs.value)
+  const rawNum = typeof value === 'number' ? value : parseFloat(String(value));
+  const safeVal = isNaN(rawNum) ? 0.5 : rawNum > 1.0 ? 0.5 : Math.max(0, Math.min(1, rawNum));
+
   // Map 0.0..1.0 to -135deg..+135deg (270 degrees sweep)
-  const angle = -135 + value * 270;
-  const voltage = (value * 5.0).toFixed(2);
+  const angle = -135 + safeVal * 270;
+  const voltage = (safeVal * 5.0).toFixed(2);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isInteractive) return;
     e.stopPropagation();
     isDragging.current = true;
     const startY = e.clientY;
-    const startVal = value;
+    const startVal = safeVal;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDragging.current) return;
       const dy = startY - moveEvent.clientY; // drag up increases, down decreases
       const delta = dy / 100;
       const next = Math.max(0, Math.min(1, startVal + delta));
-      onValueChange?.(next);
+      onValueChange?.(Number(next.toFixed(3)));
     };
 
     const handleMouseUp = () => {

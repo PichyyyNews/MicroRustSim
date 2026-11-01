@@ -295,7 +295,9 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                 <div className="mt-2 bg-[#1c1c20] border border-zinc-800/60 rounded-xl p-3 space-y-3 text-xs">
                   {/* Potentiometer */}
                   {selectedComp.kind === 'potentiometer' && (() => {
-                    const wiperVal = typeof selectedComp.props?.value === 'number' ? selectedComp.props.value : 0.5;
+                    const rawVal = selectedComp.props?.value;
+                    const parsed = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal));
+                    const wiperVal = isNaN(parsed) ? 0.5 : parsed > 1.0 ? 0.5 : Math.max(0, Math.min(1, parsed));
                     const voltage = (wiperVal * 5.0).toFixed(2);
                     const adcRaw = Math.round(wiperVal * 1023);
                     const percent = Math.round(wiperVal * 100);

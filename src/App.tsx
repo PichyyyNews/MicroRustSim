@@ -779,6 +779,20 @@ export default function App() {
             else if (p.type?.includes('potentiometer') || p.type?.includes('pot')) kind = 'potentiometer';
 
             const { rotation, flipped, ...restProps } = p.attrs || {};
+            // For potentiometers, Wokwi diagram.json attrs.value represents total resistance (e.g. "10000")
+            // Separate total resistance from normalized 0.0..1.0 wiper position to prevent jump anomalies
+            if (kind === 'potentiometer') {
+              const rawVal = restProps.value;
+              const numVal = typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal));
+              if (!isNaN(numVal) && numVal > 1.0) {
+                restProps.ohms = numVal;
+                restProps.value = 0.5;
+              } else if (!isNaN(numVal)) {
+                restProps.value = Math.max(0, Math.min(1, numVal));
+              } else {
+                restProps.value = 0.5;
+              }
+            }
             return {
               id: p.id,
               kind,
@@ -4154,11 +4168,14 @@ export default function App() {
                       }
 
                       if (c.kind === 'potentiometer') {
+                        const potRaw = c.props?.value;
+                        const potNum = typeof potRaw === 'number' ? potRaw : parseFloat(String(potRaw));
+                        const potVal = isNaN(potNum) ? 0.5 : potNum > 1.0 ? 0.5 : Math.max(0, Math.min(1, potNum));
                         return (
                           <div {...wrapperProps}>
                             <Potentiometer
                               id={c.id}
-                              value={c.props?.value ?? 0.5}
+                              value={potVal}
                               isInteractive={activeTool !== 'move'}
                               onValueChange={(val: number) => {
                                 setComponents((prev) =>

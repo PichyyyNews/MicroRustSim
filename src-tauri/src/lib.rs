@@ -617,7 +617,18 @@ pub fn run() {
                                 engine.buttons.insert(c.id.clone(), components::PushbuttonComponent::new(c.id));
                             }
                             "potentiometer" => {
-                                let val = c.props.get("value").and_then(|v| v.as_f64()).map(|f| f as f32).unwrap_or(0.5);
+                                let raw_val = c.props.get("value")
+                                    .and_then(|v| {
+                                        if let Some(f) = v.as_f64() {
+                                            Some(f as f32)
+                                        } else if let Some(s) = v.as_str() {
+                                            s.parse::<f32>().ok()
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap_or(0.5);
+                                let val = if raw_val > 1.0 { 0.5 } else { raw_val.clamp(0.0, 1.0) };
                                 let mut pot = components::PotentiometerComponent::new(c.id.clone());
                                 pot.value = val;
                                 engine.pots.insert(c.id, pot);
