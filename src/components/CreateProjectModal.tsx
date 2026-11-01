@@ -361,8 +361,8 @@ void loop() {
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
         { type: 'wokwi-breadboard-half', id: 'bb1', top: 220, left: 560, attrs: {} },
-        { type: 'wokwi-resistor', id: 'r1', top: 100, left: 580, attrs: { value: '10000' } },
-        { type: 'wokwi-capacitor', id: 'cap1', top: 180, left: 660, attrs: { capacitance: '10e-6', polarized: 'true', voltageRating: '25' } },
+        { type: 'wokwi-resistor', id: 'r1', top: 100, left: 580, attrs: { value: '10000', ohms: 10000 } },
+        { type: 'wokwi-capacitor', id: 'cap1', top: 180, left: 660, attrs: { capacitance: 10e-6, polarized: true, voltageRating: 25 } },
       ],
       connections: [
         ['uno1:9', 'r1:1', '#a855f7', []],

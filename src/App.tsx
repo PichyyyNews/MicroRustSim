@@ -894,6 +894,20 @@ export default function App() {
               } else {
                 restProps.value = 0.5;
               }
+            } else if (kind === 'resistor') {
+              const rawVal = restProps.value ?? restProps.resistance ?? restProps.ohms;
+              if (rawVal !== undefined) {
+                const s = String(rawVal).trim().toLowerCase();
+                let numVal = parseFloat(s);
+                if (s.endsWith('k') || s.endsWith('kω') || s.endsWith('kohm')) {
+                  numVal *= 1000;
+                } else if (s.endsWith('m') || s.endsWith('mω') || s.endsWith('mohm')) {
+                  numVal *= 1000000;
+                }
+                if (!isNaN(numVal) && numVal > 0) {
+                  restProps.ohms = numVal;
+                }
+              }
             } else if (kind === 'capacitor') {
               if (restProps.capacitance !== undefined) {
                 const parsedCap = typeof restProps.capacitance === 'number' ? restProps.capacitance : parseFloat(String(restProps.capacitance));
