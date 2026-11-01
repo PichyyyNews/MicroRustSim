@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::*;
 use crate::constants::*;
 use crate::device::MnaMatrix;
+use crate::mcu::{atmega328p_pwm_frequency, evaluate_time_domain_pwm};
 use crate::{LogicState, McuCore, PinId, Wire};
 
 /// Physical fault category detected by nodal circuit engine.
@@ -669,6 +670,7 @@ impl MnaCircuitSolver {
         mna.stamp_thevenin_source(pwr33_idx, None, 1, v_src_3v3, r_int_3v3_base);
 
         // 3. Stamp MCU GPIO pins
+        let mut pwm_pins: Vec<(String, u8, u32, Option<usize>)> = Vec::new();
         for &pin_name in &mcu_pins {
             if pin_name == "5V" || pin_name == "3.3V" || pin_name.starts_with("GND") || pin_name == "VIN" || pin_name == "IOREF" {
                 continue;
@@ -697,17 +699,21 @@ impl MnaCircuitSolver {
                     let g = 1.0 / 25.0;
                     mna.stamp_norton_source(pin_idx, None, g, v_target * g);
                 }
-                LogicState::Pwm { duty, .. } => {
-                    // Averaged DC equivalent PWM driver with duty cycle
-                    let duty_ratio = (duty as f64) / 255.0;
-                    let v_pwm = duty_ratio * v_src_5v;
-                    let g = 1.0 / 30.0;
-                    mna.stamp_norton_source(pin_idx, None, g, v_pwm * g);
+                LogicState::Pwm { duty, freq_hz } => {
+                    // Captured for dynamic time-domain square wave switching during sub-stepping
+                    let f = if freq_hz > 0 { freq_hz as u32 } else { atmega328p_pwm_frequency(pin_name) as u32 };
+                    pwm_pins.push((pin_name.to_string(), duty, f, pin_idx));
                 }
                 LogicState::Floating => {
                     // High-Z input leakage to GND
                     mna.stamp_conductance(pin_idx, None, 1.0 / R_GPIO_INPUT_HIZ);
                 }
+            }
+
+            // Analog input pins (A0..A5) possess internal Sample-and-Hold sampling network conductance
+            if pin_name.starts_with('A') {
+                let g_sh = C_ADC_SAMPLE_HOLD * 9600.0;
+                mna.stamp_conductance(pin_idx, None, g_sh);
             }
         }
 
@@ -790,9 +796,10 @@ impl MnaCircuitSolver {
         }
 
         // 9. Dynamic Sub-stepping Simulation Loop
-        // When dynamic reactive elements (capacitors) are present, use 20 sub-steps per frame.
+        // When dynamic reactive elements (capacitors) or PWM switching are present, use sub-steps.
         // Purely resistive / diode circuits execute in 1 step.
-        let n_sub = if capacitors.is_empty() { 1 } else { 20 };
+        let has_pwm = !pwm_pins.is_empty();
+        let n_sub = if capacitors.is_empty() && !has_pwm { 1 } else if has_pwm { 100 } else { 20 };
         let dt_sub = (1.0 / 60.0) / (n_sub as f64);
 
         let mut x = vec![0.0f64; mna_static.dim];
@@ -806,11 +813,30 @@ impl MnaCircuitSolver {
                 solve_diode_current(led_vd[idx], d.forward_voltage, d.series_rs, d.is_sat, d.vt)
             })
         }).collect();
+        let mut avg_diode_currents = vec![0.0f64; diode_branches.len()];
+        let mut pwm_voltage_accum: HashMap<String, f64> = HashMap::new();
+        let mut pwm_current_accum: HashMap<String, f64> = HashMap::new();
         let mut last_r_5v = r_int_5v_base;
+        let mut last_r_3v3 = r_int_3v3_base;
         let mut final_mna = mna_static.clone();
 
         for _sub in 0..n_sub {
             let mut mna = mna_static.clone();
+
+            // Evaluate time-domain PWM square wave switching for this sub-step
+            let t_sub = t_time + (_sub as f64) * dt_sub;
+            let mut pwm_states: Vec<(String, bool, usize)> = Vec::with_capacity(pwm_pins.len());
+            for (pin_name, duty, freq_hz, pin_idx) in &pwm_pins {
+                let is_high = evaluate_time_domain_pwm(t_sub, *duty, *freq_hz as f64);
+                if let Some(p_idx) = *pin_idx {
+                    pwm_states.push((pin_name.clone(), is_high, p_idx));
+                    if is_high {
+                        mna.stamp_conductance(pwr5v_idx, Some(p_idx), 1.0 / R_GPIO_OUT_P);
+                    } else {
+                        mna.stamp_conductance(Some(p_idx), None, 1.0 / R_GPIO_OUT_N);
+                    }
+                }
+            }
 
             // Stamp Dynamic Capacitors with Backward Euler companion model for dt_sub
             for (cap_id, cap) in capacitors.iter() {
@@ -836,20 +862,23 @@ impl MnaCircuitSolver {
             let mna_base = mna.clone();
             let mut mna_iter = mna_base.clone();
             let mut r_iter_5v = last_r_5v;
+            let mut r_iter_3v3 = last_r_3v3;
 
             // Helper to run Newton-Raphson iterations on an MNA base configuration
             let run_nr = |mna_base_stage: &MnaMatrix,
-                              max_iters: usize,
-                              sol_x: &mut Vec<f64>,
-                              vd: &mut Vec<f64>,
-                              id_curr: &mut Vec<f64>,
-                              r_5v: &mut f64,
-                              mna_stage: &mut MnaMatrix| -> bool {
+                          max_iters: usize,
+                          sol_x: &mut Vec<f64>,
+                          vd: &mut Vec<f64>,
+                          id_curr: &mut Vec<f64>,
+                          r_5v: &mut f64,
+                          r_3v3: &mut f64,
+                          mna_stage: &mut MnaMatrix| -> bool {
                 let mut converged = false;
                 for _iter in 0..max_iters {
                     mna_stage.a.copy_from_slice(&mna_base_stage.a);
                     mna_stage.rhs.copy_from_slice(&mna_base_stage.rhs);
                     mna_stage.a[n * mna_stage.dim + n] = -*r_5v;
+                    mna_stage.a[(n + 1) * mna_stage.dim + (n + 1)] = -*r_3v3;
 
                     for (idx, diode) in diode_branches.iter().enumerate() {
                         let v_d = vd[idx];
@@ -894,6 +923,19 @@ impl MnaCircuitSolver {
                     let r_diff = (*r_5v - r_target).abs();
                     *r_5v = 0.85 * *r_5v + 0.15 * r_target;
 
+                    // Dynamic LP2985 3.3V LDO current limit foldback
+                    let curr_i3v3 = if n + 1 < sol_x.len() { sol_x[n + 1].abs() } else { 0.0 };
+                    let r_target_3v3 = if curr_i3v3 > I_LIMIT_3V3 {
+                        (r_int_3v3_base + 50.0 * ((curr_i3v3 - I_LIMIT_3V3) / 0.020).powi(2)).min(100.0)
+                    } else {
+                        r_int_3v3_base
+                    };
+                    let r_diff_3v3 = (*r_3v3 - r_target_3v3).abs();
+                    *r_3v3 = 0.85 * *r_3v3 + 0.15 * r_target_3v3;
+
+                    mna_stage.a[n * mna_stage.dim + n] = -*r_5v;
+                    mna_stage.a[(n + 1) * mna_stage.dim + (n + 1)] = -*r_3v3;
+
                     // Dual convergence check (voltage and current)
                     let mut v_converged = true;
                     let mut i_converged = true;
@@ -922,7 +964,7 @@ impl MnaCircuitSolver {
                         id_curr[idx] = new_id;
                     }
 
-                    if v_converged && i_converged && r_diff < 0.005 {
+                    if v_converged && i_converged && r_diff < 0.005 && r_diff_3v3 < 0.005 {
                         converged = true;
                         break;
                     }
@@ -938,14 +980,13 @@ impl MnaCircuitSolver {
                 &mut led_vd,
                 &mut led_id_curr,
                 &mut r_iter_5v,
+                &mut r_iter_3v3,
                 &mut mna_iter,
             );
 
             // SPICE Convergence Fallbacks (docs/PHYSICS_SPEC.md §2.4)
             if !converged && !diode_branches.is_empty() {
                 // Fallback 1: gmin-stepping
-                // Add large diagonal conductance (1e-3 S) from all nodes to ground to linearize the
-                // system, then step down geometrically across MAX_GMIN_STEPS to G_MIN_DEFAULT (1e-12 S).
                 let mut gmin_ok = false;
                 for step in 0..MAX_GMIN_STEPS {
                     let frac = step as f64 / ((MAX_GMIN_STEPS - 1).max(1) as f64);
@@ -962,6 +1003,7 @@ impl MnaCircuitSolver {
                         &mut led_vd,
                         &mut led_id_curr,
                         &mut r_iter_5v,
+                        &mut r_iter_3v3,
                         &mut mna_iter,
                     );
                     if step_conv && step == MAX_GMIN_STEPS - 1 {
@@ -975,8 +1017,6 @@ impl MnaCircuitSolver {
                     converged = true;
                 } else {
                     // Fallback 2: source-stepping
-                    // Ramp all independent excitation sources: e(lambda) = lambda * e_final,
-                    // scaling lambda from 0.1 to 1.0 across MAX_SOURCE_STEPS.
                     let mut src_ok = false;
                     for step in 1..=MAX_SOURCE_STEPS {
                         let lambda = step as f64 / (MAX_SOURCE_STEPS as f64);
@@ -992,6 +1032,7 @@ impl MnaCircuitSolver {
                             &mut led_vd,
                             &mut led_id_curr,
                             &mut r_iter_5v,
+                            &mut r_iter_3v3,
                             &mut mna_iter,
                         );
                         if step_conv && step == MAX_SOURCE_STEPS {
@@ -1009,6 +1050,25 @@ impl MnaCircuitSolver {
 
             final_mna = mna_iter;
             last_r_5v = r_iter_5v;
+            last_r_3v3 = r_iter_3v3;
+
+            // Accumulate diode currents across sub-steps
+            for idx in 0..diode_branches.len() {
+                avg_diode_currents[idx] += led_id_curr[idx] / (n_sub as f64);
+            }
+
+            // Accumulate PWM pin voltages and currents
+            let sub_v5v = if let Some(i5) = pwr5v_idx { if i5 < x.len() { x[i5] } else { 0.0 } } else { 0.0 };
+            for (p_name, is_high, p_idx) in &pwm_states {
+                let vp = if *p_idx < x.len() { x[*p_idx] } else { 0.0 };
+                *pwm_voltage_accum.entry(p_name.clone()).or_insert(0.0) += vp / (n_sub as f64);
+                let ip = if *is_high {
+                    (sub_v5v - vp) / R_GPIO_OUT_P
+                } else {
+                    vp / R_GPIO_OUT_N
+                };
+                *pwm_current_accum.entry(p_name.clone()).or_insert(0.0) += ip / (n_sub as f64);
+            }
 
             // Update capacitor internal state for this sub-step
             for (cap_id, cap) in capacitors.iter_mut() {
@@ -1067,12 +1127,16 @@ impl MnaCircuitSolver {
             branch_currents.insert(cap_id, i_cap);
         }
 
-        for diode in &diode_branches {
+        for (idx, diode) in diode_branches.iter().enumerate() {
             let va = node_volt(diode.anode);
             let vc = node_volt(diode.cathode);
             let v_tot = va - vc;
 
-            let id = solve_diode_current(v_tot, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt);
+            let id = if has_pwm {
+                avg_diode_currents[idx]
+            } else {
+                solve_diode_current(v_tot, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt)
+            };
 
             if let Some(target_led) = leds.get_mut(&diode.id) {
                 if id >= 0.00005 {
@@ -1141,7 +1205,9 @@ impl MnaCircuitSolver {
             }
             let pin_idx = get_node_idx("uno1", pin_name);
             let state = mcu.get_pin_state(pin_name);
-            let ip = if let Some(idx) = pin_idx {
+            let ip = if let Some(i_pwm) = pwm_current_accum.get(pin_name) {
+                *i_pwm
+            } else if let Some(idx) = pin_idx {
                 let vp = node_volt(Some(idx));
                 match state {
                     LogicState::High => (v5v - vp) / R_GPIO_OUT_P,
@@ -1172,7 +1238,7 @@ impl MnaCircuitSolver {
 
         let mut p_dissipated = 0.0;
         p_dissipated += i5v * i5v * last_r_5v;
-        p_dissipated += i33 * i33 * r_int_3v3_base;
+        p_dissipated += i33 * i33 * last_r_3v3;
 
         for (res_id, res) in resistors {
             let v1 = node_volt(get_node_idx(res_id, "1"));
@@ -1283,7 +1349,9 @@ impl MnaCircuitSolver {
             if pin_name.starts_with("GND") {
                 continue;
             }
-            let volt = if let Some(idx) = get_node_idx("uno1", pin_name) {
+            let volt = if let Some(&v_pwm) = pwm_voltage_accum.get(pin_name) {
+                v_pwm as f32
+            } else if let Some(idx) = get_node_idx("uno1", pin_name) {
                 node_volt_clean(Some(idx))
             } else {
                 let state = mcu.get_pin_state(pin_name);
@@ -1430,12 +1498,24 @@ impl MnaCircuitSolver {
         }
 
         // 13. Back-propagate pin voltages to MCU inputs & ADC channels
+        let v_aref = pin_voltages.get(&PinId::new("uno1", "AREF")).copied().unwrap_or(v5v as f32);
+        mcu.set_adc_ref(v5v as f32, v_aref);
+
         for &pin_name in &mcu_pins {
             let state = mcu.get_pin_state(pin_name);
             let volt = pin_voltages.get(&PinId::new("uno1", pin_name)).copied().unwrap_or(0.0);
             match state {
                 LogicState::InputPullUp | LogicState::Floating => {
-                    let is_high = volt >= (v5v as f32 * V_SCHMITT_VIH_FRAC as f32);
+                    let prev_high = mcu.get_pin_input(pin_name);
+                    let v_ih = v5v as f32 * V_SCHMITT_VIH_FRAC as f32;
+                    let v_il = v5v as f32 * V_SCHMITT_VIL_FRAC as f32;
+                    let is_high = if volt >= v_ih {
+                        true
+                    } else if volt <= v_il {
+                        false
+                    } else {
+                        prev_high
+                    };
                     mcu.set_pin_input(pin_name, is_high);
                 }
                 _ => {}
@@ -1443,7 +1523,14 @@ impl MnaCircuitSolver {
 
             if pin_name.starts_with('A') {
                 if let Ok(ch) = pin_name[1..].parse::<u8>() {
-                    mcu.set_adc_voltage(ch, volt);
+                    let is_floating = get_node_idx("uno1", pin_name).is_none();
+                    let adc_volt = if is_floating && power_config.mode == PowerRealismMode::Realistic && power_config.enable_noise {
+                        let noise = deterministic_gaussian_noise(power_config.seed.wrapping_add(ch as u64 * 101), step_count, 0.45);
+                        (2.2 + noise).clamp(0.0, 5.0) as f32
+                    } else {
+                        volt
+                    };
+                    mcu.set_adc_voltage(ch, adc_volt);
                 }
             }
         }
@@ -1496,6 +1583,33 @@ impl MnaCircuitSolver {
                     });
                 }
             }
+        }
+
+        // Total ATmega328P package VCC/GND current limit (200mA absolute maximum per Section 32.1)
+        let mut total_gpio_vcc_current = 0.0f32;
+        for &pin_name in &mcu_pins {
+            if pin_name == "5V" || pin_name == "3.3V" || pin_name.starts_with("GND") || pin_name == "VIN" || pin_name == "IOREF" {
+                continue;
+            }
+            if let Some(&i_pin) = branch_currents.get(&format!("uno1:{}", pin_name)) {
+                let state = mcu.get_pin_state(pin_name);
+                if state == LogicState::High || state == LogicState::InputPullUp {
+                    total_gpio_vcc_current += i_pin.abs();
+                }
+            }
+        }
+        if total_gpio_vcc_current > I_VCC_TOTAL_MAX_A as f32 {
+            faults.push(CircuitFault {
+                fault_type: FaultType::Overcurrent,
+                component_id: "uno1".to_string(),
+                pin_name: "VCC".to_string(),
+                description: format!(
+                    "Overcurrent: Total ATmega328P GPIO current {:.1}mA exceeds package limit (200mA absolute maximum)",
+                    total_gpio_vcc_current * 1000.0
+                ),
+                current_ma: total_gpio_vcc_current * 1000.0,
+                voltage: v5v as f32,
+            });
         }
 
         // LED Overcurrent (>40mA) & Reverse Polarity

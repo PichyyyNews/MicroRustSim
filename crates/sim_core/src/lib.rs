@@ -7,9 +7,11 @@ use avr8rs::runtime::{Backend, Runtime};
 
 pub mod constants;
 pub mod device;
+pub mod mcu;
 pub mod solver;
 pub use constants::*;
 pub use device::*;
+pub use mcu::*;
 pub use solver::{
     deterministic_gaussian_noise, pnjlim, CircuitFault, FaultType, MnaCircuitSolver, PowerRealismConfig,
     PowerRealismLevel, PowerRealismMode, TopologyReport,
@@ -143,8 +145,13 @@ pub trait McuCore {
     fn step_cycles(&mut self, cycles: u64);
     fn get_pin_state(&mut self, pin_name: &str) -> LogicState;
     fn set_pin_input(&mut self, pin_name: &str, high: bool);
+    fn get_pin_input(&self, _pin_name: &str) -> bool {
+        false
+    }
     fn set_pin_mode_pullup(&mut self, _pin_name: &str) {}
+    fn set_pin_override(&mut self, _pin_name: &str, _state: LogicState) {}
     fn set_adc_voltage(&mut self, _channel: u8, _voltage: f32) {}
+    fn set_adc_ref(&mut self, _avcc: f32, _aref: f32) {}
     fn read_serial_output(&mut self) -> Vec<u8>;
     fn write_serial_input(&mut self, bytes: &[u8]);
     fn cycles(&self) -> u64;
@@ -160,6 +167,7 @@ pub struct ArduinoUnoCore {
     rx_buffer: Vec<u8>,
     tx_buffer: Vec<u8>,
     pin_overrides: HashMap<String, LogicState>,
+    register_bank: McuPinRegisterBank,
 }
 
 impl ArduinoUnoCore {
@@ -176,6 +184,7 @@ impl ArduinoUnoCore {
             rx_buffer: Vec::new(),
             tx_buffer: Vec::new(),
             pin_overrides: HashMap::new(),
+            register_bank: McuPinRegisterBank::new(),
         }
     }
 
@@ -191,6 +200,7 @@ impl ArduinoUnoCore {
             rx_buffer: Vec::new(),
             tx_buffer: Vec::new(),
             pin_overrides: HashMap::new(),
+            register_bank: McuPinRegisterBank::new(),
         }
     }
     pub fn set_pin_mode_pullup(&mut self, pin_name: &str) {
@@ -215,6 +225,7 @@ impl McuCore for ArduinoUnoCore {
         self.rx_buffer.clear();
         self.tx_buffer.clear();
         self.pin_overrides.clear();
+        self.register_bank.clear();
     }
 
     fn load_hex(&mut self, hex: &str) -> Result<(), String> {
@@ -343,6 +354,7 @@ impl McuCore for ArduinoUnoCore {
     }
 
     fn set_pin_input(&mut self, pin_name: &str, high: bool) {
+        self.register_bank.set_digital_input(pin_name, high);
         if let Ok(d) = pin_name.parse::<u8>() {
             if d <= 7 {
                 self.board.set_input(self.backend.as_ref(), &mut self.runtime, self.board.portd, d, high);
@@ -358,8 +370,16 @@ impl McuCore for ArduinoUnoCore {
         }
     }
 
+    fn get_pin_input(&self, pin_name: &str) -> bool {
+        self.register_bank.get_digital_input(pin_name)
+    }
+
     fn set_pin_mode_pullup(&mut self, pin_name: &str) {
         self.pin_overrides.insert(pin_name.to_string(), LogicState::InputPullUp);
+    }
+
+    fn set_pin_override(&mut self, pin_name: &str, state: LogicState) {
+        self.pin_overrides.insert(pin_name.to_string(), state);
     }
 
     fn set_adc_voltage(&mut self, channel: u8, voltage: f32) {
@@ -371,6 +391,23 @@ impl McuCore for ArduinoUnoCore {
                     borrowed[channel as usize] = avr8rs::runtime::Value::Number(voltage.clamp(0.0, 5.0) as f64);
                 }
             }
+        }
+    }
+
+    fn set_adc_ref(&mut self, avcc: f32, aref: f32) {
+        if self.board.adc.0 > 0 {
+            self.backend.set(
+                &mut self.runtime,
+                self.board.adc,
+                "avcc",
+                avr8rs::runtime::Value::Number(avcc.clamp(0.0, 5.5) as f64),
+            );
+            self.backend.set(
+                &mut self.runtime,
+                self.board.adc,
+                "aref",
+                avr8rs::runtime::Value::Number(aref.clamp(0.0, 5.5) as f64),
+            );
         }
     }
 
