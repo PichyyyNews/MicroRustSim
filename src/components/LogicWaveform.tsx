@@ -91,6 +91,36 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   const [timebaseMs, setTimebaseMs] = useState<TimebaseMs>(2000);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Display value smoothing (EMA + Fast Slew Bypass) for steady readable telemetry in realistic mode
+  const smoothedWaveformRef = useRef<Record<string, number>>({});
+  const smoothVal = (key: string, val: number, threshold = 0.15, alpha = 0.15): number => {
+    if (typeof val !== 'number' || isNaN(val)) return 0.0;
+    const prev = smoothedWaveformRef.current[key];
+    if (prev === undefined || Math.abs(val - prev) > threshold) {
+      smoothedWaveformRef.current[key] = val;
+      return val;
+    }
+    const next = prev * (1 - alpha) + val * alpha;
+    smoothedWaveformRef.current[key] = next;
+    return next;
+  };
+
+  const getChannelDisplayVoltage = (ch?: WaveformChannel, fallbackV = 0): number => {
+    if (!ch || !ch.history || ch.history.length === 0) return fallbackV;
+    const h = ch.history;
+    const count = Math.min(10, h.length);
+    let sum = 0;
+    for (let i = h.length - count; i < h.length; i++) {
+      sum += h[i][1];
+    }
+    const avg = sum / count;
+    const latest = h[h.length - 1][1];
+    if (Math.abs(latest - avg) > 0.2) {
+      return latest;
+    }
+    return avg;
+  };
+
   // Active Channels state (tracks user muting/unmuting individual lanes in waveform)
   const [mutedChannels, setMutedChannels] = useState<Record<string, boolean>>({});
 
@@ -182,7 +212,10 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
 
     const totalPotOhms = 10000;
     const potRatio = Math.max(0.0, Math.min(1.0, vPinA0 / 5.0));
-    const wiperOhms = Math.round(totalPotOhms * potRatio);
+    // Use actual potentiometer physical setting if available to prevent noise jitter on resistance
+    const potComp = components.find((c) => c.kind === 'potentiometer');
+    const potWiperRatio = typeof potComp?.props?.value === 'number' ? potComp.props.value : potRatio;
+    const wiperOhms = Math.round(totalPotOhms * potWiperRatio);
     const iPotMa = (5.0 / totalPotOhms) * 1000;
 
     const isButtonPressed = vPin2 < 1.0;
@@ -544,6 +577,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
   }, [channelList, mutedChannels, dimensions, viewMode, timebaseMs, isPaused]);
 
   // Transform historical data for Shadcn Recharts (Pause & Inspect Mode)
+  // Uses anti-aliasing decimation averaging across ~120 data points so noisy physical ripple doesn't alias into weird undulating beats
   const inspectData = useMemo(() => {
     if (!isPaused) return [];
     const tRange = timebaseMs;
@@ -555,33 +589,51 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
     }
     const tStart = Math.max(0, maxT - tRange);
 
-    // Collect timestamps and map values
-    const primaryCh = channelList[0];
+    // Pick first channel with history in the current window
+    const primaryCh = channelList.find((c) => !mutedChannels[c.id] && c.history.length > 0) || channelList[0];
     if (!primaryCh || primaryCh.history.length === 0) return [];
 
     const sampled = primaryCh.history.filter(([t]) => t >= tStart);
-    // Decimate to max 60 points for high performance rendering
-    const step = Math.max(1, Math.floor(sampled.length / 50));
+    if (sampled.length === 0) return [];
 
-    return sampled
-      .filter((_, idx) => idx % step === 0)
-      .map(([t, v]) => {
-        const row: Record<string, any> = {
-          timeMs: t,
-          timeLabel: `${((t - maxT) / 1000).toFixed(2)}s`,
-          [primaryCh.id]: Number(v.toFixed(2)),
-        };
-        for (let i = 1; i < channelList.length; i++) {
-          const ch = channelList[i];
-          const closest = ch.history.reduce((prev, curr) =>
-            Math.abs(curr[0] - t) < Math.abs(prev[0] - t) ? curr : prev,
-            [t, 0]
+    const targetPoints = Math.min(120, sampled.length);
+    const bucketSize = Math.max(1, Math.floor(sampled.length / targetPoints));
+
+    const result: Record<string, any>[] = [];
+    for (let i = 0; i < sampled.length; i += bucketSize) {
+      const slice = sampled.slice(i, i + bucketSize);
+      if (slice.length === 0) continue;
+      const midT = slice[Math.floor(slice.length / 2)][0];
+      const timeLabel = `${((midT - maxT) / 1000).toFixed(2)}s`;
+
+      const row: Record<string, any> = {
+        timeMs: midT,
+        timeLabel,
+      };
+
+      for (const ch of channelList) {
+        if (!ch.history || ch.history.length === 0) {
+          row[ch.id] = 0.0;
+          continue;
+        }
+        const tMin = slice[0][0];
+        const tMax = slice[slice.length - 1][0];
+        const inBucket = ch.history.filter(([ct]) => ct >= tMin && ct <= tMax);
+        if (inBucket.length > 0) {
+          const sum = inBucket.reduce((acc, curr) => acc + curr[1], 0);
+          row[ch.id] = Number((sum / inBucket.length).toFixed(2));
+        } else {
+          const closest = ch.history.reduce(
+            (prev, curr) => (Math.abs(curr[0] - midT) < Math.abs(prev[0] - midT) ? curr : prev),
+            ch.history[0]
           );
           row[ch.id] = Number(closest[1].toFixed(2));
         }
-        return row;
-      });
-  }, [channelList, isPaused, timebaseMs]);
+      }
+      result.push(row);
+    }
+    return result;
+  }, [channelList, isPaused, timebaseMs, mutedChannels]);
 
   // Shadcn Chart configuration
   const chartConfig = useMemo(() => {
@@ -910,14 +962,15 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
                 c.id === activeCompId ||
                 (activeCompId === 'mcu' && c.id === 'ch_pin13')
             );
-            const liveV =
+            const rawV =
               activeCh && activeCh.history.length > 0
-                ? activeCh.history[activeCh.history.length - 1][1]
+                ? getChannelDisplayVoltage(activeCh)
                 : activeComp?.kind === 'potentiometer'
                 ? electricalMetrics.vPinA0
                 : activeComp?.kind === 'resistor'
                 ? electricalMetrics.vResistor
                 : electricalMetrics.vPin13;
+            const liveV = smoothVal(`live_v_${activeCompId}`, rawV, 0.15);
 
             return (
               <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
@@ -929,20 +982,26 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
             );
           })()}
 
-          <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
-            <span className="text-zinc-500 text-[10px]">I:</span>
-            <span className="font-mono tabular-nums text-sky-400 font-semibold whitespace-nowrap [word-break:keep-all]">
-              {(
-                branchCurrents?.[activeCompId] ??
-                branchCurrents?.[`${activeCompId}:anode`] ??
-                (activeComp?.kind === 'potentiometer'
-                  ? electricalMetrics.iPotMa
-                  : activeComp?.kind === 'pushbutton'
-                  ? electricalMetrics.iButtonMa
-                  : electricalMetrics.iResistorMa)
-              ).toFixed(1)}&nbsp;mA
-            </span>
-          </div>
+          {(() => {
+            const rawI =
+              branchCurrents?.[activeCompId] ??
+              branchCurrents?.[`${activeCompId}:anode`] ??
+              (activeComp?.kind === 'potentiometer'
+                ? electricalMetrics.iPotMa
+                : activeComp?.kind === 'pushbutton'
+                ? electricalMetrics.iButtonMa
+                : electricalMetrics.iResistorMa);
+            const liveI = smoothVal(`live_i_${activeCompId}`, rawI, 0.5);
+
+            return (
+              <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
+                <span className="text-zinc-500 text-[10px]">I:</span>
+                <span className="font-mono tabular-nums text-sky-400 font-semibold whitespace-nowrap [word-break:keep-all]">
+                  {liveI.toFixed(1)}&nbsp;mA
+                </span>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-1 bg-[#141416] border border-[#222226] rounded-full px-2.5 py-0.5 text-[11px]">
             <span className="text-zinc-500 text-[10px]">R:</span>
@@ -977,58 +1036,143 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           // SHADCN CHART INSPECTOR (Recharts)
           // ==========================================
           <div className="w-full h-full p-2 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[10px] text-zinc-400 px-2 pb-1">
+            <div className="flex items-center justify-between text-[10px] text-zinc-400 px-2 pb-1 shrink-0">
               <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 <span>Frozen Waveform Inspector • Hover any point to inspect exact voltage & timestamp</span>
               </span>
-              <span className="font-mono text-zinc-500">Shadcn / Recharts</span>
+              <span className="font-mono text-zinc-500">
+                {viewMode === 'tracks' ? 'Multi-lane Tracks' : 'Combined Overlay'}
+              </span>
             </div>
 
-            <div className="flex-1 w-full min-h-[80px]">
-              <ChartContainer config={chartConfig} className="h-full aspect-auto w-full">
-                <LineChart data={inspectData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1c1c20" />
-                  <XAxis
-                    dataKey="timeLabel"
-                    tickLine={false}
-                    axisLine={{ stroke: '#27272a' }}
-                    tick={{ fill: '#71717a', fontSize: 10 }}
-                  />
-                  <YAxis
-                    domain={[0, 5]}
-                    ticks={[0, 2.5, 5]}
-                    tickLine={false}
-                    axisLine={{ stroke: '#27272a' }}
-                    tick={{ fill: '#71717a', fontSize: 10 }}
-                    unit="V"
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        labelFormatter={(val) => `Δt: ${val}`}
-                        indicator="line"
-                      />
-                    }
-                  />
-                  {channelList
-                    .filter((ch) => !mutedChannels[ch.id])
-                    .map((ch) => (
-                      <Line
-                        key={ch.id}
-                        type="monotone"
-                        dataKey={ch.id}
-                        name={ch.label}
-                        stroke={ch.color}
-                        strokeWidth={1.8}
-                        dot={false}
-                        activeDot={{ r: 4, stroke: '#fff', strokeWidth: 1 }}
-                        isAnimationActive={false}
-                      />
-                    ))}
-                </LineChart>
-              </ChartContainer>
-            </div>
+            {viewMode === 'tracks' ? (
+              // MULTI-LANE TRACKS INSPECTOR: Each channel has its own dedicated synchronized lane
+              <div className="flex-1 w-full h-full flex flex-col divide-y divide-[#1e1e24] overflow-y-auto pr-1">
+                {channelList
+                  .filter((ch) => !mutedChannels[ch.id])
+                  .map((ch, idx, arr) => {
+                    const isLast = idx === arr.length - 1;
+                    const displayV = getChannelDisplayVoltage(ch);
+                    return (
+                      <div key={ch.id} className="flex-1 min-h-[38px] flex items-center relative">
+                        {/* Lane Header on left */}
+                        <div className="w-20 pl-2 pr-1 flex flex-col justify-center shrink-0 select-none z-10">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: ch.color }}
+                            />
+                            <span className="font-mono text-[10px] font-semibold text-zinc-200 truncate">
+                              {ch.label.split(' ')[0]}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[9px] text-zinc-400 tabular-nums">
+                            {displayV.toFixed(2)}&nbsp;V
+                          </span>
+                        </div>
+
+                        {/* Synchronized Recharts Track Lane */}
+                        <div className="flex-1 h-full min-h-[36px]">
+                          <ChartContainer config={chartConfig} className="h-full aspect-auto w-full">
+                            <LineChart
+                              data={inspectData}
+                              syncId="inspect-tracks-sync"
+                              margin={{ top: 2, right: 16, left: -24, bottom: isLast ? 14 : 2 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="#18181c" />
+                              <YAxis
+                                domain={[0, ch.maxVal || 5]}
+                                ticks={[0, ch.maxVal || 5]}
+                                tickLine={false}
+                                axisLine={{ stroke: '#222226' }}
+                                tick={{ fill: '#71717a', fontSize: 8 }}
+                                unit="V"
+                              />
+                              {isLast ? (
+                                <XAxis
+                                  dataKey="timeLabel"
+                                  tickLine={false}
+                                  axisLine={{ stroke: '#27272a' }}
+                                  tick={{ fill: '#71717a', fontSize: 9 }}
+                                />
+                              ) : (
+                                <XAxis dataKey="timeLabel" hide={true} />
+                              )}
+                              <ChartTooltip
+                                content={
+                                  <ChartTooltipContent
+                                    labelFormatter={(val) => `Δt: ${val}`}
+                                    formatter={(val) => `${Number(val).toFixed(2)}\u00A0V`}
+                                    indicator="line"
+                                  />
+                                }
+                              />
+                              <Line
+                                type="linear"
+                                dataKey={ch.id}
+                                name={ch.label}
+                                stroke={ch.color}
+                                strokeWidth={1.8}
+                                dot={false}
+                                activeDot={{ r: 3.5, stroke: '#fff', strokeWidth: 1 }}
+                                isAnimationActive={false}
+                              />
+                            </LineChart>
+                          </ChartContainer>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              // COMBINED OVERLAY INSPECTOR
+              <div className="flex-1 w-full min-h-[80px]">
+                <ChartContainer config={chartConfig} className="h-full aspect-auto w-full">
+                  <LineChart data={inspectData} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1c1c20" />
+                    <XAxis
+                      dataKey="timeLabel"
+                      tickLine={false}
+                      axisLine={{ stroke: '#27272a' }}
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                    />
+                    <YAxis
+                      domain={[0, 5]}
+                      ticks={[0, 2.5, 5]}
+                      tickLine={false}
+                      axisLine={{ stroke: '#27272a' }}
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      unit="V"
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(val) => `Δt: ${val}`}
+                          formatter={(val) => `${Number(val).toFixed(2)}\u00A0V`}
+                          indicator="line"
+                        />
+                      }
+                    />
+                    {channelList
+                      .filter((ch) => !mutedChannels[ch.id])
+                      .map((ch) => (
+                        <Line
+                          key={ch.id}
+                          type="linear"
+                          dataKey={ch.id}
+                          name={ch.label}
+                          stroke={ch.color}
+                          strokeWidth={1.8}
+                          dot={false}
+                          activeDot={{ r: 4, stroke: '#fff', strokeWidth: 1 }}
+                          isAnimationActive={false}
+                        />
+                      ))}
+                  </LineChart>
+                </ChartContainer>
+              </div>
+            )}
           </div>
         ) : (
           // ==========================================
@@ -1046,7 +1190,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
           </span>
           {channelList.map((ch) => {
             const isActive = !mutedChannels[ch.id];
-            const latestVal = ch.history.length > 0 ? ch.history[ch.history.length - 1][1] : 0.0;
+            const displayVal = getChannelDisplayVoltage(ch);
             return (
               <button
                 key={ch.id}
@@ -1070,7 +1214,7 @@ export const LogicWaveform: React.FC<LogicWaveformProps> = ({
                   className="font-mono font-semibold whitespace-nowrap [word-break:keep-all]"
                   style={{ color: isActive ? ch.color : '#71717a' }}
                 >
-                  {latestVal.toFixed(2)}&nbsp;V
+                  {displayVal.toFixed(2)}&nbsp;V
                 </span>
                 {isActive ? (
                   <Eye className="w-2.5 h-2.5 opacity-60 ml-0.5" />

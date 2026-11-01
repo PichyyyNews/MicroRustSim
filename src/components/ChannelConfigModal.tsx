@@ -147,6 +147,7 @@ export function buildDiagramChannels(
     if (comp.kind === 'potentiometer') label = `Pot Wiper (${comp.id})`;
     if (comp.kind === 'resistor') label = `Resistor (${comp.id})`;
 
+    const isConnected = compWires.length > 0;
     const existing = savedMap.get(channelId);
     result.push({
       id: channelId,
@@ -154,8 +155,9 @@ export function buildDiagramChannels(
       label: existing?.label || label,
       kind: comp.kind,
       color: existing?.color || CHANNEL_PALETTE[colorIdx++ % CHANNEL_PALETTE.length],
-      // Respect user's previous toggle if exists, otherwise auto-enable all interactive components
-      enabled: existing !== undefined ? existing.enabled : comp.kind !== 'resistor',
+      // Respect user's previous toggle if exists, otherwise auto-enable connected interactive components
+      // Unwired spare components default to false to prevent dead 0V flatlines cluttering the scope
+      enabled: existing !== undefined ? existing.enabled : (isConnected && comp.kind !== 'resistor'),
       pinConnection: pinConn,
       wireColor,
       compDetails,

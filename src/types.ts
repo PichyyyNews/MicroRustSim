@@ -5,6 +5,7 @@ export type ComponentKind =
   | 'resistor' 
   | 'pushbutton' 
   | 'potentiometer'
+  | 'capacitor'
   | 'text_label';
 
 export interface CircuitComponent {

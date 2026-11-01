@@ -43,6 +43,7 @@ import {
   Type,
   Send,
   ArrowRight,
+  ArrowDownToLine,
 } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -79,6 +80,7 @@ import { Led } from './components/Led';
 import { Resistor } from './components/Resistor';
 import { Pushbutton } from './components/Pushbutton';
 import { Potentiometer } from './components/Potentiometer';
+import { Capacitor } from './components/Capacitor';
 import { WireLayer, getOrthoVertices, updateOrthoSegment } from './components/WireLayer';
 import { LogicWaveform, WaveformChannel } from './components/LogicWaveform';
 import { FaultOverlay } from './components/FaultOverlay';
@@ -176,6 +178,8 @@ function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number }
       return { w: 52, h: 52 };
     case 'potentiometer':
       return { w: 60, h: 60 };
+    case 'capacitor':
+      return { w: 60, h: 40 };
     case 'text_label':
       return { w: 120, h: 40 };
     default:
@@ -243,6 +247,21 @@ const setupMonacoTheme = (monaco: any) => {
     },
   });
   monaco.editor.setTheme('microrustsim-dark');
+};
+
+interface SerialEntry {
+  id: number;
+  time: string;
+  text: string;
+}
+
+const getFormattedTime = (): string => {
+  const d = new Date();
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const s = d.getSeconds().toString().padStart(2, '0');
+  const ms = d.getMilliseconds().toString().padStart(3, '0');
+  return `${h}:${m}:${s}.${ms}`;
 };
 
 export default function App() {
@@ -527,9 +546,21 @@ export default function App() {
   const [pin13State, setPin13State] = useState(false);
   const [litLeds, setLitLeds] = useState<Set<string>>(new Set());
   const [ledBrightness, setLedBrightness] = useState<Record<string, number>>({});
-  const [serialLogs, setSerialLogs] = useState<string>(
-    '[System] MicroRustSim Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n'
-  );
+  const [showTimestamp, setShowTimestamp] = useState(false);
+  const [isAutoScrollPaused, setIsAutoScrollPaused] = useState(false);
+  const autoScrollSerialRef = useRef(true);
+  const isAutoScrollPausedRef = useRef(false);
+  autoScrollSerialRef.current = autoScrollSerial;
+  isAutoScrollPausedRef.current = isAutoScrollPaused;
+
+  const initialTime = getFormattedTime();
+  const initialRaw = '[System] MicroRustSim Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n';
+  const initialTimestamped = `[${initialTime}] [System] MicroRustSim Core Online.\n[${initialTime}] [System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n`;
+
+  const [serialLogs, setSerialLogs] = useState<string>(initialRaw);
+  const [serialTimestampedLogs, setSerialTimestampedLogs] = useState<string>(initialTimestamped);
+  const serialHasTrailingNewline = useRef(true);
+
   const [buildLogs, setBuildLogs] = useState<string>('Ready to compile sketches with avr-gcc.\n');
   const [serialInput, setSerialInput] = useState('');
   const [baudRate, setBaudRate] = useState(9600);
@@ -544,15 +575,84 @@ export default function App() {
   const [currentWireColor, setCurrentWireColor] = useState('#22c55e');
   const serialContainerRef = useRef<HTMLDivElement>(null);
 
+  const appendSerialText = useCallback((incoming: string) => {
+    if (!incoming) return;
+    const normalized = incoming.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const nowTime = getFormattedTime();
+
+    // Incrementally format timestamped addition in O(length of incoming)
+    let tsAdded = '';
+    const parts = normalized.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === 0 && !serialHasTrailingNewline.current) {
+        tsAdded += part;
+      } else if (i < parts.length - 1 || part.length > 0) {
+        tsAdded += `[${nowTime}] ${part}`;
+      }
+      if (i < parts.length - 1) {
+        tsAdded += '\n';
+      }
+    }
+    serialHasTrailingNewline.current = normalized.endsWith('\n');
+
+    setSerialLogs((prev) => (prev + normalized).slice(-65536));
+    setSerialTimestampedLogs((prev) => (prev + tsAdded).slice(-131072));
+  }, []);
+
+  const clearSerialLogs = useCallback(() => {
+    setSerialLogs('');
+    setSerialTimestampedLogs('');
+    serialHasTrailingNewline.current = true;
+  }, []);
+
+  const displayContent = useMemo(() => {
+    return showTimestamp ? serialTimestampedLogs : serialLogs;
+  }, [showTimestamp, serialLogs, serialTimestampedLogs]);
+
   const handleCopyTerminalLogs = useCallback(() => {
-    const text = bottomTab === 'serial' ? serialLogs : buildLogs;
+    const text = bottomTab === 'serial' ? displayContent : buildLogs;
     if (text) {
       navigator.clipboard.writeText(text);
       setCopiedTerminal(true);
       setStatusMessage('Terminal logs copied to clipboard');
       setTimeout(() => setCopiedTerminal(false), 2000);
     }
-  }, [bottomTab, serialLogs, buildLogs]);
+  }, [bottomTab, displayContent, buildLogs]);
+
+  const handleSerialScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!autoScrollSerialRef.current) return;
+    const el = e.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom > 24) {
+      if (!isAutoScrollPausedRef.current) {
+        isAutoScrollPausedRef.current = true;
+        setIsAutoScrollPaused(true);
+      }
+    } else if (distanceFromBottom <= 8) {
+      if (isAutoScrollPausedRef.current) {
+        isAutoScrollPausedRef.current = false;
+        setIsAutoScrollPaused(false);
+      }
+    }
+  }, []);
+
+  const toggleAutoScroll = useCallback(() => {
+    setAutoScrollSerial((prev) => {
+      const next = !prev;
+      autoScrollSerialRef.current = next;
+      isAutoScrollPausedRef.current = false;
+      setIsAutoScrollPaused(false);
+      if (next && serialContainerRef.current) {
+        requestAnimationFrame(() => {
+          if (serialContainerRef.current) {
+            serialContainerRef.current.scrollTop = serialContainerRef.current.scrollHeight;
+          }
+        });
+      }
+      return next;
+    });
+  }, []);
 
   // --- Sketch Code & Project ---
   const [sketchCode, setSketchCode] = useState(DEFAULT_BLINK_CODE);
@@ -1393,6 +1493,15 @@ export default function App() {
         } else {
           local = { x: 28, y: 64 };
         }
+      } else if (comp.kind === 'capacitor') {
+        w = 60;
+        h = 40;
+        const normPin = pinName.toLowerCase();
+        if (normPin === '1' || normPin === '+' || normPin.includes('anode') || normPin.includes('pos')) {
+          local = { x: 2, y: 20 };
+        } else {
+          local = { x: 58, y: 20 };
+        }
       }
 
       if (!local) local = { x: 20, y: 20 };
@@ -1431,6 +1540,43 @@ export default function App() {
 
   const isSteppingRef = useRef(false);
 
+  // Track window dragging state to yield simulation during window movements
+  const isWindowMovingRef = useRef(false);
+  const lastWindowMoveTimeRef = useRef(0);
+
+  // Listen to Tauri's native window move events to track when the window is being dragged by Windows OS
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let mounted = true;
+    import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => {
+        if (!mounted) return;
+        return getCurrentWindow().onMoved(() => {
+          isWindowMovingRef.current = true;
+          lastWindowMoveTimeRef.current = performance.now();
+        });
+      })
+      .then((fn) => {
+        if (fn && mounted) unlisten = fn;
+      })
+      .catch(() => {});
+
+    const handleWindowDragEnd = () => {
+      isWindowMovingRef.current = false;
+    };
+    window.addEventListener('mouseup', handleWindowDragEnd);
+    window.addEventListener('pointerup', handleWindowDragEnd);
+    window.addEventListener('blur', handleWindowDragEnd);
+
+    return () => {
+      mounted = false;
+      if (unlisten) unlisten();
+      window.removeEventListener('mouseup', handleWindowDragEnd);
+      window.removeEventListener('pointerup', handleWindowDragEnd);
+      window.removeEventListener('blur', handleWindowDragEnd);
+    };
+  }, []);
+
   useEffect(() => {
     let animId: number;
     let cancelled = false;
@@ -1461,8 +1607,19 @@ export default function App() {
         return;
       }
 
-      // Watchdog: If an IPC call got delayed or hung during window dragging on Windows
-      if (isSteppingRef.current && performance.now() - steppingStartTime > 150) {
+      // If user is dragging the window across the screen, yield stepping immediately
+      // This grants 100% of UI thread & GPU to Windows DWM, making window dragging buttery smooth (144+ FPS)
+      const isWindowMoving =
+        isWindowMovingRef.current ||
+        performance.now() - lastWindowMoveTimeRef.current < 120;
+      if (isWindowMoving) {
+        lastTime = performance.now();
+        animId = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Watchdog: If an IPC call got delayed or hung for more than 1 second
+      if (isSteppingRef.current && performance.now() - steppingStartTime > 1000) {
         isSteppingRef.current = false;
       }
 
@@ -1475,8 +1632,8 @@ export default function App() {
           lastTime = now;
 
           // Target 16,000,000 cycles / sec for exact 1:1 real-time match with 16 MHz ATmega328P
-          // Clamp elapsed time between 0.005s and 0.035s to prevent any stuttering or time jumps
-          const clampedElapsed = Math.min(0.035, Math.max(0.005, elapsedSec));
+          // Clamp elapsed time between 0.005s and 0.080s to prevent simulation lag while avoiding massive spikes
+          const clampedElapsed = Math.min(0.080, Math.max(0.005, elapsedSec));
           const cycles = isRunningRef.current
             ? Math.round(clampedElapsed * 16_000_000)
             : 0;
@@ -1495,7 +1652,7 @@ export default function App() {
               setPinVoltages(res.pin_voltages);
             }
             if (res.serial_output) {
-              setSerialLogs((prev) => (prev + res.serial_output!).slice(-65536));
+              appendSerialText(res.serial_output);
             }
 
             // Monotonically advancing simulation clock ensures smooth 60 FPS waveforms
@@ -1594,10 +1751,10 @@ export default function App() {
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
     const el = serialContainerRef.current;
-    if (autoScrollSerial && bottomTab === 'serial' && showTerminal && el) {
+    if (autoScrollSerial && !isAutoScrollPaused && bottomTab === 'serial' && showTerminal && el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [serialLogs, bottomTab, showTerminal, autoScrollSerial]);
+  }, [displayContent, bottomTab, showTerminal, autoScrollSerial, isAutoScrollPaused]);
 
   // --- Compile & Upload ---
   const handleCompile = async (): Promise<boolean> => {
@@ -1623,7 +1780,7 @@ export default function App() {
         if (res.success) {
           setLastCompiledCode(sketchCode);
           setStatusMessage('Build Succeeded. Running @ 16 MHz.');
-          setSerialLogs((prev) => `${prev.trimEnd()}\n--- Upload Succeeded & Running ---\n`);
+          appendSerialText('\n--- Upload Succeeded & Running ---\n');
           setBottomTab('serial');
           setIsRunning(true);
           await tauriInvoke('start_simulation');
@@ -2066,6 +2223,12 @@ export default function App() {
           tauriInvoke('add_button', { id: comp.id });
         } else if (comp.kind === 'potentiometer') {
           tauriInvoke('add_potentiometer', { id: comp.id });
+        } else if (comp.kind === 'capacitor') {
+          tauriInvoke('add_capacitor', {
+            id: comp.id,
+            farads: comp.props?.capacitance || 10e-6,
+            polarized: Boolean(comp.props?.polarized),
+          });
         }
       }
       return;
@@ -2092,11 +2255,17 @@ export default function App() {
       tauriInvoke('add_button', { id: newComp.id });
     } else if (newComp.kind === 'potentiometer') {
       tauriInvoke('add_potentiometer', { id: newComp.id });
+    } else if (newComp.kind === 'capacitor') {
+      tauriInvoke('add_capacitor', {
+        id: newComp.id,
+        farads: newComp.props?.capacitance || 10e-6,
+        polarized: Boolean(newComp.props?.polarized),
+      });
     }
   }, [clipboardComponents, clipboardComponent]);
 
   const handleAddComponentByType = useCallback(
-    (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot') => {
+    (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot' | 'cap') => {
       if (type === 'uno') {
         const id = `uno_${components.length + 1}`;
         setComponents((prev) => [...prev, { id, kind: 'arduino_uno', x: 100, y: 100, props: {} }]);
@@ -2137,6 +2306,22 @@ export default function App() {
         setSelectedCompId(id);
         setSelectedWireId(null);
         setStatusMessage('Added Potentiometer');
+      } else if (type === 'cap') {
+        const id = `c_${components.length + 1}`;
+        setComponents((prev) => [
+          ...prev,
+          {
+            id,
+            kind: 'capacitor',
+            x: 840,
+            y: 80,
+            props: { capacitance: 10e-6, polarized: true, voltageRating: 25, esr: 0.5 },
+          },
+        ]);
+        tauriInvoke('add_capacitor', { id, farads: 10e-6, polarized: true });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Capacitor (10µF)');
       }
       setIsDirty(true);
     },
@@ -2784,6 +2969,12 @@ export default function App() {
         const vf = typeof c.props?.vf === 'number' ? c.props.vf : 2.0;
         return `LED (${c.id}) • Color: ${color} • Forward Drop: ${vf}V`;
       }
+      case 'capacitor': {
+        const farads = typeof c.props?.capacitance === 'number' ? c.props.capacitance : 10e-6;
+        const pol = c.props?.polarized ? 'Electrolytic (+/-)' : 'Ceramic';
+        const str = farads >= 1e-6 ? `${(farads * 1e6).toFixed(0)} µF` : `${(farads * 1e9).toFixed(0)} nF`;
+        return `Capacitor (${c.id}) • ${str} (${pol}) • ${c.props?.voltageRating || 25}V`;
+      }
       case 'text_label': {
         const text = c.props?.text || 'Label';
         return `Text Label (${c.id}) • "${text}"`;
@@ -3319,7 +3510,11 @@ export default function App() {
           <div
             data-tauri-drag-region
             onMouseDown={(e) => {
-              if (e.buttons === 1) tauriInvoke('start_drag_window');
+              if (e.buttons === 1) {
+                isWindowMovingRef.current = true;
+                lastWindowMoveTimeRef.current = performance.now();
+                tauriInvoke('start_drag_window');
+              }
             }}
             onDoubleClick={() => tauriInvoke('toggle_maximize_window')}
             className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-400 cursor-default select-none"
@@ -3470,7 +3665,7 @@ export default function App() {
                         setLogicHistory([]);
                         setPin2History([]);
                         setPinA0History([]);
-                        setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
+                        appendSerialText('\n--- MCU Reset (Clock 0) ---\n');
                         setStatusMessage('MCU Reset');
                       }}
                       className="h-7 w-7 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-full flex items-center justify-center transition-colors cursor-pointer"
@@ -3832,7 +4027,7 @@ export default function App() {
                 setLogicHistory([]);
                 setPin2History([]);
                 setPinA0History([]);
-                setSerialLogs((prev) => `${prev}\n--- MCU Reset (Clock 0) ---\n`);
+                appendSerialText('\n--- MCU Reset (Clock 0) ---\n');
                 setStatusMessage('MCU Reset');
               }}
               onAddComponent={handleAddComponentByType}
@@ -4217,6 +4412,23 @@ export default function App() {
                         );
                       }
 
+                      if (c.kind === 'capacitor') {
+                        return (
+                          <div {...wrapperProps}>
+                            <Capacitor
+                              id={c.id}
+                              capacitance={c.props?.capacitance || 10e-6}
+                              isPolarized={Boolean(c.props?.polarized)}
+                              voltageRating={c.props?.voltageRating || 25}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
                       if (c.kind === 'text_label') {
                         return (
                           <div {...wrapperProps}>
@@ -4369,7 +4581,53 @@ export default function App() {
                                   </div>
                                 )}
 
-                                {bottomTab === 'serial' && <div className="h-3.5 w-px bg-[#27272a] mx-0.5" />}
+                                {bottomTab === 'serial' && (
+                                  <>
+                                    {/* Timestamp Toggle */}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setShowTimestamp((v) => !v)}
+                                      title={showTimestamp ? 'Timestamps: ON (Click to hide)' : 'Timestamps: OFF (Click to show)'}
+                                      className={`h-5 px-1.5 text-[11px] rounded font-mono transition-colors flex items-center gap-1 cursor-pointer ${
+                                        showTimestamp
+                                          ? 'bg-zinc-800 text-zinc-100 font-semibold'
+                                          : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                      }`}
+                                    >
+                                      <GoClock className="w-3 h-3 shrink-0" />
+                                      <span className="hidden sm:inline">Time</span>
+                                    </Button>
+
+                                    {/* Auto-scroll Toggle */}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={toggleAutoScroll}
+                                      title={
+                                        !autoScrollSerial
+                                          ? 'Auto-scroll: OFF (Click to follow)'
+                                          : isAutoScrollPaused
+                                          ? 'Auto-scroll: PAUSED (Scroll down or click to follow)'
+                                          : 'Auto-scroll: ON (Click to lock)'
+                                      }
+                                      className={`h-5 px-1.5 text-[11px] rounded font-mono transition-colors flex items-center gap-1 cursor-pointer ${
+                                        !autoScrollSerial
+                                          ? 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                          : isAutoScrollPaused
+                                          ? 'bg-amber-950/40 border border-amber-800/60 text-amber-300 font-semibold'
+                                          : 'bg-zinc-800 text-zinc-100 font-semibold'
+                                      }`}
+                                    >
+                                      <ArrowDownToLine className="w-3 h-3 shrink-0" />
+                                      <span className="hidden sm:inline">
+                                        {!autoScrollSerial ? 'Auto' : isAutoScrollPaused ? 'Paused' : 'Auto'}
+                                      </span>
+                                    </Button>
+
+                                    <div className="h-3.5 w-px bg-[#27272a] mx-0.5" />
+                                  </>
+                                )}
 
                                 {/* Copy Terminal Logs */}
                                 <Button
@@ -4391,7 +4649,7 @@ export default function App() {
                                   variant="ghost"
                                   size="icon-xs"
                                   onClick={() => {
-                                    if (bottomTab === 'serial') setSerialLogs('');
+                                    if (bottomTab === 'serial') clearSerialLogs();
                                     else if (bottomTab === 'build') setBuildLogs('');
                                   }}
                                   title={bottomTab === 'serial' ? 'Clear Serial Logs' : 'Clear Build Output'}
@@ -4416,10 +4674,11 @@ export default function App() {
                             <TabsContent value="serial" className="flex-1 min-h-0 overflow-hidden p-2 font-mono text-xs select-text m-0 flex flex-col">
                               <div
                                 ref={serialContainerRef}
+                                onScroll={handleSerialScroll}
                                 className="flex-1 min-h-0 overflow-y-auto pr-2 select-text cursor-text font-mono text-xs text-zinc-300 selection:bg-zinc-700 selection:text-white"
                               >
                                 <pre className="whitespace-pre-wrap leading-relaxed font-mono text-xs text-zinc-300 m-0 select-text cursor-text selection:bg-zinc-700 selection:text-white">
-                                  {serialLogs}
+                                  {displayContent}
                                 </pre>
                               </div>
                               {/* Cohesive Capsule UART Input Bar */}
@@ -4434,7 +4693,7 @@ export default function App() {
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter' && serialInput) {
                                         tauriInvoke('write_serial', { input: serialInput });
-                                        setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                        appendSerialText(`> ${serialInput}\n`);
                                         setSerialInput('');
                                       }
                                     }}
@@ -4446,7 +4705,7 @@ export default function App() {
                                     onClick={() => {
                                       if (serialInput) {
                                         tauriInvoke('write_serial', { input: serialInput });
-                                        setSerialLogs((prev) => `${prev}> ${serialInput}\n`);
+                                        appendSerialText(`> ${serialInput}\n`);
                                         setSerialInput('');
                                       }
                                     }}
@@ -4706,6 +4965,41 @@ export default function App() {
                             </svg>
                             <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               Potentiometer
+                            </span>
+                          </button>
+
+                          {/* 7. Capacitor */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `c_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                {
+                                  id,
+                                  kind: 'capacitor',
+                                  x: 840,
+                                  y: 80,
+                                  props: { capacitance: 10e-6, polarized: true, voltageRating: 25, esr: 0.5 },
+                                },
+                              ]);
+                              tauriInvoke('add_capacitor', { id, farads: 10e-6, polarized: true });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <circle cx="32" cy="32" r="14" fill="#18181b" strokeWidth="2" />
+                              <line x1="8" y1="32" x2="18" y2="32" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
+                              <line x1="46" y1="32" x2="56" y2="32" stroke="#52525b" strokeWidth="2" strokeLinecap="round" />
+                              <rect x="38" y="18" width="5" height="28" fill="#3f3f46" rx="1" />
+                              <text x="39" y="26" fontSize="7" fill="#a1a1aa" fontWeight="bold">-</text>
+                              <text x="39" y="42" fontSize="7" fill="#a1a1aa" fontWeight="bold">-</text>
+                              <text x="21" y="35" fontSize="8" fill="#e4e4e7" fontFamily="monospace" fontWeight="bold">µF</text>
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
+                              Capacitor
                             </span>
                           </button>
                         </div>
@@ -5004,7 +5298,7 @@ export default function App() {
               codeToFlash = fileContents[fileName];
             }
             setStatusMessage(`Flashing ${fileName} to ${targetBoardId} (${comPort})...`);
-            setSerialLogs((prev) => `${prev.trimEnd()}\n[Upload] Flashing ${fileName} to ${comPort} (${targetBoardId})...\n`);
+            appendSerialText(`\n[Upload] Flashing ${fileName} to ${comPort} (${targetBoardId})...\n`);
             return await handleCompile();
           }}
           onUpdateBoardPort={(boardId, newPort, linkedFile) => {

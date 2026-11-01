@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   GoTrash,
   GoCheck,
@@ -104,6 +104,20 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   };
 
   const [isInspectorButtonPressed, setIsInspectorButtonPressed] = useState(false);
+
+  // Display value smoothing (EMA + Fast Slew Bypass) for steady readable telemetry in realistic mode
+  const smoothedTelemetryRef = useRef<Record<string, number>>({});
+  const smoothVal = (key: string, val: number | undefined, threshold = 0.15, alpha = 0.15): number => {
+    if (typeof val !== 'number' || isNaN(val)) return 0.0;
+    const prev = smoothedTelemetryRef.current[key];
+    if (prev === undefined || Math.abs(val - prev) > threshold) {
+      smoothedTelemetryRef.current[key] = val;
+      return val;
+    }
+    const next = prev * (1 - alpha) + val * alpha;
+    smoothedTelemetryRef.current[key] = next;
+    return next;
+  };
 
   return (
     <div className="h-full flex flex-col bg-[#121215] border-t border-[#222226] overflow-hidden select-none text-xs">
@@ -520,6 +534,107 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     );
                   })()}
 
+                  {/* Capacitor */}
+                  {selectedComp.kind === 'capacitor' && (() => {
+                    const cap = typeof selectedComp.props?.capacitance === 'number' ? selectedComp.props.capacitance : 10e-6;
+                    const isPolarized = Boolean(selectedComp.props?.polarized);
+                    const rating = typeof selectedComp.props?.voltageRating === 'number' ? selectedComp.props.voltageRating : (isPolarized ? 25 : 50);
+
+                    const formatCapVal = (c: number): string => {
+                      if (c >= 1e-3) return `${(c * 1e3).toFixed(0)}mF`;
+                      if (c >= 1e-6) return `${(c * 1e6).toFixed(0)}µF`;
+                      if (c >= 1e-9) return `${(c * 1e9).toFixed(0)}nF`;
+                      return `${(c * 1e12).toFixed(0)}pF`;
+                    };
+
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Capacitance</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs text-zinc-200">{formatCapVal(cap)}</span>
+                          </div>
+                        </div>
+
+                        {/* Presets */}
+                        <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono pt-0.5">
+                          <span className="text-zinc-500 mr-0.5">Presets:</span>
+                          {[
+                            { label: '100nF', val: 100e-9, pol: false },
+                            { label: '1µF', val: 1e-6, pol: false },
+                            { label: '10µF', val: 10e-6, pol: true },
+                            { label: '100µF', val: 100e-6, pol: true },
+                            { label: '470µF', val: 470e-6, pol: true },
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() =>
+                                onUpdateComponent(selectedComp.id, {
+                                  props: {
+                                    ...(selectedComp.props || {}),
+                                    capacitance: preset.val,
+                                    polarized: preset.pol,
+                                  },
+                                })
+                              }
+                              className={`px-1.5 py-0.5 rounded border transition-colors ${
+                                Math.abs(cap - preset.val) < 1e-12
+                                  ? 'bg-zinc-800 border-zinc-600 text-white font-medium'
+                                  : 'bg-[#18181b] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Polarity Type */}
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-zinc-500">Type</span>
+                          <div className="flex items-center gap-1 bg-[#121215] border border-zinc-800 rounded-full p-0.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateComponent(selectedComp.id, {
+                                  props: { ...(selectedComp.props || {}), polarized: false, voltageRating: 50 },
+                                })
+                              }
+                              className={`h-5 px-2 rounded-full text-[10px] transition-colors cursor-pointer ${
+                                !isPolarized
+                                  ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                                  : 'text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              Ceramic
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateComponent(selectedComp.id, {
+                                  props: { ...(selectedComp.props || {}), polarized: true, voltageRating: 25 },
+                                })
+                              }
+                              className={`h-5 px-2 rounded-full text-[10px] transition-colors cursor-pointer ${
+                                isPolarized
+                                  ? 'bg-white text-zinc-950 font-semibold shadow-xs'
+                                  : 'text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              Electrolytic (+/-)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Voltage Rating */}
+                        <div className="flex items-center justify-between py-0.5">
+                          <span className="text-zinc-500">Max Rating</span>
+                          <span className="font-mono text-zinc-300">{rating}&nbsp;V</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* LED */}
                   {selectedComp.kind === 'led' && (
                     <div className="space-y-2.5">
@@ -824,34 +939,38 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
               {openSections.pins && (
                 <div className="pt-2 space-y-1 text-xs">
                   {selectedComp.kind === 'potentiometer' && (() => {
-                    const v1 = pinVoltages?.[`${selectedComp.id}:1`];
-                    const v2 = pinVoltages?.[`${selectedComp.id}:2`];
-                    const v3 = pinVoltages?.[`${selectedComp.id}:3`];
-                    const iComp = branchCurrents?.[selectedComp.id];
+                    const rawV1 = pinVoltages?.[`${selectedComp.id}:1`];
+                    const rawV2 = pinVoltages?.[`${selectedComp.id}:2`];
+                    const rawV3 = pinVoltages?.[`${selectedComp.id}:3`];
+                    const rawIComp = branchCurrents?.[selectedComp.id];
+                    const v1 = smoothVal(`${selectedComp.id}:1`, rawV1);
+                    const v2 = smoothVal(`${selectedComp.id}:2`, rawV2);
+                    const v3 = smoothVal(`${selectedComp.id}:3`, rawV3);
+                    const iComp = smoothVal(`${selectedComp.id}:i`, rawIComp, 0.0003);
                     return (
                       <>
                         <div className="flex justify-between py-0.5">
                           <span className="font-mono text-zinc-400">Pin 1 (Terminal 1):</span>
-                          <span className="font-mono text-zinc-300 tabular-nums">
-                            {typeof v1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
                           <span className="font-mono text-zinc-400">Pin 2 (Wiper):</span>
-                          <span className="font-mono text-zinc-100 font-semibold tabular-nums">
-                            {typeof v2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
                         <div className="flex justify-between py-0.5">
                           <span className="font-mono text-zinc-400">Pin 3 (Terminal 2):</span>
-                          <span className="font-mono text-zinc-300 tabular-nums">
-                            {typeof v3 === 'number' ? v3.toFixed(2) : '0.00'}&nbsp;V
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV3 === 'number' ? v3.toFixed(2) : '0.00'}&nbsp;V
                           </span>
                         </div>
-                        {typeof iComp === 'number' && iComp > 0.00001 && (
+                        {typeof rawIComp === 'number' && iComp > 0.00001 && (
                           <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
                             <span className="font-mono text-zinc-400">Current (I):</span>
-                            <span className="font-mono text-emerald-400 font-semibold tabular-nums">
+                            <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
                               {(iComp * 1000).toFixed(1)}&nbsp;mA
                             </span>
                           </div>
@@ -913,6 +1032,46 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                       </span>
                     </div>
                   )}
+
+                  {selectedComp.kind === 'capacitor' && (() => {
+                    const rawV1 = pinVoltages?.[`${selectedComp.id}:1`];
+                    const rawV2 = pinVoltages?.[`${selectedComp.id}:2`];
+                    const rawI = branchCurrents?.[selectedComp.id];
+                    const v1 = smoothVal(`${selectedComp.id}:1`, rawV1);
+                    const v2 = smoothVal(`${selectedComp.id}:2`, rawV2);
+                    const vc = v1 - v2;
+                    const iComp = smoothVal(`${selectedComp.id}:i`, rawI, 0.0003);
+                    return (
+                      <>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 1 ({selectedComp.props?.polarized ? 'Anode +' : 'Lead 1'}):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV1 === 'number' ? v1.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="font-mono text-zinc-400">Pin 2 ({selectedComp.props?.polarized ? 'Cathode -' : 'Lead 2'}):</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {typeof rawV2 === 'number' ? v2.toFixed(2) : '0.00'}&nbsp;V
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-0.5 pt-1 border-t border-zinc-800/40">
+                          <span className="font-mono text-zinc-400">Capacitor Voltage (Vc):</span>
+                          <span className="font-mono text-zinc-100 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {vc.toFixed(2)}&nbsp;V
+                          </span>
+                        </div>
+                        {typeof rawI === 'number' && Math.abs(iComp) > 0.00001 && (
+                          <div className="flex justify-between py-0.5">
+                            <span className="font-mono text-zinc-400">Current (Ic):</span>
+                            <span className="font-mono text-emerald-400 font-semibold tabular-nums whitespace-nowrap [word-break:keep-all]">
+                              {(iComp * 1000).toFixed(1)}&nbsp;mA
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {selectedComp.kind === 'arduino_uno' && (
                     <div className="space-y-1">

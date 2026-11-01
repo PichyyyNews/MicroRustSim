@@ -76,6 +76,7 @@ pub enum SimCommand {
     AddResistor { id: String, ohms: f32 },
     AddButton { id: String },
     AddPot { id: String },
+    AddCapacitor { id: String, farads: f32, polarized: bool },
     SetPowerRealism(PowerRealismConfig),
     SyncCircuit {
         components: Vec<ComponentDto>,
@@ -158,12 +159,17 @@ fn reset_simulation(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn step_simulation(cycles: u64, state: State<'_, AppState>) -> Result<StepResult, String> {
-    let (tx, rx) = sync_channel(1);
-    state.sim_tx
-        .send(SimCommand::Step { cycles, reply: tx })
-        .map_err(|e| e.to_string())?;
-    rx.recv().map_err(|e| e.to_string())
+async fn step_simulation(cycles: u64, state: State<'_, AppState>) -> Result<StepResult, String> {
+    let sim_tx = state.sim_tx.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (tx, rx) = sync_channel(1);
+        sim_tx
+            .send(SimCommand::Step { cycles, reply: tx })
+            .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -178,6 +184,11 @@ fn set_potentiometer(id: String, value: f32, state: State<'_, AppState>) {
 
 #[tauri::command]
 fn write_serial(input: String, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::WriteSerial { input });
+}
+
+#[tauri::command]
+fn send_serial_input(input: String, state: State<'_, AppState>) {
     let _ = state.sim_tx.send(SimCommand::WriteSerial { input });
 }
 
@@ -215,6 +226,11 @@ fn add_button(id: String, state: State<'_, AppState>) {
 #[tauri::command]
 fn add_potentiometer(id: String, state: State<'_, AppState>) {
     let _ = state.sim_tx.send(SimCommand::AddPot { id });
+}
+
+#[tauri::command]
+fn add_capacitor(id: String, farads: f32, polarized: bool, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::AddCapacitor { id, farads, polarized });
 }
 
 #[tauri::command]
@@ -565,6 +581,10 @@ pub fn run() {
                     engine.pots.insert(id.clone(), components::PotentiometerComponent::new(id));
                     engine.resolve_electrical_nets();
                 }
+                SimCommand::AddCapacitor { id, farads, polarized } => {
+                    engine.capacitors.insert(id.clone(), components::CapacitorComponent::new(id, farads, polarized));
+                    engine.resolve_electrical_nets();
+                }
                 SimCommand::SetPowerRealism(config) => {
                     engine.power_config = config;
                     engine.resolve_electrical_nets();
@@ -575,6 +595,7 @@ pub fn run() {
                     engine.resistors.clear();
                     engine.buttons.clear();
                     engine.pots.clear();
+                    engine.capacitors.clear();
 
                     for c in components {
                         match c.kind.as_str() {
@@ -633,6 +654,33 @@ pub fn run() {
                                 pot.value = val;
                                 engine.pots.insert(c.id, pot);
                             }
+                            "capacitor" => {
+                                let farads = c.props.get("capacitance")
+                                    .or_else(|| c.props.get("farads"))
+                                    .or_else(|| c.props.get("value"))
+                                    .and_then(|v| {
+                                        if let Some(f) = v.as_f64() {
+                                            Some(f as f32)
+                                        } else if let Some(s) = v.as_str() {
+                                            s.parse::<f32>().ok()
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .unwrap_or(10e-6);
+                                let polarized = c.props.get("polarized")
+                                    .or_else(|| c.props.get("is_polarized"))
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let mut cap = components::CapacitorComponent::new(c.id.clone(), farads, polarized);
+                                if let Some(esr) = c.props.get("esr").or_else(|| c.props.get("esr_ohms")).and_then(|v| v.as_f64()) {
+                                    cap.esr_ohms = esr as f32;
+                                }
+                                if let Some(vr) = c.props.get("voltageRating").or_else(|| c.props.get("voltage_rating")).or_else(|| c.props.get("max_voltage")).and_then(|v| v.as_f64()) {
+                                    cap.voltage_rating = vr as f32;
+                                }
+                                engine.capacitors.insert(c.id, cap);
+                            }
                             _ => {}
                         }
                     }
@@ -683,6 +731,7 @@ pub fn run() {
             press_button,
             set_potentiometer,
             write_serial,
+            send_serial_input,
             sync_wire,
             remove_wire,
             sync_circuit,
@@ -690,6 +739,7 @@ pub fn run() {
             add_resistor,
             add_button,
             add_potentiometer,
+            add_capacitor,
             set_power_realism_config,
             save_project_db,
             load_project_db,

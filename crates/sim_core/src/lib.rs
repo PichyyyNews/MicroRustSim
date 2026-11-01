@@ -89,6 +89,13 @@ pub fn normalize_pin_name(comp: &str, pin: &str) -> String {
         if p_lower == "3" || p_lower == "gnd" {
             return "GND".to_string();
         }
+    } else if c_lower.starts_with("c") || c_lower.starts_with("cap") {
+        if p_lower == "1" || p_lower == "p1" || p_lower == "anode" || p_lower == "+" || p_lower == "pos" {
+            return "1".to_string();
+        }
+        if p_lower == "2" || p_lower == "p2" || p_lower == "cathode" || p_lower == "-" || p_lower == "neg" {
+            return "2".to_string();
+        }
     }
     pin.to_string()
 }
@@ -219,19 +226,49 @@ impl McuCore for ArduinoUnoCore {
             if self.runtime.remaining_budget() < 500_000 {
                 self.runtime.reset_budget();
             }
-            let step = remaining.min(32);
-            self.board.run_cycles(self.backend.as_ref(), &mut self.runtime, step);
-            let ucsra = self.board.read_data(self.backend.as_ref(), 0xc0);
+            let mut ucsra = self.board.read_data(self.backend.as_ref(), 0xc0);
             if (ucsra & 0x40) != 0 {
                 let udr = self.board.read_data(self.backend.as_ref(), 0xc6);
                 self.tx_buffer.push(udr);
+                ucsra &= !0x40;
                 self.backend.set(
                     &mut self.runtime,
                     self.board.data,
                     "192",
-                    avr8rs::runtime::Value::Number((ucsra & !0x40) as f64),
+                    avr8rs::runtime::Value::Number(ucsra as f64),
                 );
             }
+
+            // RX buffer processing (Bidirectional Serial RX)
+            if (ucsra & 0x80) == 0 && !self.rx_buffer.is_empty() {
+                if self.board.adc.0 > 0 {
+                    let usart_handle = avr8rs::runtime::Handle(self.board.adc.0 - 1);
+                    let res = self.backend.call(
+                        &mut self.runtime,
+                        Some(usart_handle),
+                        "writeByte",
+                        vec![
+                            avr8rs::runtime::Value::Number(self.rx_buffer[0] as f64),
+                            avr8rs::runtime::Value::Bool(true),
+                        ],
+                    );
+                    if matches!(res, avr8rs::runtime::Value::Bool(true) | avr8rs::runtime::Value::Undefined) {
+                        self.rx_buffer.remove(0);
+                    }
+                }
+            }
+
+            let ucsrb = self.board.read_data(self.backend.as_ref(), 0xc1);
+            let is_tx_busy = (ucsra & 0x20) == 0 || (ucsra & 0x40) != 0 || (ucsrb & 0x20) != 0;
+
+            let step = if !self.rx_buffer.is_empty() {
+                remaining.min(32)
+            } else if is_tx_busy {
+                remaining.min(32)
+            } else {
+                remaining.min(2048)
+            };
+            self.board.run_cycles(self.backend.as_ref(), &mut self.runtime, step);
             remaining -= step;
         }
     }
@@ -438,6 +475,29 @@ pub mod components {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CapacitorComponent {
+        pub id: String,
+        pub capacitance_farads: f32, // e.g. 100e-9 (100nF), 10e-6 (10uF)
+        pub is_polarized: bool,
+        pub voltage_rating: f32, // e.g. 25.0
+        pub esr_ohms: f32, // e.g. 0.5
+        pub voltage: f32, // instantaneous charged voltage across capacitor V(1) - V(2)
+    }
+
+    impl CapacitorComponent {
+        pub fn new(id: impl Into<String>, capacitance_farads: f32, is_polarized: bool) -> Self {
+            Self {
+                id: id.into(),
+                capacitance_farads,
+                is_polarized,
+                voltage_rating: if is_polarized { 25.0 } else { 50.0 },
+                esr_ohms: if is_polarized { 0.5 } else { 0.1 },
+                voltage: 0.0,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct BreadboardComponent {
         pub id: String,
         // Half breadboard has 30 rows of 5 pins (A-E, F-J) and 2 power rails (+/-)
@@ -460,6 +520,7 @@ pub struct SimulationEngine {
     pub resistors: HashMap<String, components::ResistorComponent>,
     pub buttons: HashMap<String, components::PushbuttonComponent>,
     pub pots: HashMap<String, components::PotentiometerComponent>,
+    pub capacitors: HashMap<String, components::CapacitorComponent>,
     pub pin_voltages: HashMap<PinId, f32>,
     pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
@@ -476,6 +537,7 @@ impl SimulationEngine {
             resistors: HashMap::new(),
             buttons: HashMap::new(),
             pots: HashMap::new(),
+            capacitors: HashMap::new(),
             pin_voltages: HashMap::new(),
             branch_currents: HashMap::new(),
             faults: Vec::new(),
@@ -489,6 +551,9 @@ impl SimulationEngine {
         for led in self.leds.values_mut() {
             led.is_lit = false;
             led.brightness = 0.0;
+        }
+        for cap in self.capacitors.values_mut() {
+            cap.voltage = 0.0;
         }
         self.pin_voltages.clear();
         self.branch_currents.clear();
@@ -520,6 +585,7 @@ impl SimulationEngine {
             &self.resistors,
             &self.buttons,
             &self.pots,
+            &mut self.capacitors,
             &mut self.pin_voltages,
             &mut self.branch_currents,
             &mut self.faults,
@@ -826,5 +892,13 @@ mod tests {
             v5_loaded
         );
         assert!(v5_loaded < 4.90, "Loaded 5V rail must sag under load, got {}", v5_loaded);
+    }
+
+    #[test]
+    fn test_serial_rx_bidirectional() {
+        let mut engine = SimulationEngine::new_with_uno();
+        assert_eq!(engine.mcu.read_serial_output().len(), 0);
+        engine.mcu.write_serial_input(b"HELLO_RX\n");
+        engine.step_cycles(100);
     }
 }

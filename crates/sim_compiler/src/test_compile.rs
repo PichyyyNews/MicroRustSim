@@ -124,3 +124,92 @@ void loop() {
         assert_eq!(*line, "Line:0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", "Corrupted serial line detected: {}", line);
     }
 }
+
+#[test]
+fn test_delay_100_throughput_10_prints_per_sec() {
+    use sim_core::{ArduinoUnoCore, McuCore};
+
+    let backend = ArduinoCliBackend::new();
+    if !backend.is_available() {
+        return;
+    }
+
+    let code = r#"
+void setup() {
+  Serial.begin(9600);
+}
+void loop() {
+  Serial.println("Tick");
+  delay(100);
+}
+"#;
+    let res = backend.compile(code, "arduino:avr:uno").expect("Compilation failed");
+    let mut uno = ArduinoUnoCore::new();
+    uno.load_hex(&res.hex).expect("Failed to load hex");
+
+    // Simulate 60 frames (~16,000,000 cycles = 1.0 second of ATmega328P execution)
+    let start_time = std::time::Instant::now();
+    let mut captured = String::new();
+    let frame_cycles = 266_666u64; // ~16.6ms at 60 FPS
+    for _ in 0..60 {
+        uno.step_cycles(frame_cycles);
+        let out = uno.read_serial_output();
+        if !out.is_empty() {
+            captured.push_str(&String::from_utf8_lossy(&out));
+        }
+    }
+    let elapsed = start_time.elapsed();
+    println!("Elapsed host time to simulate 1.0s: {:?}", elapsed);
+    println!("Captured output:\n{}", captured);
+
+    let line_count = captured.lines().filter(|l| l.trim() == "Tick").count();
+    println!("Line count in 1.0 second: {}", line_count);
+    // 16,000,000 cycles / (100ms delay + ~6.25ms UART TX) ≈ 9.4-12 prints
+    assert!(line_count >= 8 && line_count <= 14, "Expected ~9-14 prints in 1 second, got {}", line_count);
+}
+
+#[test]
+fn test_bidirectional_serial_rx_echo() {
+    use sim_core::{ArduinoUnoCore, McuCore};
+
+    let backend = ArduinoCliBackend::new();
+    if !backend.is_available() {
+        return;
+    }
+
+    let code = r#"
+void setup() {
+  Serial.begin(9600);
+}
+void loop() {
+  if (Serial.available()) {
+    char c = Serial.read();
+    Serial.write(c);
+  }
+}
+"#;
+    let res = backend.compile(code, "arduino:avr:uno").expect("Compilation failed");
+    let mut uno = ArduinoUnoCore::new();
+    uno.load_hex(&res.hex).expect("Failed to load hex");
+
+    // Run setup to let Serial.begin(9600) fully initialize
+    uno.step_cycles(200_000);
+
+    // Send input
+    uno.write_serial_input(b"PING\n");
+
+    // Step cycles to let UART RX & TX happen
+    let mut captured = String::new();
+    for _ in 0..30 {
+        uno.step_cycles(100_000);
+        let out = uno.read_serial_output();
+        if !out.is_empty() {
+            captured.push_str(&String::from_utf8_lossy(&out));
+        }
+        if captured.contains("PING\n") {
+            break;
+        }
+    }
+    println!("Echoed output: {:?}", captured);
+    assert!(captured.contains("PING\n"), "MCU did not echo back serial input: got {:?}", captured);
+}

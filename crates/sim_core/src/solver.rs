@@ -193,6 +193,17 @@ pub fn normalize_pin_alias(comp_id: &str, pin_name: &str) -> (String, bool) {
         return (format!("{}:{}", comp_id, pin_name), false);
     }
 
+    // 7. Capacitor
+    if c_lower.starts_with('c') || c_lower.starts_with("cap") {
+        if p_lower == "1" || p_lower == "p1" || p_lower == "anode" || p_lower == "+" || p_lower == "pos" {
+            return (format!("{}:1", comp_id), false);
+        }
+        if p_lower == "2" || p_lower == "p2" || p_lower == "cathode" || p_lower == "-" || p_lower == "neg" {
+            return (format!("{}:2", comp_id), false);
+        }
+        return (format!("{}:{}", comp_id, pin_name), false);
+    }
+
     (format!("{}:{}", comp_id, pin_name), false)
 }
 
@@ -339,6 +350,7 @@ impl MnaCircuitSolver {
         resistors: &HashMap<String, ResistorComponent>,
         buttons: &HashMap<String, PushbuttonComponent>,
         pots: &HashMap<String, PotentiometerComponent>,
+        capacitors: &mut HashMap<String, CapacitorComponent>,
         pin_voltages: &mut HashMap<PinId, f32>,
         branch_currents: &mut HashMap<String, f32>,
         faults: &mut Vec<CircuitFault>,
@@ -425,6 +437,12 @@ impl MnaCircuitSolver {
         for (led_id, _) in leds.iter() {
             node_set.insert(format!("{}:anode", led_id));
             node_set.insert(format!("{}:cathode", led_id));
+        }
+
+        // Capacitors
+        for (cap_id, _) in capacitors.iter() {
+            node_set.insert(format!("{}:1", cap_id));
+            node_set.insert(format!("{}:2", cap_id));
         }
 
         // Wires
@@ -565,6 +583,23 @@ impl MnaCircuitSolver {
             let t2 = get_node_idx(btn_id, "2");
             let r = if btn.is_pressed { 0.05 } else { 1e10 };
             stamp_conductance(&mut g_base, n, t1, t2, 1.0 / r);
+        }
+
+        // 5.5. Stamp Capacitors (Backward Euler companion model: Gc = C/dt, Ieq = Gc * Vprev)
+        let dt = 0.016666666666666666f64;
+        for (cap_id, cap) in capacitors.iter() {
+            let p1 = get_node_idx(cap_id, "1");
+            let p2 = get_node_idx(cap_id, "2");
+            let c_farads = (cap.capacitance_farads as f64).max(1e-12);
+            let g_c = c_farads / dt;
+            let r_esr = (cap.esr_ohms as f64).max(0.01);
+            let r_eff = r_esr + (1.0 / g_c);
+            let g_eff = 1.0 / r_eff;
+            let i_inj = g_eff * (cap.voltage as f64);
+
+            stamp_conductance(&mut g_base, n, p1, p2, g_eff);
+            stamp_norton_source(&mut g_base, &mut j_base, n, p1, 0.0, i_inj);
+            stamp_norton_source(&mut g_base, &mut j_base, n, p2, 0.0, -i_inj);
         }
 
         // 6. Stamp Wires (0.02 ohm jumper wire with contact resistance)
@@ -740,6 +775,24 @@ impl MnaCircuitSolver {
             branch_currents.insert(btn_id.clone(), i as f32);
         }
 
+        // Capacitor branch currents & dynamic state updates
+        for (cap_id, cap) in capacitors.iter_mut() {
+            let v1 = node_volt(get_node_idx(cap_id, "1"));
+            let v2 = node_volt(get_node_idx(cap_id, "2"));
+            let v_term = (v1 - v2) as f32;
+
+            let c_farads = cap.capacitance_farads.max(1e-12);
+            let r_esr = cap.esr_ohms.max(0.01);
+            let g_c = c_farads / 0.01666667;
+            let r_eff = r_esr + (1.0 / g_c);
+            let alpha = 0.01666667 / (c_farads * r_eff);
+            let new_v = cap.voltage + alpha.min(1.0) * (v_term - cap.voltage);
+            cap.voltage = new_v;
+
+            let i_cap = (v_term - cap.voltage) / r_eff;
+            branch_currents.insert(cap_id.clone(), i_cap);
+        }
+
         // MCU Power rail currents
         let v5v = node_volt(pwr5v_idx);
         let i5v = (v_src_5v - v5v) / r_int_5v;
@@ -841,6 +894,18 @@ impl MnaCircuitSolver {
             }
             for p in &["cathode", "c", "k", "2"] {
                 pin_voltages.insert(PinId::new(led_id, *p), vc);
+            }
+        }
+
+        // Capacitors
+        for cap_id in capacitors.keys() {
+            let v1 = node_volt_clean(get_node_idx(cap_id, "1"));
+            let v2 = node_volt_clean(get_node_idx(cap_id, "2"));
+            for p in &["1", "p1", "anode", "+", "pos"] {
+                pin_voltages.insert(PinId::new(cap_id, *p), v1);
+            }
+            for p in &["2", "p2", "cathode", "-", "neg"] {
+                pin_voltages.insert(PinId::new(cap_id, *p), v2);
             }
         }
 
@@ -996,6 +1061,39 @@ impl MnaCircuitSolver {
                     description: format!("Reverse Polarity: Cathode ({:.2}V) > Anode ({:.2}V)", vc, va),
                     current_ma: 0.0,
                     voltage: vc - va,
+                });
+            }
+        }
+
+        // Capacitor Faults: Reverse Polarity on Polarized & Overvoltage
+        for (cap_id, cap) in capacitors.iter() {
+            if cap.is_polarized && cap.voltage < -0.15 {
+                let i_cap = branch_currents.get(cap_id).copied().unwrap_or(0.0);
+                faults.push(CircuitFault {
+                    fault_type: FaultType::ReversePolarity,
+                    component_id: cap_id.clone(),
+                    pin_name: "2".into(),
+                    description: format!(
+                        "Polarized Capacitor {} reverse biased ({:.2}V). Cathode connected to higher potential than Anode!",
+                        cap_id, cap.voltage
+                    ),
+                    current_ma: i_cap.abs() * 1000.0,
+                    voltage: cap.voltage,
+                });
+            }
+
+            if cap.voltage > cap.voltage_rating {
+                let i_cap = branch_currents.get(cap_id).copied().unwrap_or(0.0);
+                faults.push(CircuitFault {
+                    fault_type: FaultType::Overcurrent,
+                    component_id: cap_id.clone(),
+                    pin_name: "1".into(),
+                    description: format!(
+                        "Capacitor {} exceeded maximum voltage rating ({:.1}V > {:.1}V rating)!",
+                        cap_id, cap.voltage, cap.voltage_rating
+                    ),
+                    current_ma: i_cap.abs() * 1000.0,
+                    voltage: cap.voltage,
                 });
             }
         }

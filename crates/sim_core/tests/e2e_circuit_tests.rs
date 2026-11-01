@@ -8,8 +8,8 @@
 //! - Hardware Fault Scenarios (5V-GND short, LED without resistor overcurrent, GPIO driver contention, Reverse polarity)
 
 use sim_core::{
-    components::{LedComponent, PotentiometerComponent, PushbuttonComponent, ResistorComponent},
-    LogicState, PinId, PowerRealismLevel, PowerRealismMode, SimulationEngine, Wire,
+    components::{CapacitorComponent, LedComponent, PotentiometerComponent, PushbuttonComponent, ResistorComponent},
+    FaultType, LogicState, PinId, PowerRealismLevel, PowerRealismMode, SimulationEngine, Wire,
 };
 
 // ============================================================================
@@ -1059,3 +1059,65 @@ fn test_fault_reverse_polarity_led() {
     assert!(!led.is_lit, "Reverse polarized LED must not conduct or light up");
     assert_eq!(led.brightness, 0.0, "Reverse polarized LED brightness must be 0.0");
 }
+
+#[test]
+fn test_phase1_capacitor_rc_charging_curve() {
+    let mut engine = SimulationEngine::new_with_uno();
+    // 10k resistor in series with 100uF capacitor connected to 5V rail
+    engine.resistors.insert("r1".into(), ResistorComponent::new("r1", 10_000.0));
+    engine.capacitors.insert("c1".into(), CapacitorComponent::new("c1", 100e-6, false));
+
+    // Connect 5V -> r1:1; r1:2 -> c1:1; c1:2 -> GND
+    engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("r1", "1"), color: "#ef4444".into() });
+    engine.add_wire(Wire { id: "w2".into(), from: PinId::new("r1", "2"), to: PinId::new("c1", "1"), color: "#3b82f6".into() });
+    engine.add_wire(Wire { id: "w3".into(), from: PinId::new("c1", "2"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+    // Step through 20 cycles, verifying continuous monotonic charging: V(t) = V0(1 - e^-t/RC)
+    let mut prev_v = 0.0;
+    for _ in 0..20 {
+        engine.resolve_electrical_nets();
+        let cap_v = engine.capacitors["c1"].voltage;
+        assert!(cap_v >= prev_v, "Capacitor voltage must monotonically charge upwards: {} >= {}", cap_v, prev_v);
+        assert!(!cap_v.is_nan(), "Capacitor voltage must not be NaN");
+        prev_v = cap_v;
+    }
+
+    assert!(prev_v > 0.1, "Capacitor must have accumulated charge above 0.1V, got {:.3}V", prev_v);
+    assert!(prev_v <= 5.0, "Capacitor voltage must not exceed source voltage (5V), got {:.3}V", prev_v);
+}
+
+#[test]
+fn test_phase1_capacitor_reverse_polarity_fault() {
+    let mut engine = SimulationEngine::new_with_uno();
+    // Polarized electrolytic capacitor connected with reverse bias (Cathode to 5V, Anode to GND)
+    let mut cap = CapacitorComponent::new("c_elec", 10e-6, true);
+    cap.voltage = -1.0; // Negative voltage across polarized terminals
+    engine.capacitors.insert("c_elec".into(), cap);
+
+    engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "GND"), to: PinId::new("c_elec", "1"), color: "#000000".into() });
+    engine.add_wire(Wire { id: "w2".into(), from: PinId::new("uno1", "5V"), to: PinId::new("c_elec", "2"), color: "#ef4444".into() });
+
+    engine.resolve_electrical_nets();
+
+    assert!(
+        engine.faults.iter().any(|f| f.fault_type == FaultType::ReversePolarity && f.component_id == "c_elec"),
+        "Polarized capacitor reverse biased must trigger ReversePolarity fault"
+    );
+}
+
+#[test]
+fn test_phase1_capacitor_overvoltage_fault() {
+    let mut engine = SimulationEngine::new_with_uno();
+    let mut cap = CapacitorComponent::new("c_over", 10e-6, false);
+    cap.voltage_rating = 3.0; // 3V rating
+    cap.voltage = 4.0; // Exceeded rating
+    engine.capacitors.insert("c_over".into(), cap);
+
+    engine.resolve_electrical_nets();
+
+    assert!(
+        engine.faults.iter().any(|f| f.fault_type == FaultType::Overcurrent && f.component_id == "c_over"),
+        "Capacitor exceeding voltage rating must trigger Overcurrent/Overvoltage fault"
+    );
+}
+
