@@ -5,10 +5,14 @@ use serde::{Deserialize, Serialize};
 use avr8rs::board::{parse_hex, Board, PinState as AvrPinState};
 use avr8rs::runtime::{Backend, Runtime};
 
+pub mod constants;
+pub mod device;
 pub mod solver;
+pub use constants::*;
+pub use device::*;
 pub use solver::{
-    deterministic_gaussian_noise, CircuitFault, FaultType, MnaCircuitSolver, PowerRealismConfig,
-    PowerRealismLevel, PowerRealismMode,
+    deterministic_gaussian_noise, pnjlim, CircuitFault, FaultType, MnaCircuitSolver, PowerRealismConfig,
+    PowerRealismLevel, PowerRealismMode, TopologyReport,
 };
 
 /// Logic/Electrical state of a pin or node.
