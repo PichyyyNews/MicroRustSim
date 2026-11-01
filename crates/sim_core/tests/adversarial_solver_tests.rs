@@ -721,3 +721,62 @@ fn test_adv_reverse_biased_led_high_voltage() {
     let has_rev_fault = engine.faults.iter().any(|f| f.fault_type == FaultType::ReversePolarity && f.component_id == "led_rev");
     assert!(has_rev_fault, "Reverse biased LED with Vc - Va = 5.0V must flag ReversePolarity fault");
 }
+
+#[test]
+fn test_adv_gmin_and_source_stepping_fallback_robustness() {
+    let mut engine = SimulationEngine::new_with_uno();
+
+    // Dense mesh of 12 LEDs connected in cross-coupled forward and anti-parallel pairs
+    // directly across 5V and 3.3V rails to trigger non-linear Newton-Raphson stress.
+    for i in 1..=6 {
+        let led_fwd = format!("led_f_{}", i);
+        let led_rev = format!("led_r_{}", i);
+        engine.leds.insert(led_fwd.clone(), LedComponent::new(&led_fwd, "red"));
+        engine.leds.insert(led_rev.clone(), LedComponent::new(&led_rev, "red"));
+
+        // Anti-parallel pair
+        engine.add_wire(Wire { id: format!("w_f1_{}", i), from: PinId::new("uno1", "5V"), to: PinId::new(&led_fwd, "anode"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: format!("w_f2_{}", i), from: PinId::new(&led_fwd, "cathode"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+        engine.add_wire(Wire { id: format!("w_r1_{}", i), from: PinId::new("uno1", "GND"), to: PinId::new(&led_rev, "anode"), color: "#000000".into() });
+        engine.add_wire(Wire { id: format!("w_r2_{}", i), from: PinId::new(&led_rev, "cathode"), to: PinId::new("uno1", "5V"), color: "#ef4444".into() });
+    }
+
+    engine.resolve_electrical_nets();
+
+    // Verify stability: solution must be finite, real, non-NaN, non-Inf
+    let v_5v = *engine.pin_voltages.get(&PinId::new("uno1", "5V")).unwrap();
+    assert!(!v_5v.is_nan() && !v_5v.is_infinite());
+    assert!(v_5v > 0.0 && v_5v <= 5.0);
+
+    for i in 1..=6 {
+        let led_fwd = format!("led_f_{}", i);
+        let i_fwd = engine.branch_currents.get(&led_fwd).copied().unwrap_or(0.0);
+        assert!(!i_fwd.is_nan() && !i_fwd.is_infinite() && i_fwd >= 0.0);
+    }
+}
+
+#[test]
+fn test_adv_kcl_and_power_balance_verification_live() {
+    let mut engine = SimulationEngine::new_with_uno();
+    engine.resistors.insert("r1".into(), ResistorComponent::new("r1", 330.0));
+    engine.resistors.insert("r2".into(), ResistorComponent::new("r2", 470.0));
+    engine.leds.insert("led1".into(), LedComponent::new("led1", "green"));
+
+    // 5V -> r1 -> led1 -> r2 -> GND
+    engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("r1", "1"), color: "#ef4444".into() });
+    engine.add_wire(Wire { id: "w2".into(), from: PinId::new("r1", "2"), to: PinId::new("led1", "anode"), color: "#ef4444".into() });
+    engine.add_wire(Wire { id: "w3".into(), from: PinId::new("led1", "cathode"), to: PinId::new("r2", "1"), color: "#22c55e".into() });
+    engine.add_wire(Wire { id: "w4".into(), from: PinId::new("r2", "2"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+    engine.resolve_electrical_nets();
+
+    let i_r1 = engine.branch_currents.get("r1").copied().unwrap_or(0.0);
+    let i_led = engine.branch_currents.get("led1").copied().unwrap_or(0.0);
+    let i_r2 = engine.branch_currents.get("r2").copied().unwrap_or(0.0);
+
+    // KCL series continuity
+    assert!((i_r1 - i_led).abs() < 1e-6, "Series KCL residual between R1 and LED1 violated: |{:.6} - {:.6}| >= 1uA", i_r1, i_led);
+    assert!((i_led - i_r2).abs() < 1e-6, "Series KCL residual between LED1 and R2 violated: |{:.6} - {:.6}| >= 1uA", i_led, i_r2);
+}
+

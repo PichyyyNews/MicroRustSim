@@ -7,11 +7,9 @@
 //! - SPICE pnjlim(v_new, v_old, vt, vcrit) voltage limiting algorithm for non-linear PN junctions.
 //! - Dual convergence criteria: voltage tolerance (reltol * V + vntol, vntol = 1 µV) and
 //!   current tolerance (reltol * I + abstol, abstol = 1 pA).
-//! - gmin-stepping and source-stepping convergence fallbacks.
-//! - Trapezoidal, Backward Euler, and BDF2 numerical integration companion models for dynamic states.
-//! - Gear-Switching: automatic fallback to Backward Euler for the first step following discontinuities
-//!   to eliminate numerical ringing and guarantee L-stability.
-//! - Variable time-step control based on Local Truncation Error (LTE) and event queue alignment.
+//! - SPICE gmin-stepping and source-stepping convergence fallbacks on Newton-Raphson non-convergence.
+//! - L-stable Backward Euler numerical integration companion model for dynamic reactive states (capacitors)
+//!   with sub-stepping (20 sub-steps per frame), ensuring non-singular matrices and eliminating numerical ringing.
 //! - Circuit topology validation (floating nodes, ideal voltage loops, short circuits).
 //! - Post-solve KCL residual check (< 1 nA) and total power/energy balance verification (< 1%).
 //! - Backward compatible API with existing SimulationEngine and test suites.
@@ -809,6 +807,7 @@ impl MnaCircuitSolver {
             })
         }).collect();
         let mut last_r_5v = r_int_5v_base;
+        let mut final_mna = mna_static.clone();
 
         for _sub in 0..n_sub {
             let mut mna = mna_static.clone();
@@ -838,84 +837,177 @@ impl MnaCircuitSolver {
             let mut mna_iter = mna_base.clone();
             let mut r_iter_5v = last_r_5v;
 
-            // 10. Non-linear Newton-Raphson Solver with SPICE pnjlim & Dynamic PTC Foldback
-            for _iter in 0..MAX_NR_ITERATIONS {
-                mna_iter.a.copy_from_slice(&mna_base.a);
-                mna_iter.rhs.copy_from_slice(&mna_base.rhs);
-                mna_iter.a[n * mna_iter.dim + n] = -r_iter_5v;
+            // Helper to run Newton-Raphson iterations on an MNA base configuration
+            let run_nr = |mna_base_stage: &MnaMatrix,
+                              max_iters: usize,
+                              sol_x: &mut Vec<f64>,
+                              vd: &mut Vec<f64>,
+                              id_curr: &mut Vec<f64>,
+                              r_5v: &mut f64,
+                              mna_stage: &mut MnaMatrix| -> bool {
+                let mut converged = false;
+                for _iter in 0..max_iters {
+                    mna_stage.a.copy_from_slice(&mna_base_stage.a);
+                    mna_stage.rhs.copy_from_slice(&mna_base_stage.rhs);
+                    mna_stage.a[n * mna_stage.dim + n] = -*r_5v;
 
-                for (idx, diode) in diode_branches.iter().enumerate() {
-                    let vd = led_vd[idx];
-                    let is_sat = diode.is_sat;
-                    let vt = diode.vt;
-                    let rs = diode.series_rs;
+                    for (idx, diode) in diode_branches.iter().enumerate() {
+                        let v_d = vd[idx];
+                        let is_sat = diode.is_sat;
+                        let vt = diode.vt;
+                        let rs = diode.series_rs;
 
-                    let id = if _iter == 0 { solve_diode_current(vd, diode.forward_voltage, rs, is_sat, vt) } else { led_id_curr[idx] };
-                    let gd = if id > 1e-6 {
-                        1.0 / (vt / (id + is_sat) + rs)
+                        let id = if _iter == 0 {
+                            solve_diode_current(v_d, diode.forward_voltage, rs, is_sat, vt)
+                        } else {
+                            id_curr[idx]
+                        };
+                        let gd = if id > 1e-6 {
+                            1.0 / (vt / (id + is_sat) + rs)
+                        } else {
+                            1e-6
+                        };
+                        let i_eq = id - gd * v_d;
+
+                        mna_stage.stamp_conductance(diode.anode, diode.cathode, gd);
+                        mna_stage.stamp_current_source(diode.anode, diode.cathode, i_eq);
+                    }
+
+                    mna_stage.solve(sol_x);
+
+                    if diode_branches.is_empty() {
+                        return true;
+                    }
+
+                    // Dynamic PTC polyfuse foldback & heavy load sag inside Newton-Raphson
+                    let curr_i5v = if n < sol_x.len() { sol_x[n].abs() } else { 0.0 };
+                    let threshold = if power_config.mode == PowerRealismMode::Realistic {
+                        I_LIMIT_5V // 0.500 A
                     } else {
-                        1e-6
+                        0.080 // In Ideal mode, begin smooth sag when loaded beyond 80mA
                     };
-                    let i_eq = id - gd * vd;
+                    let r_target = if curr_i5v > threshold {
+                        (r_int_5v_base + 32.0 * ((curr_i5v - threshold) / 0.040).powi(2)).min(32.0)
+                    } else {
+                        r_int_5v_base
+                    };
+                    let r_diff = (*r_5v - r_target).abs();
+                    *r_5v = 0.85 * *r_5v + 0.15 * r_target;
 
-                    mna_iter.stamp_conductance(diode.anode, diode.cathode, gd);
-                    mna_iter.stamp_current_source(diode.anode, diode.cathode, i_eq);
-                }
+                    // Dual convergence check (voltage and current)
+                    let mut v_converged = true;
+                    let mut i_converged = true;
 
-                mna_iter.solve(&mut x);
+                    for (idx, diode) in diode_branches.iter().enumerate() {
+                        let va = diode.anode.map(|i| sol_x[i]).unwrap_or(0.0);
+                        let vc = diode.cathode.map(|i| sol_x[i]).unwrap_or(0.0);
+                        let v_tot_new = va - vc;
+                        let v_lim = pnjlim(v_tot_new, vd[idx], diode.vt, diode.vcrit);
+                        let v_next = v_lim;
 
-                if diode_branches.is_empty() {
-                    break;
-                }
+                        let v_delta = (v_next - vd[idx]).abs();
+                        let v_tol = RELTOL * vd[idx].abs().max(v_next.abs()) + VNTOL;
+                        if v_delta > v_tol {
+                            v_converged = false;
+                        }
 
-                // Dynamic PTC polyfuse foldback & heavy load sag inside Newton-Raphson
-                let curr_i5v = if n < x.len() { x[n].abs() } else { 0.0 };
-                let threshold = if power_config.mode == PowerRealismMode::Realistic {
-                    I_LIMIT_5V // 0.500 A
-                } else {
-                    0.080 // In Ideal mode, begin smooth sag when loaded beyond 80mA
-                };
-                let r_target = if curr_i5v > threshold {
-                    (r_int_5v_base + 32.0 * ((curr_i5v - threshold) / 0.040).powi(2)).min(32.0)
-                } else {
-                    r_int_5v_base
-                };
-                let r_diff = (r_iter_5v - r_target).abs();
-                r_iter_5v = 0.85 * r_iter_5v + 0.15 * r_target;
+                        let new_id = solve_diode_current(v_next, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt);
+                        let i_delta = (new_id - id_curr[idx]).abs();
+                        let i_tol = RELTOL * id_curr[idx].abs().max(new_id.abs()) + 1e-9;
+                        if i_delta > i_tol {
+                            i_converged = false;
+                        }
 
-                // Dual convergence check (voltage and current)
-                let mut v_converged = true;
-                let mut i_converged = true;
-
-                for (idx, diode) in diode_branches.iter().enumerate() {
-                    let va = diode.anode.map(|i| x[i]).unwrap_or(0.0);
-                    let vc = diode.cathode.map(|i| x[i]).unwrap_or(0.0);
-                    let v_tot_new = va - vc;
-                    let v_lim = pnjlim(v_tot_new, led_vd[idx], diode.vt, diode.vcrit);
-                    let v_next = v_lim;
-
-                    let v_delta = (v_next - led_vd[idx]).abs();
-                    let v_tol = RELTOL * led_vd[idx].abs().max(v_next.abs()) + VNTOL;
-                    if v_delta > v_tol {
-                        v_converged = false;
+                        vd[idx] = v_next;
+                        id_curr[idx] = new_id;
                     }
 
-                    let new_id = solve_diode_current(v_next, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt);
-                    let i_delta = (new_id - led_id_curr[idx]).abs();
-                    let i_tol = RELTOL * led_id_curr[idx].abs().max(new_id.abs()) + 1e-9;
-                    if i_delta > i_tol {
-                        i_converged = false;
+                    if v_converged && i_converged && r_diff < 0.005 {
+                        converged = true;
+                        break;
                     }
+                }
+                converged
+            };
 
-                    led_vd[idx] = v_next;
-                    led_id_curr[idx] = new_id;
+            // 10. Non-linear Newton-Raphson Solver with SPICE pnjlim & Dynamic PTC Foldback
+            let mut converged = run_nr(
+                &mna_base,
+                MAX_NR_ITERATIONS,
+                &mut x,
+                &mut led_vd,
+                &mut led_id_curr,
+                &mut r_iter_5v,
+                &mut mna_iter,
+            );
+
+            // SPICE Convergence Fallbacks (docs/PHYSICS_SPEC.md §2.4)
+            if !converged && !diode_branches.is_empty() {
+                // Fallback 1: gmin-stepping
+                // Add large diagonal conductance (1e-3 S) from all nodes to ground to linearize the
+                // system, then step down geometrically across MAX_GMIN_STEPS to G_MIN_DEFAULT (1e-12 S).
+                let mut gmin_ok = false;
+                for step in 0..MAX_GMIN_STEPS {
+                    let frac = step as f64 / ((MAX_GMIN_STEPS - 1).max(1) as f64);
+                    let log_g = -3.0 + frac * (-12.0 - (-3.0));
+                    let g_step = 10.0f64.powf(log_g);
+
+                    let mut mna_gmin = mna_base.clone();
+                    mna_gmin.add_gmin(g_step);
+
+                    let step_conv = run_nr(
+                        &mna_gmin,
+                        MAX_NR_ITERATIONS,
+                        &mut x,
+                        &mut led_vd,
+                        &mut led_id_curr,
+                        &mut r_iter_5v,
+                        &mut mna_iter,
+                    );
+                    if step_conv && step == MAX_GMIN_STEPS - 1 {
+                        gmin_ok = true;
+                    } else if !step_conv {
+                        break;
+                    }
                 }
 
-                if v_converged && i_converged && r_diff < 0.005 {
-                    break;
+                if gmin_ok {
+                    converged = true;
+                } else {
+                    // Fallback 2: source-stepping
+                    // Ramp all independent excitation sources: e(lambda) = lambda * e_final,
+                    // scaling lambda from 0.1 to 1.0 across MAX_SOURCE_STEPS.
+                    let mut src_ok = false;
+                    for step in 1..=MAX_SOURCE_STEPS {
+                        let lambda = step as f64 / (MAX_SOURCE_STEPS as f64);
+                        let mut mna_src = mna_base.clone();
+                        for val in mna_src.rhs.iter_mut() {
+                            *val *= lambda;
+                        }
+
+                        let step_conv = run_nr(
+                            &mna_src,
+                            MAX_NR_ITERATIONS,
+                            &mut x,
+                            &mut led_vd,
+                            &mut led_id_curr,
+                            &mut r_iter_5v,
+                            &mut mna_iter,
+                        );
+                        if step_conv && step == MAX_SOURCE_STEPS {
+                            src_ok = true;
+                        } else if !step_conv {
+                            break;
+                        }
+                    }
+
+                    if src_ok {
+                        converged = true;
+                    }
                 }
             }
 
+            final_mna = mna_iter;
             last_r_5v = r_iter_5v;
 
             // Update capacitor internal state for this sub-step
@@ -954,17 +1046,7 @@ impl MnaCircuitSolver {
 
         let node_volt_clean = |u: Option<usize>| -> f32 {
             let v = node_volt(u);
-            if power_config.mode == PowerRealismMode::Ideal {
-                if (v - 5.0).abs() < 0.005 {
-                    5.0
-                } else if (v - 3.3).abs() < 0.005 {
-                    3.3
-                } else if v.abs() < 1e-4 {
-                    0.0
-                } else {
-                    v as f32
-                }
-            } else if v.abs() < 1e-12 {
+            if v.abs() < 1e-12 {
                 0.0
             } else {
                 v as f32
@@ -1060,6 +1142,121 @@ impl MnaCircuitSolver {
                 0.0
             };
             branch_currents.insert(format!("uno1:{}", pin_name), ip as f32);
+        }
+
+        // 11b. Verify KCL residual and Power & Energy Balance (docs/PHYSICS_SPEC.md §2.6)
+        let mut p_supplied = v_src_5v * i5v + v_src_3v3 * i33;
+        for &pin_name in &mcu_pins {
+            if let LogicState::Analog(v) = mcu.get_pin_state(pin_name) {
+                if let Some(idx) = get_node_idx("uno1", pin_name) {
+                    let vp = node_volt(Some(idx));
+                    let v_target = (v as f64).clamp(0.0, 5.0);
+                    let ip = (v_target - vp) / 25.0;
+                    if ip > 0.0 {
+                        p_supplied += v_target * ip;
+                    }
+                }
+            }
+        }
+
+        let mut p_dissipated = 0.0;
+        p_dissipated += i5v * i5v * last_r_5v;
+        p_dissipated += i33 * i33 * r_int_3v3_base;
+
+        for (res_id, res) in resistors {
+            let v1 = node_volt(get_node_idx(res_id, "1"));
+            let v2 = node_volt(get_node_idx(res_id, "2"));
+            let r = (res.resistance_ohms as f64).max(0.001);
+            p_dissipated += (v1 - v2).powi(2) / r;
+        }
+
+        for (pot_id, pot) in pots {
+            let v_p3 = node_volt(get_node_idx(pot_id, "3"));
+            let v_p2 = node_volt(get_node_idx(pot_id, "2"));
+            let is_standalone_sensor = !pot_vcc_wired.contains(pot_id) && !pot_gnd_wired.contains(pot_id);
+            let v_p1 = if is_standalone_sensor { 0.0 } else { node_volt(get_node_idx(pot_id, "1")) };
+            let alpha = (pot.value as f64).clamp(0.0, 1.0);
+            let rc = R_POT_WIPER_RC;
+            let r_top = (1.0 - alpha) * 10000.0 + rc;
+            let r_bot = alpha * 10000.0 + rc;
+            p_dissipated += (v_p3 - v_p2).powi(2) / r_top;
+            p_dissipated += (v_p2 - v_p1).powi(2) / r_bot;
+        }
+
+        for (btn_id, btn) in buttons {
+            let v1 = node_volt(get_node_idx(btn_id, "1"));
+            let v2 = node_volt(get_node_idx(btn_id, "2"));
+            let r = if btn.is_pressed { R_PUSHBUTTON_ON } else { R_PUSHBUTTON_OFF };
+            p_dissipated += (v1 - v2).powi(2) / r;
+        }
+
+        for diode in &diode_branches {
+            let va = node_volt(diode.anode);
+            let vc = node_volt(diode.cathode);
+            let v_tot = (va - vc).max(0.0);
+            let id = solve_diode_current(v_tot, diode.forward_voltage, diode.series_rs, diode.is_sat, diode.vt);
+            p_dissipated += id * v_tot;
+        }
+
+        for &pin_name in &mcu_pins {
+            if pin_name == "5V" || pin_name == "3.3V" || pin_name.starts_with("GND") || pin_name == "VIN" || pin_name == "IOREF" {
+                continue;
+            }
+            if let Some(idx) = get_node_idx("uno1", pin_name) {
+                let vp = node_volt(Some(idx));
+                let state = mcu.get_pin_state(pin_name);
+                match state {
+                    LogicState::High => {
+                        let ip = (v5v - vp) / R_GPIO_OUT_P;
+                        p_dissipated += ip * ip * R_GPIO_OUT_P;
+                    }
+                    LogicState::Low => {
+                        let ip = vp / R_GPIO_OUT_N;
+                        p_dissipated += ip * ip * R_GPIO_OUT_N;
+                    }
+                    LogicState::InputPullUp => {
+                        let ip = (v5v - vp) / R_GPIO_PULLUP;
+                        p_dissipated += ip * ip * R_GPIO_PULLUP;
+                    }
+                    LogicState::Analog(v) => {
+                        let v_target = (v as f64).clamp(0.0, 5.0);
+                        let ip = (v_target - vp) / 25.0;
+                        p_dissipated += ip * ip * 25.0;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let mut de_stored_dt = 0.0;
+        for (cap_id, cap) in capacitors.iter() {
+            let p1 = get_node_idx(cap_id, "1");
+            let p2 = get_node_idx(cap_id, "2");
+            let v1 = node_volt(p1);
+            let v2 = node_volt(p2);
+            let v_term = v1 - v2;
+            let i_cap = branch_currents.get(cap_id).copied().unwrap_or(0.0) as f64;
+            let esr = (cap.esr_ohms as f64).max(0.01);
+            p_dissipated += i_cap * i_cap * esr;
+            let r_leak = if cap.is_polarized { 2.0e7 } else { R_LEAK_CERAMIC };
+            p_dissipated += (v_term - i_cap * esr).powi(2) / r_leak;
+            de_stored_dt += i_cap * (v_term - i_cap * esr);
+        }
+
+        let (max_kcl_res, power_rel, is_valid) = Self::verify_kcl_and_power_balance(
+            n,
+            &final_mna,
+            &x,
+            p_supplied,
+            p_dissipated,
+            de_stored_dt,
+        );
+
+        if !is_valid {
+            eprintln!(
+                "[WARN sim_core::solver] Physics validation warning: KCL residual={:.3e}A (tol={:.3e}A), power error={:.2}% (P_supp={:.4e}W, P_diss={:.4e}W, dE/dt={:.4e}W)",
+                max_kcl_res, KCL_TOL_A, power_rel * 100.0, p_supplied, p_dissipated, de_stored_dt
+            );
         }
 
         // 12. Populate pin_voltages map

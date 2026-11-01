@@ -132,7 +132,7 @@ pub const I_VCC_TOTAL_MAX_A: f64 = 0.200;
 // ============================================================================
 
 /// Potentiometer wiper contact / terminal resistance R_c in Ω (Alps/Bourns Pot Spec)
-pub const R_POT_WIPER_RC: f64 = 0.001;
+pub const R_POT_WIPER_RC: f64 = 1.0;
 
 /// Pushbutton closed contact resistance in Ω (Omron B3F Tactile Datasheet)
 pub const R_PUSHBUTTON_ON: f64 = 0.05;

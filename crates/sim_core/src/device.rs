@@ -9,14 +9,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::constants::G_MIN_DEFAULT;
 
-/// Numerical integration method for time-domain companion models
+/// Numerical integration method for time-domain companion models.
+/// MicroRustSim currently uses L-stable Backward Euler for dynamic capacitor states,
+/// while Trapezoidal and BDF2 are defined as interface variants for future higher-order extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IntegrationMethod {
-    /// Second-order Trapezoidal rule: O(dt^2) accuracy
+    /// Second-order Trapezoidal rule: O(dt^2) accuracy (interface variant)
     Trapezoidal,
-    /// First-order Backward Euler: L-stable, used for gear-switching at discontinuities
+    /// First-order Backward Euler: L-stable active companion model in sim_core
     BackwardEuler,
-    /// Second-order Backward Differentiation Formula: L-stable
+    /// Second-order Backward Differentiation Formula: L-stable (interface variant)
     BDF2,
 }
 
