@@ -126,13 +126,17 @@ export const ArduinoUno: React.FC<ArduinoUnoProps> = ({ pin13Lit, onPinMouseDown
 
       {/* Builtin Pin 13 LED (L - Amber/Yellow) at cx=130.8, cy=52.7 */}
       <div
-        id="builtin-led-pin13" data-led="builtin-pin13" title="Builtin LED (L - Pin 13)"
-        className={`absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2 rounded transition-all duration-75 pointer-events-none ${
-          pin13Lit
-            ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b] opacity-100 ring-1 ring-amber-300'
-            : 'bg-amber-950/40 opacity-30'
-        }`}
-        style={{ left: '130.8px', top: '52.7px' }}
+        id="builtin-led-pin13"
+        data-led="builtin-pin13"
+        title="Builtin LED (L - Pin 13)"
+        className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2 rounded pointer-events-none"
+        style={{
+          left: '130.8px',
+          top: '52.7px',
+          backgroundColor: pin13Lit ? '#fbbf24' : 'rgba(69, 26, 3, 0.4)',
+          opacity: pin13Lit ? 1.0 : 0.3,
+          boxShadow: pin13Lit ? '0 0 8px #f59e0b' : 'none',
+        }}
       />
 
       {/* Interactive Pin Holes Overlay (Exact 1:1 Pin Holes Matching Official SVG Headers) */}

@@ -26,6 +26,13 @@ pub struct LedBatchPayload {
     pub current_state: bool,
     pub cycles_per_sec: u64,
     pub edges_per_sec: u64,
+    pub serial: Option<String>,
+    pub millis: f64,
+    pub pin_voltages: HashMap<String, f32>,
+    pub mcu_pin_voltages: HashMap<String, f32>,
+    pub branch_currents: HashMap<String, f32>,
+    pub faults: Vec<CircuitFault>,
+    pub damaged_components: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -460,6 +467,13 @@ fn handle_sim_command(
                         current_state: *last_pb5_state,
                         cycles_per_sec: 0,
                         edges_per_sec: 0,
+                        serial: None,
+                        millis: 0.0,
+                        pin_voltages: HashMap::new(),
+                        mcu_pin_voltages: HashMap::new(),
+                        branch_currents: HashMap::new(),
+                        faults: Vec::new(),
+                        damaged_components: Vec::new(),
                     });
                 }
                 SimCommand::Step { cycles, reply } => {
@@ -813,48 +827,89 @@ fn run_simulation_thread(sim_rx: Receiver<SimCommand>, app_handle: tauri::AppHan
         if is_running {
             let elapsed_sec = start_time.elapsed().as_secs_f64();
             let target_cycle = base_sim_cycle + (elapsed_sec * 16_000_000.0) as u64;
-            let current_cycle = engine.mcu.cycles();
 
-            if target_cycle > current_cycle {
-                // Prevent lag spiral if paused or system stalls
-                if target_cycle > current_cycle + 800_000 {
-                    start_time = Instant::now();
-                    base_sim_cycle = current_cycle;
+            let mut steps_in_burst = 0;
+            while engine.mcu.cycles() < target_cycle && steps_in_burst < 1000 {
+                let remaining = target_cycle - engine.mcu.cycles();
+                let chunk = remaining.min(1024);
+                engine.mcu.step_cycles(chunk);
+                cycles_simulated_in_last_sec += chunk;
+                steps_in_burst += 1;
+
+                let new_state = engine.mcu.get_pin_state("13") == LogicState::High;
+                let now_cycle = engine.mcu.cycles();
+                if new_state != last_pb5_state {
+                    edges.push(LedEdge {
+                        cycle: now_cycle,
+                        state: new_state,
+                    });
+                    edges_in_last_sec += 1;
+                    last_pb5_state = new_state;
+                    engine.resolve_electrical_nets();
                 }
 
-                let remaining_needed = target_cycle.saturating_sub(engine.mcu.cycles());
-                let chunk = remaining_needed.min(256);
-                if chunk > 0 {
-                    engine.mcu.step_cycles(chunk);
-                    cycles_simulated_in_last_sec += chunk;
-
-                    let new_state = engine.mcu.get_pin_state("13") == LogicState::High;
-                    let now_cycle = engine.mcu.cycles();
-                    if new_state != last_pb5_state {
-                        edges.push(LedEdge {
-                            cycle: now_cycle,
-                            state: new_state,
-                        });
-                        edges_in_last_sec += 1;
-                        last_pb5_state = new_state;
-                        engine.resolve_electrical_nets();
-                    }
+                if start_time.elapsed().as_secs_f64() - elapsed_sec > 0.010 {
+                    break;
                 }
-            } else {
-                // Yield when caught up to prevent 100% core spinning
-                thread::sleep(Duration::from_micros(200));
+            }
+
+            // If we fell far behind (> 1.0 second = 16M cycles), reset start to prevent lag spiral
+            if target_cycle > engine.mcu.cycles() + 16_000_000 {
+                start_time = Instant::now();
+                base_sim_cycle = engine.mcu.cycles();
+            }
+
+            // Yield briefly when caught up to prevent 100% core spinning
+            if engine.mcu.cycles() >= target_cycle {
+                thread::sleep(Duration::from_micros(250));
             }
         }
 
-        // 3. Batch emission of LED edges every ~16ms
+        // 3. Batch emission of LED edges & simulation telemetry every ~16ms
         if last_batch_time.elapsed() >= Duration::from_millis(16) {
             let batch = std::mem::take(&mut edges);
+
+            let raw_bytes = engine.mcu.read_serial_output();
+            let serial = if !raw_bytes.is_empty() {
+                Some(String::from_utf8_lossy(&raw_bytes).to_string())
+            } else {
+                None
+            };
+
+            let mut damaged_components = Vec::new();
+            for (id, l) in &engine.leds {
+                if l.is_blown {
+                    damaged_components.push(id.clone());
+                }
+            }
+            for (id, r) in &engine.resistors {
+                if r.is_blown {
+                    damaged_components.push(id.clone());
+                }
+            }
+            for (id, c) in &engine.capacitors {
+                if c.is_damaged {
+                    damaged_components.push(id.clone());
+                }
+            }
+
+            if is_running {
+                engine.resolve_electrical_nets();
+            }
+
             let payload = LedBatchPayload {
                 edges: batch,
                 current_cycle: engine.mcu.cycles(),
                 current_state: last_pb5_state,
                 cycles_per_sec: last_actual_cps,
                 edges_per_sec: last_actual_eps,
+                serial,
+                millis: engine.mcu.millis(),
+                pin_voltages: engine.pin_voltages_map(),
+                mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+                branch_currents: engine.branch_currents.clone(),
+                faults: engine.faults.clone(),
+                damaged_components,
             };
             let _ = app_handle.emit("led", &payload);
             last_batch_time = Instant::now();
@@ -867,7 +922,9 @@ fn run_simulation_thread(sim_rx: Receiver<SimCommand>, app_handle: tauri::AppHan
             let eps = (edges_in_last_sec as f64 / elapsed) as u64;
             last_actual_cps = cps;
             last_actual_eps = eps;
-            println!("[SIM] Real-time cycles/s: {}, edges/s: {}", cps, eps);
+            if is_running {
+                println!("[SIM] Real-time cycles/s: {}, edges/s: {}", cps, eps);
+            }
             cycles_simulated_in_last_sec = 0;
             edges_in_last_sec = 0;
             last_log_time = Instant::now();

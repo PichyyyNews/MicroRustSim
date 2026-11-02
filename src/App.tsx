@@ -1631,9 +1631,17 @@ export default function App() {
     current_state: boolean;
     cycles_per_sec: number;
     edges_per_sec: number;
+    serial?: string | null;
+    millis?: number;
+    pin_voltages?: Record<string, number>;
+    mcu_pin_voltages?: Record<string, number>;
+    branch_currents?: Record<string, number>;
+    faults?: CircuitFault[];
+    damaged_components?: string[];
   }
 
   const ledEdgesRef = useRef<LedEdge[]>([]);
+  const lastTelemetryUpdateRef = useRef<number>(0);
   const ledStateRef = useRef<{
     currentCycle: number;
     currentState: boolean;
@@ -1773,6 +1781,7 @@ export default function App() {
           const payload = event.payload;
           if (!payload) return;
 
+          // 1. Collect edges in ref (strictly NO setState per frame)
           if (payload.edges && payload.edges.length > 0) {
             ledEdgesRef.current.push(...payload.edges);
           }
@@ -1796,6 +1805,99 @@ export default function App() {
               `[SIM] Real-time cycles/s: ${payload.cycles_per_sec}, edges/s: ${payload.edges_per_sec}`
             );
             ledStateRef.current.lastLogTime = now;
+          }
+
+          // 2. MCU Serial Monitor output
+          if (payload.serial) {
+            appendSerialText(payload.serial);
+          }
+
+          // 3. Telemetry & Waveforms throttled to ~15 Hz (every ~66ms) to keep 144+ FPS UI smoothness
+          if (now - lastTelemetryUpdateRef.current >= 66) {
+            lastTelemetryUpdateRef.current = now;
+
+            if (payload.millis !== undefined) {
+              simTimeRef.current = payload.millis;
+            }
+            if (payload.pin_voltages) {
+              setPinVoltages(payload.pin_voltages);
+            }
+            if (payload.branch_currents) {
+              setBranchCurrents(payload.branch_currents);
+            }
+            if (payload.faults) {
+              setCircuitFaults(payload.faults);
+            }
+            if (payload.damaged_components) {
+              setDamagedComponents(new Set(payload.damaged_components));
+            }
+
+            // Record waveform histories
+            const t = payload.millis ?? (payload.current_cycle / 16000);
+            const cutoffTime = t - 5000;
+            const v13 = payload.mcu_pin_voltages?.['13'] ?? (payload.current_state ? 5.0 : 0.0);
+            const v2 = payload.mcu_pin_voltages?.['2'] ?? 0.0;
+            const vA0 = payload.mcu_pin_voltages?.['A0'] ?? 0.0;
+
+            setLogicHistory((prev) => {
+              const next = [...prev, [t, v13] as [number, number]];
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
+            });
+            setPin2History((prev) => {
+              const next = [...prev, [t, v2] as [number, number]];
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
+            });
+            setPinA0History((prev) => {
+              const next = [...prev, [t, vA0] as [number, number]];
+              let startIdx = 0;
+              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
+                startIdx++;
+              }
+              return next.slice(Math.max(startIdx, next.length - 2500));
+            });
+
+            channelConfigsRef.current.forEach((cfg) => {
+              if (!cfg.enabled) return;
+              let v = 0.0;
+              if (cfg.kind === 'mcu') {
+                v = payload.mcu_pin_voltages?.[cfg.targetId] ?? 0.0;
+              } else if (cfg.kind === 'led') {
+                v = payload.pin_voltages?.[cfg.targetId + ':anode'] ?? payload.pin_voltages?.[cfg.targetId + ':1'] ?? 0.0;
+              } else if (cfg.kind === 'pushbutton') {
+                v = payload.pin_voltages?.[cfg.targetId + ':1'] ?? payload.pin_voltages?.[cfg.targetId + ':1a'] ?? 0.0;
+              } else if (cfg.kind === 'potentiometer') {
+                v = payload.pin_voltages?.[cfg.targetId + ':2'] ?? payload.pin_voltages?.[cfg.targetId + ':sig'] ?? 0.0;
+              } else if (cfg.kind === 'resistor') {
+                const v1 = payload.pin_voltages?.[cfg.targetId + ':1'] ?? 0.0;
+                const v2 = payload.pin_voltages?.[cfg.targetId + ':2'] ?? 0.0;
+                v = Math.abs(v1 - v2);
+              } else if (cfg.kind === 'capacitor') {
+                const v1 = payload.pin_voltages?.[cfg.targetId + ':1'] ?? payload.pin_voltages?.[cfg.targetId + ':pos'] ?? 0.0;
+                const v2 = payload.pin_voltages?.[cfg.targetId + ':2'] ?? payload.pin_voltages?.[cfg.targetId + ':neg'] ?? 0.0;
+                v = Math.max(0.0, v1 - v2);
+              }
+
+              if (!waveformHistoriesRef.current[cfg.id]) {
+                waveformHistoriesRef.current[cfg.id] = [];
+              }
+              const h = waveformHistoriesRef.current[cfg.id];
+              h.push([t, v]);
+              while (h.length > 0 && h[0][0] < cutoffTime) {
+                h.shift();
+              }
+              if (h.length > 3000) {
+                h.shift();
+              }
+            });
+            setWaveformVersion((ver) => (ver + 1) % 1000000);
           }
         });
       })
