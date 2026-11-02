@@ -3201,9 +3201,8 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <div className="flex items-center gap-1.5 pl-1 pr-2 select-none">
-              <img src="/Ohmic.svg" alt="Ohmic" className="w-4 h-4 object-contain shrink-0" />
-              <span className="font-semibold text-xs text-zinc-300 tracking-tight">
+            <div className="flex items-center pl-1.5 pr-2.5 select-none">
+              <span className="font-disclaimer text-xl leading-none tracking-wider text-zinc-200">
                 Ohmic
               </span>
             </div>
@@ -3728,17 +3727,11 @@ export default function App() {
             </span>
           </div>
 
-          {/* Right Window Controls & Top-Right Brand (Disclaimer font ONLY here) */}
-          <div className="flex items-center h-full">
-            <div className="flex items-center gap-1.5 px-3 select-none pointer-events-none">
-              <span className="font-disclaimer text-xl leading-none tracking-wider text-zinc-200">
-                Ohmic
-              </span>
-            </div>
-            <div
-              className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+          {/* Right Window Controls (—, □, ✕) */}
+          <div
+            className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => tauriInvoke('minimize_window')}
@@ -3769,7 +3762,6 @@ export default function App() {
                 <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
             </button>
-            </div>
           </div>
         </header>
 
@@ -5741,7 +5733,7 @@ export default function App() {
             <img
               src="/Ohmic.svg"
               alt="Ohmic"
-              className="w-56 h-auto max-h-28 object-contain mb-6 animate-pulse"
+              className="w-20 h-20 object-contain mb-5 animate-pulse"
             />
             <div className="w-28 h-0.5 bg-[#222226] rounded-full overflow-hidden">
               <div className="w-full h-full bg-zinc-300 rounded-full animate-pulse" />
