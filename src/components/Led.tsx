@@ -39,7 +39,7 @@ function resolveColorStyle(color?: string): ColorStyle {
   return COLOR_MAP.red;
 }
 
-export const Led: React.FC<LedProps> = ({ color, isLit, brightness, onPinMouseDown }) => {
+export const Led: React.FC<LedProps> = ({ id, color, isLit, brightness, onPinMouseDown }) => {
   const current = resolveColorStyle(color);
 
   // Physical brightness clamp between 0.04 and 1.0 when lit
@@ -65,11 +65,15 @@ export const Led: React.FC<LedProps> = ({ color, isLit, brightness, onPinMouseDo
 
   return (
     <div
+      id={id ? `led-${id}` : undefined}
+      data-led-id={id}
       className="relative select-none cursor-move flex flex-col items-center"
       style={{ width: '48px', height: '64px' }}
     >
       {/* 5mm LED Epoxy Dome - Instant real-time brightness rendering without CSS animation delay */}
       <div
+        data-led-dome={id || 'led'}
+        data-glow-color={current.glow}
         className="w-7 h-7 rounded-t-full rounded-b-sm border-2 relative overflow-hidden"
         style={{
           backgroundColor: current.bg,
@@ -80,15 +84,18 @@ export const Led: React.FC<LedProps> = ({ color, isLit, brightness, onPinMouseDo
         }}
       >
         {/* Core luminous center when lit */}
-        {isLit && (
-          <div
-            className="absolute inset-x-1.5 top-1.5 bottom-1 rounded-full bg-white blur-[1.5px] pointer-events-none"
-            style={{ opacity: (b * 0.75).toFixed(2) }}
-          />
-        )}
+        <div
+          data-led-core={id || 'led'}
+          className="absolute inset-x-1.5 top-1.5 bottom-1 rounded-full bg-white blur-[1.5px] pointer-events-none"
+          style={{
+            display: isLit ? 'block' : 'none',
+            opacity: (b * 0.75).toFixed(2),
+          }}
+        />
 
         {/* Epoxy lens light reflection */}
         <div
+          data-led-reflection={id || 'led'}
           className="absolute top-1 left-1.5 w-2 h-2 rounded-full bg-white blur-[0.5px]"
           style={{ opacity: isLit ? Math.min(1.0, 0.35 + b * 0.5) : 0.3 }}
         />

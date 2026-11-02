@@ -1619,170 +1619,213 @@ export default function App() {
     };
   }, []);
 
+  // --- Push-Based Real-Time LED Simulation Architecture ---
+  interface LedEdge {
+    cycle: number;
+    state: boolean;
+  }
+
+  interface LedBatchPayload {
+    edges: LedEdge[];
+    current_cycle: number;
+    current_state: boolean;
+    cycles_per_sec: number;
+    edges_per_sec: number;
+  }
+
+  const ledEdgesRef = useRef<LedEdge[]>([]);
+  const ledStateRef = useRef<{
+    currentCycle: number;
+    currentState: boolean;
+    cyclesPerSec: number;
+    edgesPerSec: number;
+    lastLogTime: number;
+    duty: number;
+  }>({
+    currentCycle: 0,
+    currentState: false,
+    cyclesPerSec: 0,
+    edgesPerSec: 0,
+    lastLogTime: performance.now(),
+    duty: 0,
+  });
+
+  // Calculate physical duty cycle from edge transitions over ~16ms window
+  const computeDutyFromEdges = (
+    edges: LedEdge[],
+    currentCycle: number,
+    currentState: boolean,
+    windowCycles = 256_000
+  ): number => {
+    const t2 = currentCycle;
+    const t1 = Math.max(0, t2 - windowCycles);
+    const totalWindow = t2 - t1;
+
+    if (totalWindow <= 0) {
+      return currentState ? 1.0 : 0.0;
+    }
+
+    // Determine state at start of window t1
+    let stateAtT1 = currentState;
+    let foundPriorEdge = false;
+    for (let i = edges.length - 1; i >= 0; i--) {
+      if (edges[i].cycle <= t1) {
+        stateAtT1 = edges[i].state;
+        foundPriorEdge = true;
+        break;
+      }
+    }
+    if (!foundPriorEdge && edges.length > 0) {
+      stateAtT1 = !edges[0].state;
+    }
+
+    let curTime = t1;
+    let curState = stateAtT1;
+    let highCycles = 0;
+
+    for (let i = 0; i < edges.length; i++) {
+      const e = edges[i];
+      if (e.cycle <= t1) continue;
+      if (e.cycle >= t2) break;
+
+      if (curState) {
+        highCycles += e.cycle - curTime;
+      }
+      curTime = e.cycle;
+      curState = e.state;
+    }
+
+    if (curState) {
+      highCycles += t2 - curTime;
+    }
+
+    return Math.min(1.0, Math.max(0.0, highCycles / totalWindow));
+  };
+
+  // Direct DOM manipulation to render LED brightness without React setState
+  const updateLedVisuals = (duty: number) => {
+    // 1. Builtin Pin 13 LED (L - Pin 13 / PB5 on Arduino Uno)
+    const builtinEl = document.getElementById('builtin-led-pin13');
+    if (builtinEl) {
+      if (duty > 0.01) {
+        builtinEl.style.opacity = `${Math.min(1.0, 0.35 + duty * 0.65)}`;
+        builtinEl.style.boxShadow = `0 0 ${Math.round(duty * 10 + 2)}px #f59e0b`;
+        builtinEl.style.backgroundColor = '#fbbf24';
+      } else {
+        builtinEl.style.opacity = '0.3';
+        builtinEl.style.boxShadow = 'none';
+        builtinEl.style.backgroundColor = 'rgba(69, 26, 3, 0.4)';
+      }
+    }
+
+    // 2. External canvas LEDs (e.g. led1 wired to Pin 13)
+    const domeEls = document.querySelectorAll<HTMLElement>('[data-led-dome]');
+    domeEls.forEach((domeEl) => {
+      const ledId = domeEl.getAttribute('data-led-dome');
+      const coreEl = document.querySelector<HTMLElement>(`[data-led-core="${ledId}"]`);
+      const reflEl = document.querySelector<HTMLElement>(`[data-led-reflection="${ledId}"]`);
+      const glowColor = domeEl.getAttribute('data-glow-color') || '#ef4444';
+
+      const b = duty > 0.01 ? Math.min(1.0, Math.max(0.04, duty)) : 0.0;
+      const isLit = b > 0.01;
+
+      if (isLit) {
+        const blur1 = Math.round(b * 16 + 3);
+        const spread1 = Math.round(b * 4 + 1);
+        const blur2 = Math.round(b * 32 + 6);
+        const spread2 = Math.round(b * 6);
+        domeEl.style.boxShadow = `0 0 ${blur1}px ${spread1}px ${glowColor}, 0 0 ${blur2}px ${spread2}px ${glowColor}80${
+          b > 0.5 ? `, inset 0 0 8px rgba(255, 255, 255, ${(b * 0.45).toFixed(2)})` : ''
+        }`;
+        domeEl.style.filter = `brightness(${(0.85 + b * 0.5).toFixed(2)}) saturate(${(0.9 + b * 0.35).toFixed(2)})`;
+        domeEl.style.opacity = `${Math.min(1.0, 0.75 + b * 0.25)}`;
+        if (coreEl) {
+          coreEl.style.display = 'block';
+          coreEl.style.opacity = `${(b * 0.75).toFixed(2)}`;
+        }
+        if (reflEl) {
+          reflEl.style.opacity = `${Math.min(1.0, 0.35 + b * 0.5)}`;
+        }
+      } else {
+        domeEl.style.boxShadow = 'none';
+        domeEl.style.filter = 'brightness(0.65) saturate(0.75)';
+        domeEl.style.opacity = '0.75';
+        if (coreEl) {
+          coreEl.style.display = 'none';
+          coreEl.style.opacity = '0';
+        }
+        if (reflEl) {
+          reflEl.style.opacity = '0.3';
+        }
+      }
+    });
+  };
+
+  // Push architecture listener: receive batch of PB5 edges every ~16ms from sim thread
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let mounted = true;
+
+    import('@tauri-apps/api/event')
+      .then(({ listen }) => {
+        if (!mounted) return;
+        return listen<LedBatchPayload>('led', (event) => {
+          const payload = event.payload;
+          if (!payload) return;
+
+          if (payload.edges && payload.edges.length > 0) {
+            ledEdgesRef.current.push(...payload.edges);
+          }
+          ledStateRef.current.currentCycle = payload.current_cycle;
+          ledStateRef.current.currentState = payload.current_state;
+          ledStateRef.current.cyclesPerSec = payload.cycles_per_sec;
+          ledStateRef.current.edgesPerSec = payload.edges_per_sec;
+
+          // Bounded memory buffer: prune edges older than 1,000,000 cycles (~62ms)
+          const minCycle =
+            payload.current_cycle > 1_000_000 ? payload.current_cycle - 1_000_000 : 0;
+          const edges = ledEdgesRef.current;
+          while (edges.length > 0 && edges[0].cycle < minCycle) {
+            edges.shift();
+          }
+
+          // Per-second log: cycles simulated per real second, edges captured per second
+          const now = performance.now();
+          if (now - ledStateRef.current.lastLogTime >= 1000) {
+            console.log(
+              `[SIM] Real-time cycles/s: ${payload.cycles_per_sec}, edges/s: ${payload.edges_per_sec}`
+            );
+            ledStateRef.current.lastLogTime = now;
+          }
+        });
+      })
+      .then((fn) => {
+        if (fn && mounted) unlisten = fn;
+      })
+      .catch((err) => {
+        console.error('Failed to listen to led event:', err);
+      });
+
+    return () => {
+      mounted = false;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // Compute duty cycle in requestAnimationFrame (strictly NO setState per frame)
   useEffect(() => {
     let animId: number;
     let cancelled = false;
-    let lastTime = performance.now();
-    let steppingStartTime = 0;
 
-    const resetTiming = () => {
-      lastTime = performance.now();
-      isSteppingRef.current = false;
-    };
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        resetTiming();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', resetTiming);
-
-    const loop = async () => {
+    const loop = () => {
       if (cancelled) return;
 
-      // If window is minimized or hidden, skip heavy IPC stepping
-      if (document.hidden) {
-        lastTime = performance.now();
-        animId = requestAnimationFrame(loop);
-        return;
-      }
+      const { currentCycle, currentState } = ledStateRef.current;
+      const duty = computeDutyFromEdges(ledEdgesRef.current, currentCycle, currentState);
+      ledStateRef.current.duty = duty;
 
-      // If user is dragging the window across the screen, yield stepping immediately
-      // This grants 100% of UI thread & GPU to Windows DWM, making window dragging buttery smooth (144+ FPS)
-      const isWindowMoving =
-        isWindowMovingRef.current ||
-        performance.now() - lastWindowMoveTimeRef.current < 120;
-      if (isWindowMoving) {
-        lastTime = performance.now();
-        animId = requestAnimationFrame(loop);
-        return;
-      }
-
-      // Watchdog: If an IPC call got delayed or hung for more than 1 second
-      if (isSteppingRef.current && performance.now() - steppingStartTime > 1000) {
-        isSteppingRef.current = false;
-      }
-
-      if (!isSteppingRef.current) {
-        isSteppingRef.current = true;
-        steppingStartTime = performance.now();
-        try {
-          const now = performance.now();
-          const elapsedSec = (now - lastTime) / 1000;
-          lastTime = now;
-
-          // Target 16,000,000 cycles / sec for exact 1:1 real-time match with 16 MHz ATmega328P
-          // Clamp elapsed time between 0.005s and 0.080s to prevent simulation lag while avoiding massive spikes
-          const clampedElapsed = Math.min(0.080, Math.max(0.005, elapsedSec));
-          const cycles = isRunningRef.current
-            ? Math.round(clampedElapsed * 16_000_000)
-            : 0;
-
-          const res = await tauriInvoke<StepResult>('step_simulation', { cycles });
-
-          if (!cancelled && res) {
-            setPin13State(res.pin13);
-            setLitLeds(new Set(res.lit_leds));
-            setLedBrightness(res.led_brightness || {});
-            setCircuitFaults(res.faults || []);
-            if (res.damaged_components) {
-              setDamagedComponents(new Set(res.damaged_components));
-            }
-            if (res.branch_currents) {
-              setBranchCurrents(res.branch_currents);
-            }
-            if (res.pin_voltages) {
-              setPinVoltages(res.pin_voltages);
-            }
-            if (res.serial_output) {
-              appendSerialText(res.serial_output);
-            }
-
-            // Monotonically advancing simulation clock ensures smooth 60 FPS waveforms
-            // and eliminates timestamp jumps when paused or toggling running state
-            simTimeRef.current += clampedElapsed * 1000;
-            const t = simTimeRef.current;
-
-            const v13 = res.mcu_pin_voltages?.['13'] ?? (res.pin13 ? 5.0 : 0.0);
-            const v2 = res.mcu_pin_voltages?.['2'] ?? (res.pin_voltages?.['btn1:1a'] ?? 5.0);
-            const vA0 = res.mcu_pin_voltages?.['A0'] ?? res.pin_voltages?.['pot1:2'] ?? 0.0;
-
-            const cutoffTime = t - 15000; // Retain at least 15s of history across all monitor refresh rates (60Hz to 240Hz)
-
-            setLogicHistory((prev) => {
-              const next = [...prev, [t, v13] as [number, number]];
-              let startIdx = 0;
-              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
-                startIdx++;
-              }
-              return next.slice(Math.max(startIdx, next.length - 2500));
-            });
-            setPin2History((prev) => {
-              const next = [...prev, [t, v2] as [number, number]];
-              let startIdx = 0;
-              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
-                startIdx++;
-              }
-              return next.slice(Math.max(startIdx, next.length - 2500));
-            });
-            setPinA0History((prev) => {
-              const next = [...prev, [t, vA0] as [number, number]];
-              let startIdx = 0;
-              while (startIdx < next.length && next[startIdx][0] < cutoffTime) {
-                startIdx++;
-              }
-              return next.slice(Math.max(startIdx, next.length - 2500));
-            });
-
-            // Genuine physical electrical telemetry recording for all enabled channels (LEDs, Pots, Buttons, Resistors, MCU)
-            channelConfigsRef.current.forEach((cfg) => {
-              if (!cfg.enabled) return;
-              let v = 0.0;
-              if (cfg.kind === 'mcu') {
-                v = res.mcu_pin_voltages?.[cfg.targetId] ?? 0.0;
-              } else if (cfg.kind === 'led') {
-                // Read physical anode voltage directly from MNA netlist
-                v = res.pin_voltages?.[`${cfg.targetId}:anode`] ?? res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
-              } else if (cfg.kind === 'pushbutton') {
-                // Read physical terminal voltage directly from MNA netlist
-                v = res.pin_voltages?.[`${cfg.targetId}:1`] ?? res.pin_voltages?.[`${cfg.targetId}:1a`] ?? res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
-              } else if (cfg.kind === 'potentiometer') {
-                // Read physical wiper (terminal 2) voltage directly from MNA netlist without artificial clamps or fallbacks
-                v = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:sig`] ?? 0.0;
-              } else if (cfg.kind === 'resistor') {
-                // Differential voltage drop across the physical resistor element: |V1 - V2|
-                const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? 0.0;
-                const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? 0.0;
-                v = Math.abs(v1 - v2);
-              } else if (cfg.kind === 'capacitor') {
-                // Differential voltage across capacitor element: |V(1) - V(2)|
-                const v1 = res.pin_voltages?.[`${cfg.targetId}:1`] ?? res.pin_voltages?.[`${cfg.targetId}:pos`] ?? res.pin_voltages?.[`${cfg.targetId}:anode`] ?? 0.0;
-                const v2 = res.pin_voltages?.[`${cfg.targetId}:2`] ?? res.pin_voltages?.[`${cfg.targetId}:neg`] ?? res.pin_voltages?.[`${cfg.targetId}:cathode`] ?? 0.0;
-                v = Math.max(0.0, v1 - v2);
-              }
-
-              if (!waveformHistoriesRef.current[cfg.id]) {
-                waveformHistoriesRef.current[cfg.id] = [];
-              }
-              const h = waveformHistoriesRef.current[cfg.id];
-              h.push([t, v]);
-              while (h.length > 0 && h[0][0] < cutoffTime) {
-                h.shift();
-              }
-              if (h.length > 3000) {
-                h.shift();
-              }
-            });
-            setWaveformVersion((ver) => (ver + 1) % 1000000);
-          }
-        } catch (err) {
-          console.error('step_simulation error:', err);
-        } finally {
-          isSteppingRef.current = false;
-        }
-      }
+      // Update LED visuals directly on the DOM
+      updateLedVisuals(duty);
 
       if (!cancelled) {
         animId = requestAnimationFrame(loop);
@@ -1793,8 +1836,6 @@ export default function App() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', resetTiming);
     };
   }, []);
 

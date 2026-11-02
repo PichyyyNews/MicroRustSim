@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
+use std::time::{Duration, Instant};
 use std::thread;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,22 @@ use sim_storage::{
     DirectoryProject, FileEntry, ProjectData, ProjectMetadata, ProjectStorage,
     RecentProject,
 };
-use tauri::State;
+use tauri::{Emitter, State};
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LedEdge {
+    pub cycle: u64,
+    pub state: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LedBatchPayload {
+    pub edges: Vec<LedEdge>,
+    pub current_cycle: u64,
+    pub current_state: bool,
+    pub cycles_per_sec: u64,
+    pub edges_per_sec: u64,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct InitialData {
@@ -383,85 +399,18 @@ fn create_project_dir_entry(dir_path: String, relative_path: String, is_dir: boo
     Ok(())
 }
 
-pub fn run() {
-    let (sim_tx, sim_rx) = channel::<SimCommand>();
-
-    // Dedicated simulation thread: isolates !Send Rc from UI thread
-    thread::spawn(move || {
-        let mut engine = SimulationEngine::new_with_uno();
-        let mut is_running = false;
-
-        let compiler: Box<dyn CompilerBackend> = {
-            let cli = ArduinoCliBackend::new();
-            if cli.is_available() {
-                Box::new(cli)
-            } else {
-                Box::new(MockCompilerBackend)
-            }
-        };
-
-        // Default setup: LED on pin 13 with 220 ohm resistor to GND
-        engine.leds.insert("led1".to_string(), components::LedComponent::new("led1", "red"));
-        engine.resistors.insert("r1".to_string(), components::ResistorComponent::new("r1", 220.0));
-        engine.buttons.insert("btn1".to_string(), components::PushbuttonComponent::new("btn1"));
-        engine.pots.insert("pot1".to_string(), components::PotentiometerComponent::new("pot1"));
-
-        engine.add_wire(Wire {
-            id: "w1".to_string(),
-            from: PinId::new("uno1", "13"),
-            to: PinId::new("led1", "anode"),
-            color: "#22c55e".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w2".to_string(),
-            from: PinId::new("led1", "cathode"),
-            to: PinId::new("r1", "1"),
-            color: "#eab308".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w3".to_string(),
-            from: PinId::new("r1", "2"),
-            to: PinId::new("uno1", "GND"),
-            color: "#000000".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w4".to_string(),
-            from: PinId::new("uno1", "2"),
-            to: PinId::new("btn1", "1a"),
-            color: "#f59e0b".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w5".to_string(),
-            from: PinId::new("btn1", "2a"),
-            to: PinId::new("uno1", "GND.1"),
-            color: "#000000".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w6".to_string(),
-            from: PinId::new("uno1", "5V"),
-            to: PinId::new("pot1", "1"),
-            color: "#ef4444".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w7".to_string(),
-            from: PinId::new("pot1", "2"),
-            to: PinId::new("uno1", "A0"),
-            color: "#3b82f6".to_string(),
-        });
-        engine.add_wire(Wire {
-            id: "w8".to_string(),
-            from: PinId::new("pot1", "3"),
-            to: PinId::new("uno1", "GND.2"),
-            color: "#000000".to_string(),
-        });
-        engine.mcu.set_pin_mode_pullup("2");
-
-        // Preload blink hex
-        let _ = engine.mcu.load_hex(&BuiltinSketches::blink_hex());
-        engine.resolve_electrical_nets();
-
-        while let Ok(cmd) = sim_rx.recv() {
-            match cmd {
+fn handle_sim_command(
+    cmd: SimCommand,
+    engine: &mut SimulationEngine,
+    is_running: &mut bool,
+    compiler: &Box<dyn CompilerBackend>,
+    start_time: &mut Instant,
+    base_sim_cycle: &mut u64,
+    last_pb5_state: &mut bool,
+    edges: &mut Vec<LedEdge>,
+    app_handle: &tauri::AppHandle,
+) {
+    match cmd {
                 SimCommand::CompileAndUpload { sketch, files, reply } => {
                     let res = compiler.compile_with_files(&sketch, files.as_ref(), "arduino:avr:uno");
                     match res {
@@ -469,7 +418,11 @@ pub fn run() {
                             let _ = engine.mcu.load_hex(&comp_out.hex);
                             engine.reset();
                             engine.resolve_electrical_nets();
-                            is_running = true;
+                            *is_running = true;
+                            *start_time = Instant::now();
+                            *base_sim_cycle = engine.mcu.cycles();
+                            *last_pb5_state = engine.mcu.get_pin_state("13") == LogicState::High;
+                            edges.clear();
                             let _ = reply.send(CompileResult {
                                 success: true,
                                 output: format!("Build Succeeded!\n\n{}", comp_out.stdout),
@@ -486,18 +439,31 @@ pub fn run() {
                     }
                 }
                 SimCommand::Start => {
-                    is_running = true;
+                    *is_running = true;
+                    *start_time = Instant::now();
+                    *base_sim_cycle = engine.mcu.cycles();
                 }
                 SimCommand::Pause => {
-                    is_running = false;
+                    *is_running = false;
                 }
                 SimCommand::Reset => {
                     engine.reset();
                     engine.resolve_electrical_nets();
-                    is_running = false;
+                    *is_running = false;
+                    *start_time = Instant::now();
+                    *base_sim_cycle = engine.mcu.cycles();
+                    *last_pb5_state = engine.mcu.get_pin_state("13") == LogicState::High;
+                    edges.clear();
+                    let _ = app_handle.emit("led", &LedBatchPayload {
+                        edges: Vec::new(),
+                        current_cycle: *base_sim_cycle,
+                        current_state: *last_pb5_state,
+                        cycles_per_sec: 0,
+                        edges_per_sec: 0,
+                    });
                 }
                 SimCommand::Step { cycles, reply } => {
-                    if is_running {
+                    if *is_running {
                         engine.step_cycles(cycles);
                     } else {
                         engine.resolve_electrical_nets();
@@ -719,9 +685,198 @@ pub fn run() {
                     }
                     engine.resolve_electrical_nets();
                 }
+    }
+}
+
+fn run_simulation_thread(sim_rx: Receiver<SimCommand>, app_handle: tauri::AppHandle) {
+    let mut engine = SimulationEngine::new_with_uno();
+    let mut is_running = false;
+
+    let compiler: Box<dyn CompilerBackend> = {
+        let cli = ArduinoCliBackend::new();
+        if cli.is_available() {
+            Box::new(cli)
+        } else {
+            Box::new(MockCompilerBackend)
+        }
+    };
+
+    // Default setup: LED on pin 13 with 220 ohm resistor to GND
+    engine.leds.insert("led1".to_string(), components::LedComponent::new("led1", "red"));
+    engine.resistors.insert("r1".to_string(), components::ResistorComponent::new("r1", 220.0));
+    engine.buttons.insert("btn1".to_string(), components::PushbuttonComponent::new("btn1"));
+    engine.pots.insert("pot1".to_string(), components::PotentiometerComponent::new("pot1"));
+
+    engine.add_wire(Wire {
+        id: "w1".to_string(),
+        from: PinId::new("uno1", "13"),
+        to: PinId::new("led1", "anode"),
+        color: "#22c55e".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w2".to_string(),
+        from: PinId::new("led1", "cathode"),
+        to: PinId::new("r1", "1"),
+        color: "#eab308".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w3".to_string(),
+        from: PinId::new("r1", "2"),
+        to: PinId::new("uno1", "GND"),
+        color: "#000000".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w4".to_string(),
+        from: PinId::new("uno1", "2"),
+        to: PinId::new("btn1", "1a"),
+        color: "#f59e0b".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w5".to_string(),
+        from: PinId::new("btn1", "2a"),
+        to: PinId::new("uno1", "GND.1"),
+        color: "#000000".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w6".to_string(),
+        from: PinId::new("uno1", "5V"),
+        to: PinId::new("pot1", "1"),
+        color: "#ef4444".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w7".to_string(),
+        from: PinId::new("pot1", "2"),
+        to: PinId::new("uno1", "A0"),
+        color: "#3b82f6".to_string(),
+    });
+    engine.add_wire(Wire {
+        id: "w8".to_string(),
+        from: PinId::new("pot1", "3"),
+        to: PinId::new("uno1", "GND.2"),
+        color: "#000000".to_string(),
+    });
+    engine.mcu.set_pin_mode_pullup("2");
+
+    // Preload blink hex
+    let _ = engine.mcu.load_hex(&BuiltinSketches::blink_hex());
+    engine.resolve_electrical_nets();
+
+    let mut start_time = Instant::now();
+    let mut base_sim_cycle = engine.mcu.cycles();
+    let mut last_pb5_state = engine.mcu.get_pin_state("13") == LogicState::High;
+    let mut edges: Vec<LedEdge> = Vec::new();
+
+    let mut last_batch_time = Instant::now();
+    let mut last_log_time = Instant::now();
+    let mut cycles_simulated_in_last_sec: u64 = 0;
+    let mut edges_in_last_sec: u64 = 0;
+    let mut last_actual_cps: u64 = 0;
+    let mut last_actual_eps: u64 = 0;
+
+    loop {
+        // 1. Drain commands from frontend
+        if !is_running {
+            match sim_rx.recv_timeout(Duration::from_millis(16)) {
+                Ok(cmd) => {
+                    handle_sim_command(
+                        cmd,
+                        &mut engine,
+                        &mut is_running,
+                        &compiler,
+                        &mut start_time,
+                        &mut base_sim_cycle,
+                        &mut last_pb5_state,
+                        &mut edges,
+                        &app_handle,
+                    );
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        } else {
+            while let Ok(cmd) = sim_rx.try_recv() {
+                handle_sim_command(
+                    cmd,
+                    &mut engine,
+                    &mut is_running,
+                    &compiler,
+                    &mut start_time,
+                    &mut base_sim_cycle,
+                    &mut last_pb5_state,
+                    &mut edges,
+                    &app_handle,
+                );
             }
         }
-    });
+
+        // 2. Real-time CPU execution (target cycle = elapsed * 16MHz)
+        if is_running {
+            let elapsed_sec = start_time.elapsed().as_secs_f64();
+            let target_cycle = base_sim_cycle + (elapsed_sec * 16_000_000.0) as u64;
+            let current_cycle = engine.mcu.cycles();
+
+            if target_cycle > current_cycle {
+                // Prevent lag spiral if paused or system stalls
+                if target_cycle > current_cycle + 800_000 {
+                    start_time = Instant::now();
+                    base_sim_cycle = current_cycle;
+                }
+
+                let remaining_needed = target_cycle.saturating_sub(engine.mcu.cycles());
+                let chunk = remaining_needed.min(256);
+                if chunk > 0 {
+                    engine.mcu.step_cycles(chunk);
+                    cycles_simulated_in_last_sec += chunk;
+
+                    let new_state = engine.mcu.get_pin_state("13") == LogicState::High;
+                    let now_cycle = engine.mcu.cycles();
+                    if new_state != last_pb5_state {
+                        edges.push(LedEdge {
+                            cycle: now_cycle,
+                            state: new_state,
+                        });
+                        edges_in_last_sec += 1;
+                        last_pb5_state = new_state;
+                        engine.resolve_electrical_nets();
+                    }
+                }
+            } else {
+                // Yield when caught up to prevent 100% core spinning
+                thread::sleep(Duration::from_micros(200));
+            }
+        }
+
+        // 3. Batch emission of LED edges every ~16ms
+        if last_batch_time.elapsed() >= Duration::from_millis(16) {
+            let batch = std::mem::take(&mut edges);
+            let payload = LedBatchPayload {
+                edges: batch,
+                current_cycle: engine.mcu.cycles(),
+                current_state: last_pb5_state,
+                cycles_per_sec: last_actual_cps,
+                edges_per_sec: last_actual_eps,
+            };
+            let _ = app_handle.emit("led", &payload);
+            last_batch_time = Instant::now();
+        }
+
+        // 4. Log simulated cycles/s and edges/s every second
+        if last_log_time.elapsed() >= Duration::from_secs(1) {
+            let elapsed = last_log_time.elapsed().as_secs_f64();
+            let cps = (cycles_simulated_in_last_sec as f64 / elapsed) as u64;
+            let eps = (edges_in_last_sec as f64 / elapsed) as u64;
+            last_actual_cps = cps;
+            last_actual_eps = eps;
+            println!("[SIM] Real-time cycles/s: {}, edges/s: {}", cps, eps);
+            cycles_simulated_in_last_sec = 0;
+            edges_in_last_sec = 0;
+            last_log_time = Instant::now();
+        }
+    }
+}
+
+pub fn run() {
+    let (sim_tx, sim_rx) = channel::<SimCommand>();
 
     let storage = ProjectStorage::open_default().unwrap_or_else(|_| {
         ProjectStorage::open_in_memory().expect("In-memory SQLite failed")
@@ -733,11 +888,15 @@ pub fn run() {
     };
 
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.remove_menu();
             }
+            let app_handle = app.handle().clone();
+            thread::spawn(move || {
+                run_simulation_thread(sim_rx, app_handle);
+            });
             Ok(())
         })
         .manage(app_state)
