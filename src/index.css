@@ -5,7 +5,8 @@
 
 @font-face {
   font-family: 'Disclaimer';
-  src: url('/Disclaimer-Classic.otf') format('opentype');
+  src: url('/Disclaimer-Classic.ttf') format('truetype'),
+       url('/Disclaimer-Classic.otf') format('opentype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -13,6 +14,7 @@
 
 .font-disclaimer {
   font-family: 'Disclaimer', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0.18em;
 }
 @tailwind base;
 @tailwind components;

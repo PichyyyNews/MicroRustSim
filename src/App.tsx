@@ -3194,16 +3194,16 @@ export default function App() {
       <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden select-none font-sans dark">
         
         {/* 1. Top Window Titlebar (Menubar + Wide Drag Area + Window Controls) */}
-        <header className="h-7 bg-[#0e0e11] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-50 shrink-0 cursor-default">
+        <header className="h-8 bg-[#0e0e11] border-b border-[#222226] pl-2 pr-0 flex items-center justify-between select-none z-50 shrink-0 cursor-default">
           {/* Left Menubar */}
           <div
             ref={menubarRef}
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <div className="flex items-center pl-1.5 pr-2.5 select-none">
-              <span className="font-disclaimer text-xl leading-none tracking-wider text-zinc-200">
-                Ohmic
+            <div className="flex items-center pl-1.5 pr-3 select-none">
+              <span className="font-disclaimer text-[24px] font-bold leading-none tracking-[0.18em] text-zinc-100 select-none">
+                OHMIC
               </span>
             </div>
 
@@ -5733,9 +5733,9 @@ export default function App() {
             <img
               src="/Ohmic.svg"
               alt="Ohmic"
-              className="w-20 h-20 object-contain mb-5 animate-pulse"
+              className="w-12 h-12 object-contain mb-4 animate-pulse"
             />
-            <div className="w-28 h-0.5 bg-[#222226] rounded-full overflow-hidden">
+            <div className="w-24 h-0.5 bg-[#222226] rounded-full overflow-hidden">
               <div className="w-full h-full bg-zinc-300 rounded-full animate-pulse" />
             </div>
           </div>
