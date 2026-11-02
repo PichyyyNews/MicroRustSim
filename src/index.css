@@ -1,6 +1,19 @@
+
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+
+@font-face {
+  font-family: 'Disclaimer';
+  src: url('/Disclaimer-Classic.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-disclaimer {
+  font-family: 'Disclaimer', -apple-system, BlinkMacSystemFont, sans-serif;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

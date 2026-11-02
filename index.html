@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#09090b" />
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/Ohmic.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MicroRustSim - Embedded MCU Simulator</title>
+    <title>Ohmic - Embedded MCU Simulator</title>
     <style>
       :root {
         color-scheme: dark;
@@ -46,37 +46,13 @@
         flex-direction: column;
         align-items: center;
       }
-      .app-preloader-badge {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
-        background-color: #141416;
-        border: 1px solid #222226;
-        padding: 12px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 16px;
-      }
       .app-preloader-logo {
-        width: 100%;
-        height: 100%;
+        width: 220px;
+        height: auto;
+        max-height: 120px;
         object-fit: contain;
+        margin-bottom: 24px;
         animation: preloader-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-      }
-      .app-preloader-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #f4f4f5;
-        letter-spacing: -0.02em;
-        margin-bottom: 4px;
-      }
-      .app-preloader-subtitle {
-        font-size: 11px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        color: #71717a;
-        margin-bottom: 20px;
       }
       .app-preloader-bar {
         width: 110px;
@@ -107,11 +83,7 @@
     <div id="root" class="h-full w-full">
       <div class="app-preloader">
         <div class="app-preloader-box">
-          <div class="app-preloader-badge">
-            <img src="/logo.png" alt="MicroRustSim" class="app-preloader-logo" />
-          </div>
-          <div class="app-preloader-title">MicroRustSim</div>
-          <div class="app-preloader-subtitle">Cycle-Accurate ATmega328P Simulator</div>
+          <img src="/Ohmic.svg" alt="Ohmic" class="app-preloader-logo" />
           <div class="app-preloader-bar">
             <div class="app-preloader-fill"></div>
           </div>

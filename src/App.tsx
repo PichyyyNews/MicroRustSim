@@ -192,7 +192,7 @@ function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number }
   }
 }
 
-const DEFAULT_BLINK_CODE = `// MicroRustSim Arduino Uno Blink
+const DEFAULT_BLINK_CODE = `// Ohmic Arduino Uno Blink
 // Genuine cycle-accurate ATmega328P execution
 
 void setup() {
@@ -559,8 +559,8 @@ export default function App() {
   isAutoScrollPausedRef.current = isAutoScrollPaused;
 
   const initialTime = getFormattedTime();
-  const initialRaw = '[System] MicroRustSim Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n';
-  const initialTimestamped = `[${initialTime}] [System] MicroRustSim Core Online.\n[${initialTime}] [System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n`;
+  const initialRaw = '[System] Ohmic Core Online.\n[System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n';
+  const initialTimestamped = `[${initialTime}] [System] Ohmic Core Online.\n[${initialTime}] [System] ATmega328P Cycle-Accurate 16 MHz Engine Ready.\n`;
 
   const [serialLogs, setSerialLogs] = useState<string>(initialRaw);
   const [serialTimestampedLogs, setSerialTimestampedLogs] = useState<string>(initialTimestamped);
@@ -847,8 +847,8 @@ export default function App() {
   const exportWokwiDiagram = useCallback(
     (comps: CircuitComponent[], wList: CircuitWire[]) => ({
       version: 1,
-      author: 'MicroRustSim User',
-      editor: 'microrustsim',
+      author: 'Ohmic User',
+      editor: 'ohmic',
       parts: comps.map((c) => ({
         type: c.kind === 'arduino_uno' ? 'wokwi-arduino-uno' : `wokwi-${c.kind}`,
         id: c.id,
@@ -3201,9 +3201,12 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <span className="font-semibold text-xs text-zinc-300 tracking-tight pl-1 pr-2 select-none">
-              MicroRustSim
-            </span>
+            <div className="flex items-center gap-1.5 pl-1 pr-2 select-none">
+              <img src="/Ohmic.svg" alt="Ohmic" className="w-4 h-4 object-contain shrink-0" />
+              <span className="font-semibold text-xs text-zinc-300 tracking-tight">
+                Ohmic
+              </span>
+            </div>
 
             {/* Menubar: File */}
             <div className="relative">
@@ -3721,15 +3724,21 @@ export default function App() {
             className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-400 cursor-default select-none"
           >
             <span className="truncate max-w-[400px]">
-              {projectName}{isDirty ? ' *' : ''} — MicroRustSim
+              {projectName}{isDirty ? ' *' : ''} — Ohmic
             </span>
           </div>
 
-          {/* Right Window Controls (—, □, ✕) */}
-          <div
-            className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+          {/* Right Window Controls & Top-Right Brand (Disclaimer font ONLY here) */}
+          <div className="flex items-center h-full">
+            <div className="flex items-center gap-1.5 px-3 select-none pointer-events-none">
+              <span className="font-disclaimer text-xl leading-none tracking-wider text-zinc-200">
+                Ohmic
+              </span>
+            </div>
+            <div
+              className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
             <button
               type="button"
               onClick={() => tauriInvoke('minimize_window')}
@@ -3760,6 +3769,7 @@ export default function App() {
                 <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
             </button>
+            </div>
           </div>
         </header>
 
@@ -5661,18 +5671,18 @@ export default function App() {
           }}
         />
 
-        {/* Modal Dialog: About MicroRustSim */}
+        {/* Modal Dialog: About Ohmic */}
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs animate-in fade-in duration-100">
             <div className="w-[380px] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl p-5 select-none text-zinc-300">
               <div className="flex items-center justify-between pb-3 border-b border-[#222226]">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-[#1c1c20] border border-zinc-700/80 flex items-center justify-center p-1.5 shadow-xs">
-                    <img src="/logo.png" alt="MicroRustSim" className="w-full h-full object-contain" />
+                  <div className="w-8 h-8 rounded-xl bg-[#1c1c20] border border-zinc-700/80 flex items-center justify-center p-1 shadow-xs">
+                    <img src="/Ohmic.svg" alt="Ohmic" className="w-full h-full object-contain" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-sm text-zinc-100">MicroRustSim</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.2.5 • Cycle-Accurate Simulator</p>
+                    <h3 className="font-semibold text-sm text-zinc-100">Ohmic</h3>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.3.1 • Cycle-Accurate Simulator</p>
                   </div>
                 </div>
                 <button
@@ -5728,19 +5738,11 @@ export default function App() {
           }`}
         >
           <div className="flex flex-col items-center">
-            <div className="w-16 h-16 rounded-2xl bg-[#121215] border border-[#222226] p-3 shadow-2xl flex items-center justify-center mb-4">
-              <img
-                src="/logo.png"
-                alt="MicroRustSim"
-                className="w-full h-full object-contain animate-pulse"
-              />
-            </div>
-            <div className="text-zinc-200 font-semibold text-sm tracking-tight mb-1">
-              MicroRustSim
-            </div>
-            <div className="text-[11px] font-mono text-zinc-500 mb-5">
-              Cycle-Accurate ATmega328P Simulator
-            </div>
+            <img
+              src="/Ohmic.svg"
+              alt="Ohmic"
+              className="w-56 h-auto max-h-28 object-contain mb-6 animate-pulse"
+            />
             <div className="w-28 h-0.5 bg-[#222226] rounded-full overflow-hidden">
               <div className="w-full h-full bg-zinc-300 rounded-full animate-pulse" />
             </div>

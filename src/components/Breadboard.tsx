@@ -190,7 +190,7 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
           fill="#94a3b8"
           letterSpacing="2"
         >
-          MICRORUSTSIM
+          OHMIC
         </text>
 
         {/* ----------------- BOTTOM TERMINAL STRIP (Rows f - j) ----------------- */}

@@ -6,7 +6,7 @@ import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary fallbackTitle="MicroRustSim Workspace Error">
+    <ErrorBoundary fallbackTitle="Ohmic Workspace Error">
       <App />
     </ErrorBoundary>
   </React.StrictMode>

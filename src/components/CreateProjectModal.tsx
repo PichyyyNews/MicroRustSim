@@ -36,13 +36,13 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     icon: Sparkles,
     sketch: `#include "config.h"
 
-// MicroRustSim Blink Template
+// Ohmic Blink Template
 // Target: ATmega328P @ 16 MHz (Arduino Uno R3)
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("[MicroRustSim] Blink Template Initialized.");
+  Serial.println("[Ohmic] Blink Template Initialized.");
 }
 
 void loop() {
@@ -62,7 +62,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
@@ -85,7 +85,7 @@ void loop() {
     icon: ToggleLeft,
     sketch: `#include "config.h"
 
-// MicroRustSim Pushbutton Template
+// Ohmic Pushbutton Template
 // Reads digital pin 2 with internal pullup
 
 bool ledState = false;
@@ -95,7 +95,7 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("[MicroRustSim] Button Toggle Firmware Online.");
+  Serial.println("[Ohmic] Button Toggle Firmware Online.");
 }
 
 void loop() {
@@ -118,7 +118,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
@@ -144,13 +144,13 @@ void loop() {
     icon: Gauge,
     sketch: `#include "config.h"
 
-// MicroRustSim Potentiometer Template
+// Ohmic Potentiometer Template
 // Reads 10-bit ADC channel A0 (0..1023)
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("[MicroRustSim] Analog ADC Monitor Online.");
+  Serial.println("[Ohmic] Analog ADC Monitor Online.");
 }
 
 void loop() {
@@ -178,7 +178,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
@@ -205,7 +205,7 @@ void loop() {
     icon: TrafficCone,
     sketch: `#include "config.h"
 
-// MicroRustSim Traffic Light Controller
+// Ohmic Traffic Light Controller
 // Controls Red, Yellow, Green LEDs in cycle
 
 #define RED_PIN 12
@@ -250,7 +250,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
@@ -283,7 +283,7 @@ void loop() {
     icon: Activity,
     sketch: `#include "config.h"
 
-// MicroRustSim RC Circuit Template
+// Ohmic RC Circuit Template
 // Demonstrates Capacitor Charge & Discharge Dynamics (Tau = R * C)
 // Drive Pin: 9 | Sensor Pin: A0 (Capacitor Voltage) | Indicator: Pin 13
 
@@ -295,7 +295,7 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
   
-  Serial.println("[MicroRustSim] RC Circuit Template Initialized.");
+  Serial.println("[Ohmic] RC Circuit Template Initialized.");
   Serial.println("[RC Physics] R = 10 kOhm, C = 10 uF, Time Constant (Tau) = 100 ms");
   Serial.println("-----------------------------------------------------------------");
   
@@ -356,7 +356,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },
@@ -380,12 +380,12 @@ void loop() {
     icon: SquareCode,
     sketch: `#include "config.h"
 
-// MicroRustSim Clean Sketch
+// Ohmic Clean Sketch
 // Ready for custom Arduino C++ logic
 
 void setup() {
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("[MicroRustSim] Ready.");
+  Serial.println("[Ohmic] Ready.");
 }
 
 void loop() {
@@ -398,7 +398,7 @@ void loop() {
 `,
     diagram: {
       version: 1,
-      author: 'MicroRustSim',
+      author: 'Ohmic',
       editor: 'wokwi',
       parts: [
         { type: 'wokwi-arduino-uno', id: 'uno1', top: 220, left: 160, attrs: {} },

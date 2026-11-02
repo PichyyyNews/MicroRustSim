@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
-  "productName": "MicroRustSim",
+  "productName": "Ohmic",
   "version": "0.3.1",
-  "identifier": "com.pichyyynews.microrustsim",
+  "identifier": "com.pichyyynews.ohmic",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MicroRustSim - Embedded MCU Simulator",
+        "title": "Ohmic - Embedded MCU Simulator",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
