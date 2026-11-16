@@ -483,6 +483,10 @@ impl MnaCircuitSolver {
         buttons: &HashMap<String, PushbuttonComponent>,
         pots: &HashMap<String, PotentiometerComponent>,
         capacitors: &mut HashMap<String, CapacitorComponent>,
+        hcsr04s: &mut HashMap<String, Hcsr04Component>,
+        dht11s: &mut HashMap<String, Dht11Component>,
+        ldrs: &HashMap<String, PhotoresistorComponent>,
+        pirs: &mut HashMap<String, PirComponent>,
         pin_voltages: &mut HashMap<PinId, f32>,
         branch_currents: &mut HashMap<String, f32>,
         faults: &mut Vec<CircuitFault>,
@@ -535,6 +539,34 @@ impl MnaCircuitSolver {
         for (cap_id, _) in capacitors.iter() {
             node_set.insert(format!("{}:1", cap_id));
             node_set.insert(format!("{}:2", cap_id));
+        }
+
+        // HC-SR04 Ultrasonic Sensors
+        for (hcsr_id, _) in hcsr04s.iter() {
+            node_set.insert(format!("{}:VCC", hcsr_id));
+            node_set.insert(format!("{}:TRIG", hcsr_id));
+            node_set.insert(format!("{}:ECHO", hcsr_id));
+            node_set.insert(format!("{}:GND", hcsr_id));
+        }
+
+        // DHT11 Sensors
+        for (dht_id, _) in dht11s.iter() {
+            node_set.insert(format!("{}:VCC", dht_id));
+            node_set.insert(format!("{}:DATA", dht_id));
+            node_set.insert(format!("{}:GND", dht_id));
+        }
+
+        // LDR Photoresistors
+        for (ldr_id, _) in ldrs.iter() {
+            node_set.insert(format!("{}:1", ldr_id));
+            node_set.insert(format!("{}:2", ldr_id));
+        }
+
+        // PIR Motion Sensors
+        for (pir_id, _) in pirs.iter() {
+            node_set.insert(format!("{}:VCC", pir_id));
+            node_set.insert(format!("{}:OUT", pir_id));
+            node_set.insert(format!("{}:GND", pir_id));
         }
 
         // Wires
@@ -595,6 +627,26 @@ impl MnaCircuitSolver {
         for (cap_id, _) in capacitors.iter() {
             for p in &["1", "2"] {
                 pin_to_node.insert((cap_id.clone(), p.to_string()), get_node_idx(cap_id, p));
+            }
+        }
+        for (hcsr_id, _) in hcsr04s.iter() {
+            for p in &["VCC", "TRIG", "ECHO", "GND"] {
+                pin_to_node.insert((hcsr_id.clone(), p.to_string()), get_node_idx(hcsr_id, p));
+            }
+        }
+        for (dht_id, _) in dht11s.iter() {
+            for p in &["VCC", "DATA", "GND"] {
+                pin_to_node.insert((dht_id.clone(), p.to_string()), get_node_idx(dht_id, p));
+            }
+        }
+        for (ldr_id, _) in ldrs.iter() {
+            for p in &["1", "2"] {
+                pin_to_node.insert((ldr_id.clone(), p.to_string()), get_node_idx(ldr_id, p));
+            }
+        }
+        for (pir_id, _) in pirs.iter() {
+            for p in &["VCC", "OUT", "GND"] {
+                pin_to_node.insert((pir_id.clone(), p.to_string()), get_node_idx(pir_id, p));
             }
         }
 
@@ -763,6 +815,48 @@ impl MnaCircuitSolver {
             let v = get_node_idx(&wire.to.component_id, &wire.to.pin_name);
             if u != v {
                 mna.stamp_conductance(u, v, 1.0 / R_JUMPER_WIRE);
+            }
+        }
+
+        // 7b. Stamp Photoresistors (LDR)
+        for (ldr_id, ldr) in ldrs.iter() {
+            let p1 = get_node_idx(ldr_id, "1");
+            let p2 = get_node_idx(ldr_id, "2");
+            let r = ldr.resistance_ohms().max(1.0);
+            mna.stamp_conductance(p1, p2, 1.0 / r);
+        }
+
+        // 7c. Stamp PIR Motion Sensors (HC-SR501)
+        for (pir_id, pir) in pirs.iter() {
+            let out_idx = get_node_idx(pir_id, "OUT");
+            let is_high = pir.is_output_high();
+            let v_target = if is_high { 3.3 } else { 0.0 };
+            let g = 1.0 / 100.0;
+            mna.stamp_norton_source(out_idx, None, g, v_target * g);
+        }
+
+        // 7d. Stamp HC-SR04 Ultrasonic Distance Sensors
+        for (hcsr_id, hcsr) in hcsr04s.iter() {
+            let trig_idx = get_node_idx(hcsr_id, "TRIG");
+            let echo_idx = get_node_idx(hcsr_id, "ECHO");
+            // TRIG high-Z input leakage to ground
+            mna.stamp_conductance(trig_idx, None, 1.0 / 100_000.0);
+            // ECHO active driver
+            let is_high = hcsr.is_echo_active;
+            let v_target = if is_high { 5.0 } else { 0.0 };
+            let g = 1.0 / 100.0;
+            mna.stamp_norton_source(echo_idx, None, g, v_target * g);
+        }
+
+        // 7e. Stamp DHT11 Temperature & Humidity Sensors
+        for (dht_id, dht) in dht11s.iter() {
+            let vcc_idx = get_node_idx(dht_id, "VCC");
+            let data_idx = get_node_idx(dht_id, "DATA");
+            // Pullup resistor to VCC
+            mna.stamp_conductance(vcc_idx, data_idx, 1.0 / 5100.0);
+            // If active pulling low
+            if dht.state == DhtProtocolState::ResponseLow || dht.state == DhtProtocolState::TransmitBitLow {
+                mna.stamp_conductance(data_idx, None, 1.0 / 50.0);
             }
         }
 
@@ -1493,6 +1587,127 @@ impl MnaCircuitSolver {
                     pin_voltages.insert(PinId::new(&bb_id, format!("{}{}", row, col)), v_fj);
                     pin_voltages.insert(PinId::new(&bb_id, format!("{}_{}", col, row)), v_fj);
                     pin_voltages.insert(PinId::new(&bb_id, format!("{}_{}", row, col)), v_fj);
+                }
+            }
+        }
+
+        // 12b. Update Sensor Pin Voltages and Dynamic States
+        let dt_frame = 1.0 / 60.0;
+
+        // HC-SR04
+        for (hcsr_id, hcsr) in hcsr04s.iter_mut() {
+            let v_vcc = node_volt_clean(get_node_idx(hcsr_id, "VCC"));
+            let v_trig = node_volt_clean(get_node_idx(hcsr_id, "TRIG"));
+            let v_echo = node_volt_clean(get_node_idx(hcsr_id, "ECHO"));
+            pin_voltages.insert(PinId::new(hcsr_id, "VCC"), v_vcc);
+            pin_voltages.insert(PinId::new(hcsr_id, "TRIG"), v_trig);
+            pin_voltages.insert(PinId::new(hcsr_id, "ECHO"), v_echo);
+            pin_voltages.insert(PinId::new(hcsr_id, "GND"), 0.0);
+
+            // Trig detection logic: rising edge >= 2.0V
+            if v_trig >= 2.0 {
+                hcsr.trig_high_dwell_s += dt_frame;
+            } else {
+                if hcsr.last_trig_voltage >= 2.0 || hcsr.trig_high_dwell_s >= 5e-6 {
+                    hcsr.is_echo_active = true;
+                    hcsr.echo_remaining_s = hcsr.echo_pulse_width_s();
+                }
+                hcsr.trig_high_dwell_s = 0.0;
+            }
+            hcsr.last_trig_voltage = v_trig;
+
+            if hcsr.is_echo_active {
+                hcsr.echo_remaining_s -= dt_frame;
+                if hcsr.echo_remaining_s <= 0.0 {
+                    hcsr.is_echo_active = false;
+                    hcsr.echo_remaining_s = 0.0;
+                }
+            }
+        }
+
+        // DHT11
+        for (dht_id, dht) in dht11s.iter_mut() {
+            let v_vcc = node_volt_clean(get_node_idx(dht_id, "VCC"));
+            let v_data = node_volt_clean(get_node_idx(dht_id, "DATA"));
+            pin_voltages.insert(PinId::new(dht_id, "VCC"), v_vcc);
+            pin_voltages.insert(PinId::new(dht_id, "DATA"), v_data);
+            pin_voltages.insert(PinId::new(dht_id, "GND"), 0.0);
+
+            // Start condition detection: MCU pulls DATA low for >= 15ms
+            if v_data < 0.8 {
+                dht.mcu_low_dwell_s += dt_frame;
+            } else {
+                if dht.mcu_low_dwell_s >= 0.015 {
+                    dht.state = DhtProtocolState::ResponseLow;
+                    dht.state_time_s = 0.0;
+                    dht.bit_index = 0;
+                }
+                dht.mcu_low_dwell_s = 0.0;
+            }
+
+            match dht.state {
+                DhtProtocolState::ResponseLow => {
+                    dht.state_time_s += dt_frame;
+                    if dht.state_time_s >= 80e-6 {
+                        dht.state = DhtProtocolState::ResponseHigh;
+                        dht.state_time_s = 0.0;
+                    }
+                }
+                DhtProtocolState::ResponseHigh => {
+                    dht.state_time_s += dt_frame;
+                    if dht.state_time_s >= 80e-6 {
+                        dht.state = DhtProtocolState::TransmitBitLow;
+                        dht.state_time_s = 0.0;
+                    }
+                }
+                DhtProtocolState::TransmitBitLow => {
+                    dht.state_time_s += dt_frame;
+                    if dht.state_time_s >= 50e-6 {
+                        dht.state = DhtProtocolState::TransmitBitHigh;
+                        dht.state_time_s = 0.0;
+                    }
+                }
+                DhtProtocolState::TransmitBitHigh => {
+                    dht.state_time_s += dt_frame;
+                    let bits = dht.data_bits();
+                    let bit_val = bits[dht.bit_index.min(39)];
+                    let duration = if bit_val { 70e-6 } else { 28e-6 };
+                    if dht.state_time_s >= duration {
+                        dht.bit_index += 1;
+                        if dht.bit_index >= 40 {
+                            dht.state = DhtProtocolState::Idle;
+                        } else {
+                            dht.state = DhtProtocolState::TransmitBitLow;
+                        }
+                        dht.state_time_s = 0.0;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // LDR
+        for (ldr_id, _) in ldrs.iter() {
+            let v1 = node_volt_clean(get_node_idx(ldr_id, "1"));
+            let v2 = node_volt_clean(get_node_idx(ldr_id, "2"));
+            pin_voltages.insert(PinId::new(ldr_id, "1"), v1);
+            pin_voltages.insert(PinId::new(ldr_id, "2"), v2);
+        }
+
+        // PIR
+        for (pir_id, pir) in pirs.iter_mut() {
+            let v_vcc = node_volt_clean(get_node_idx(pir_id, "VCC"));
+            let v_out = node_volt_clean(get_node_idx(pir_id, "OUT"));
+            pin_voltages.insert(PinId::new(pir_id, "VCC"), v_vcc);
+            pin_voltages.insert(PinId::new(pir_id, "OUT"), v_out);
+            pin_voltages.insert(PinId::new(pir_id, "GND"), 0.0);
+
+            if pir.motion_detected {
+                pir.timer_s = pir.hold_time_s;
+            } else if pir.timer_s > 0.0 {
+                pir.timer_s -= dt_frame;
+                if pir.timer_s < 0.0 {
+                    pir.timer_s = 0.0;
                 }
             }
         }

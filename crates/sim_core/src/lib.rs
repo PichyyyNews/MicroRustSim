@@ -845,6 +845,211 @@ pub mod components {
             crate::constants::R_JUMPER_WIRE // 0.020 ohm
         }
     }
+
+    /// HC-SR04 Ultrasonic Distance Sensor Component
+    /// Pins: VCC, TRIG, ECHO, GND
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Hcsr04Component {
+        pub id: String,
+        pub distance_cm: f32, // 2.0 to 400.0 cm
+        #[serde(default)]
+        pub is_echo_active: bool,
+        #[serde(default)]
+        pub echo_remaining_s: f64,
+        #[serde(default)]
+        pub trig_high_dwell_s: f64,
+        #[serde(default)]
+        pub last_trig_voltage: f32,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    impl Hcsr04Component {
+        pub fn new(id: impl Into<String>) -> Self {
+            Self {
+                id: id.into(),
+                distance_cm: 25.0,
+                is_echo_active: false,
+                echo_remaining_s: 0.0,
+                trig_high_dwell_s: 0.0,
+                last_trig_voltage: 0.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn echo_pulse_width_s(&self) -> f64 {
+            let dist = (self.distance_cm as f64).clamp(2.0, 400.0);
+            // Speed of sound = 340 m/s = 34000 cm/s
+            // Round-trip duration = (2 * distance) / 34000 = distance * 58.82e-6 s
+            dist * 58.82e-6
+        }
+    }
+
+    /// DHT11 Protocol State Machine
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum DhtProtocolState {
+        Idle,
+        McuStartLow,
+        McuStartHighWait,
+        ResponseLow,
+        ResponseHigh,
+        TransmitBitLow,
+        TransmitBitHigh,
+        Completed,
+    }
+
+    /// DHT11 Temperature & Humidity Sensor Component
+    /// Pins: VCC, DATA, GND
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Dht11Component {
+        pub id: String,
+        pub temperature: f32, // 0.0 to 50.0 °C
+        pub humidity: f32,    // 20.0 to 90.0 %RH
+        #[serde(default = "default_dht_state")]
+        pub state: DhtProtocolState,
+        #[serde(default)]
+        pub state_time_s: f64,
+        #[serde(default)]
+        pub bit_index: usize,
+        #[serde(default)]
+        pub mcu_low_dwell_s: f64,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    fn default_dht_state() -> DhtProtocolState {
+        DhtProtocolState::Idle
+    }
+
+    impl Dht11Component {
+        pub fn new(id: impl Into<String>) -> Self {
+            Self {
+                id: id.into(),
+                temperature: 24.0,
+                humidity: 50.0,
+                state: DhtProtocolState::Idle,
+                state_time_s: 0.0,
+                bit_index: 0,
+                mcu_low_dwell_s: 0.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        /// Generate the 40-bit data packet:
+        /// Byte 0: Integer Humidity
+        /// Byte 1: Decimal Humidity (0 for DHT11)
+        /// Byte 2: Integer Temperature
+        /// Byte 3: Decimal Temperature (0 for DHT11)
+        /// Byte 4: Checksum (sum of first 4 bytes & 0xFF)
+        pub fn data_bits(&self) -> [bool; 40] {
+            let h_int = (self.humidity.round() as u8).clamp(20, 90);
+            let h_dec = 0u8;
+            let t_int = (self.temperature.round() as u8).clamp(0, 50);
+            let t_dec = 0u8;
+            let checksum = h_int.wrapping_add(h_dec).wrapping_add(t_int).wrapping_add(t_dec);
+
+            let bytes = [h_int, h_dec, t_int, t_dec, checksum];
+            let mut bits = [false; 40];
+            for i in 0..5 {
+                let b = bytes[i];
+                for bit in 0..8 {
+                    bits[i * 8 + bit] = ((b >> (7 - bit)) & 1) == 1;
+                }
+            }
+            bits
+        }
+    }
+
+    /// Photoresistor (LDR) Component
+    /// Pins: 1, 2
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PhotoresistorComponent {
+        pub id: String,
+        pub lux: f32, // 0.0 to 1000.0 lux
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    impl PhotoresistorComponent {
+        pub fn new(id: impl Into<String>) -> Self {
+            Self {
+                id: id.into(),
+                lux: 500.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        /// Calculate current resistance based on light level (lux)
+        /// Complete dark (0 lux): ~500 kΩ
+        /// Dim light (10 lux): ~100 kΩ
+        /// Normal room (100 lux): ~20 kΩ
+        /// Bright light (1000 lux): ~4 kΩ
+        pub fn resistance_ohms(&self) -> f64 {
+            let safe_lux = (self.lux as f64).clamp(0.0, 10000.0);
+            50.0 + 500_000.0 / (1.0 + safe_lux).powf(0.7)
+        }
+    }
+
+    /// HC-SR501 PIR Motion Sensor Component
+    /// Pins: VCC, OUT, GND
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PirComponent {
+        pub id: String,
+        pub motion_detected: bool,
+        pub hold_time_s: f64, // duration OUT stays HIGH upon motion (default 3.0 s)
+        #[serde(default)]
+        pub timer_s: f64,
+        #[serde(skip)]
+        pub terminal_nodes: HashMap<String, Option<usize>>,
+    }
+
+    impl PirComponent {
+        pub fn new(id: impl Into<String>) -> Self {
+            Self {
+                id: id.into(),
+                motion_detected: false,
+                hold_time_s: 3.0,
+                timer_s: 0.0,
+                terminal_nodes: HashMap::new(),
+            }
+        }
+
+        pub fn set_pin_node(&mut self, pin: &str, node: Option<usize>) {
+            self.terminal_nodes.insert(pin.to_string(), node);
+        }
+
+        pub fn get_pin_node(&self, pin: &str) -> Option<usize> {
+            self.terminal_nodes.get(pin).copied().flatten()
+        }
+
+        pub fn is_output_high(&self) -> bool {
+            self.motion_detected || self.timer_s > 0.0
+        }
+    }
 }
 
 /// The overall simulation engine coordinating MCU, components, and netlist signal flow.
@@ -856,6 +1061,10 @@ pub struct SimulationEngine {
     pub buttons: HashMap<String, components::PushbuttonComponent>,
     pub pots: HashMap<String, components::PotentiometerComponent>,
     pub capacitors: HashMap<String, components::CapacitorComponent>,
+    pub hcsr04s: HashMap<String, components::Hcsr04Component>,
+    pub dht11s: HashMap<String, components::Dht11Component>,
+    pub ldrs: HashMap<String, components::PhotoresistorComponent>,
+    pub pirs: HashMap<String, components::PirComponent>,
     pub pin_voltages: HashMap<PinId, f32>,
     pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
@@ -873,6 +1082,10 @@ impl SimulationEngine {
             buttons: HashMap::new(),
             pots: HashMap::new(),
             capacitors: HashMap::new(),
+            hcsr04s: HashMap::new(),
+            dht11s: HashMap::new(),
+            ldrs: HashMap::new(),
+            pirs: HashMap::new(),
             pin_voltages: HashMap::new(),
             branch_currents: HashMap::new(),
             faults: Vec::new(),
@@ -921,6 +1134,10 @@ impl SimulationEngine {
             &self.buttons,
             &self.pots,
             &mut self.capacitors,
+            &mut self.hcsr04s,
+            &mut self.dht11s,
+            &self.ldrs,
+            &mut self.pirs,
             &mut self.pin_voltages,
             &mut self.branch_currents,
             &mut self.faults,
@@ -1313,5 +1530,78 @@ mod tests {
         assert_eq!(c_electro.voltage_rating, 25.0);
         assert_eq!(c_electro.esr_ohms, 0.50);
         assert_eq!(c_electro.effective_leakage(), 2.0e7);
+    }
+
+    #[test]
+    fn test_photoresistor_lux_and_resistance() {
+        let mut ldr = components::PhotoresistorComponent::new("ldr1");
+        ldr.lux = 0.0;
+        let r_dark = ldr.resistance_ohms();
+        assert!(r_dark >= 400_000.0, "Dark resistance must be >= 400k, got {}", r_dark);
+
+        ldr.lux = 100.0;
+        let r_room = ldr.resistance_ohms();
+        assert!(r_room < r_dark && r_room > 1_000.0, "Room resistance should be in kOhm range: {}", r_room);
+
+        ldr.lux = 1000.0;
+        let r_bright = ldr.resistance_ohms();
+        assert!(r_bright < r_room && r_bright > 100.0, "Bright resistance should be low: {}", r_bright);
+    }
+
+    #[test]
+    fn test_hcsr04_trigger_and_echo_pulse() {
+        let mut hcsr = components::Hcsr04Component::new("sonar1");
+        hcsr.distance_cm = 10.0;
+        let pulse_10cm = hcsr.echo_pulse_width_s();
+        // 10cm * 58.82e-6 ≈ 588.2 microseconds
+        assert!((pulse_10cm - 588.2e-6).abs() < 1e-6);
+
+        hcsr.distance_cm = 100.0;
+        let pulse_100cm = hcsr.echo_pulse_width_s();
+        assert!((pulse_100cm - 5882e-6).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_dht11_packet_generation_and_checksum() {
+        let mut dht = components::Dht11Component::new("dht1");
+        dht.temperature = 25.0;
+        dht.humidity = 60.0;
+
+        let bits = dht.data_bits();
+        assert_eq!(bits.len(), 40);
+
+        // First 8 bits: humidity 60 (00111100 in binary)
+        let mut h_val = 0u8;
+        for i in 0..8 {
+            if bits[i] {
+                h_val |= 1 << (7 - i);
+            }
+        }
+        assert_eq!(h_val, 60);
+
+        // Temperature 25 (00011001 in binary)
+        let mut t_val = 0u8;
+        for i in 16..24 {
+            if bits[i] {
+                t_val |= 1 << (23 - i);
+            }
+        }
+        assert_eq!(t_val, 25);
+    }
+
+    #[test]
+    fn test_pir_sensor_motion_trigger_and_timeout() {
+        let mut pir = components::PirComponent::new("pir1");
+        assert!(!pir.is_output_high());
+
+        pir.motion_detected = true;
+        assert!(pir.is_output_high());
+
+        pir.motion_detected = false;
+        pir.timer_s = 2.0;
+        assert!(pir.is_output_high(), "Timer holding output high");
+
+        pir.timer_s = 0.0;
+        assert!(!pir.is_output_high(), "Expired timer pulls output low");
     }
 }

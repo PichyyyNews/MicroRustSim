@@ -1,11 +1,16 @@
 export type ComponentKind = 
   | 'arduino_uno' 
+  | 'esp32'
   | 'breadboard' 
   | 'led' 
   | 'resistor' 
   | 'pushbutton' 
   | 'potentiometer'
   | 'capacitor'
+  | 'hcsr04'
+  | 'dht11'
+  | 'photoresistor'
+  | 'pir_sensor'
   | 'text_label';
 
 export interface CircuitComponent {

@@ -102,6 +102,14 @@ pub enum SimCommand {
     AddButton { id: String },
     AddPot { id: String },
     AddCapacitor { id: String, farads: f32, polarized: bool },
+    AddHcsr04 { id: String, distance_cm: f32 },
+    SetHcsr04Distance { id: String, distance_cm: f32 },
+    AddDht11 { id: String, temperature: f32, humidity: f32 },
+    SetDht11Values { id: String, temperature: f32, humidity: f32 },
+    AddLdr { id: String, lux: f32 },
+    SetLdrLux { id: String, lux: f32 },
+    AddPir { id: String, motion: bool },
+    SetPirMotion { id: String, motion: bool },
     SetPowerRealism(PowerRealismConfig),
     SyncCircuit {
         components: Vec<ComponentDto>,
@@ -257,6 +265,26 @@ fn add_potentiometer(id: String, state: State<'_, AppState>) {
 #[tauri::command]
 fn add_capacitor(id: String, farads: f32, polarized: bool, state: State<'_, AppState>) {
     let _ = state.sim_tx.send(SimCommand::AddCapacitor { id, farads, polarized });
+}
+
+#[tauri::command]
+fn set_hcsr04_distance(id: String, distance_cm: f32, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::SetHcsr04Distance { id, distance_cm });
+}
+
+#[tauri::command]
+fn set_dht11_values(id: String, temperature: f32, humidity: f32, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::SetDht11Values { id, temperature, humidity });
+}
+
+#[tauri::command]
+fn set_ldr_lux(id: String, lux: f32, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::SetLdrLux { id, lux });
+}
+
+#[tauri::command]
+fn set_pir_motion(id: String, motion: bool, state: State<'_, AppState>) {
+    let _ = state.sim_tx.send(SimCommand::SetPirMotion { id, motion });
 }
 
 #[tauri::command]
@@ -590,6 +618,56 @@ fn handle_sim_command(
                     engine.capacitors.insert(id.clone(), components::CapacitorComponent::new(id, farads, polarized));
                     engine.resolve_electrical_nets();
                 }
+                SimCommand::AddHcsr04 { id, distance_cm } => {
+                    let mut comp = components::Hcsr04Component::new(id.clone());
+                    comp.distance_cm = distance_cm;
+                    engine.hcsr04s.insert(id, comp);
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::SetHcsr04Distance { id, distance_cm } => {
+                    if let Some(sonar) = engine.hcsr04s.get_mut(&id) {
+                        sonar.distance_cm = distance_cm.clamp(2.0, 400.0);
+                    }
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::AddDht11 { id, temperature, humidity } => {
+                    let mut comp = components::Dht11Component::new(id.clone());
+                    comp.temperature = temperature;
+                    comp.humidity = humidity;
+                    engine.dht11s.insert(id, comp);
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::SetDht11Values { id, temperature, humidity } => {
+                    if let Some(dht) = engine.dht11s.get_mut(&id) {
+                        dht.temperature = temperature.clamp(0.0, 50.0);
+                        dht.humidity = humidity.clamp(20.0, 90.0);
+                    }
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::AddLdr { id, lux } => {
+                    let mut comp = components::PhotoresistorComponent::new(id.clone());
+                    comp.lux = lux;
+                    engine.ldrs.insert(id, comp);
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::SetLdrLux { id, lux } => {
+                    if let Some(ldr) = engine.ldrs.get_mut(&id) {
+                        ldr.lux = lux.clamp(0.0, 10000.0);
+                    }
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::AddPir { id, motion } => {
+                    let mut comp = components::PirComponent::new(id.clone());
+                    comp.motion_detected = motion;
+                    engine.pirs.insert(id, comp);
+                    engine.resolve_electrical_nets();
+                }
+                SimCommand::SetPirMotion { id, motion } => {
+                    if let Some(pir) = engine.pirs.get_mut(&id) {
+                        pir.motion_detected = motion;
+                    }
+                    engine.resolve_electrical_nets();
+                }
                 SimCommand::SetPowerRealism(config) => {
                     engine.power_config = config;
                     engine.resolve_electrical_nets();
@@ -601,6 +679,10 @@ fn handle_sim_command(
                     engine.buttons.clear();
                     engine.pots.clear();
                     engine.capacitors.clear();
+                    engine.hcsr04s.clear();
+                    engine.dht11s.clear();
+                    engine.ldrs.clear();
+                    engine.pirs.clear();
 
                     for c in components {
                         match c.kind.as_str() {
@@ -685,6 +767,44 @@ fn handle_sim_command(
                                     cap.voltage_rating = vr as f32;
                                 }
                                 engine.capacitors.insert(c.id, cap);
+                            }
+                            "hcsr04" => {
+                                let dist = c.props.get("distance")
+                                    .or_else(|| c.props.get("distance_cm"))
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(25.0) as f32;
+                                let mut comp = components::Hcsr04Component::new(c.id.clone());
+                                comp.distance_cm = dist.clamp(2.0, 400.0);
+                                engine.hcsr04s.insert(c.id, comp);
+                            }
+                            "dht11" => {
+                                let temp = c.props.get("temperature")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(24.0) as f32;
+                                let hum = c.props.get("humidity")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(50.0) as f32;
+                                let mut comp = components::Dht11Component::new(c.id.clone());
+                                comp.temperature = temp.clamp(0.0, 50.0);
+                                comp.humidity = hum.clamp(20.0, 90.0);
+                                engine.dht11s.insert(c.id, comp);
+                            }
+                            "photoresistor" | "ldr" => {
+                                let lux = c.props.get("lux")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(500.0) as f32;
+                                let mut comp = components::PhotoresistorComponent::new(c.id.clone());
+                                comp.lux = lux.clamp(0.0, 10000.0);
+                                engine.ldrs.insert(c.id, comp);
+                            }
+                            "pir" | "pir_sensor" | "hc_sr501" => {
+                                let motion = c.props.get("motion")
+                                    .or_else(|| c.props.get("motion_detected"))
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let mut comp = components::PirComponent::new(c.id.clone());
+                                comp.motion_detected = motion;
+                                engine.pirs.insert(c.id, comp);
                             }
                             _ => {}
                         }
@@ -987,6 +1107,10 @@ pub fn run() {
             add_button,
             add_potentiometer,
             add_capacitor,
+            set_hcsr04_distance,
+            set_dht11_values,
+            set_ldr_lux,
+            set_pir_motion,
             set_power_realism_config,
             save_project_db,
             load_project_db,

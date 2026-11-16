@@ -37,7 +37,7 @@ export interface CommandPaletteSearchProps {
   onCompile: () => void;
   isCompiling: boolean;
   onReset: () => void;
-  onAddComponent: (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot') => void;
+  onAddComponent: (type: 'uno' | 'esp32' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot' | 'cap' | 'hcsr04' | 'dht11' | 'photoresistor' | 'pir_sensor') => void;
   onOpenSettings: () => void;
   onToggleEditor: () => void;
   onToggleExplorer?: () => void;
@@ -110,6 +110,14 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
         run: () => onAddComponent('uno'),
       },
       {
+        id: 'add-esp32',
+        title: 'Add Component: DOIT ESP32 DevKit V1 (30-pin)',
+        category: 'Components',
+        keywords: ['add', 'component', 'esp32', 'doit', 'devkit', 'mcu', 'board', 'wifi', 'bluetooth'],
+        icon: GoPlus,
+        run: () => onAddComponent('esp32'),
+      },
+      {
         id: 'add-breadboard',
         title: 'Add Component: Half Breadboard (30 Rows)',
         category: 'Components',
@@ -148,6 +156,46 @@ export const CommandPaletteSearch: React.FC<CommandPaletteSearchProps> = ({
         keywords: ['add', 'component', 'pot', 'potentiometer', 'knob', 'analog', 'wiper'],
         icon: GoPlus,
         run: () => onAddComponent('pot'),
+      },
+      {
+        id: 'add-cap',
+        title: 'Add Component: Electrolytic Capacitor (10µF)',
+        category: 'Components',
+        keywords: ['add', 'component', 'capacitor', 'cap', 'microfarad', 'filter'],
+        icon: GoPlus,
+        run: () => onAddComponent('cap'),
+      },
+      {
+        id: 'add-hcsr04',
+        title: 'Add Component: HC-SR04 Ultrasonic Distance Sensor',
+        category: 'Components',
+        keywords: ['add', 'component', 'hcsr04', 'ultrasonic', 'sonar', 'distance', 'sensor'],
+        icon: GoPlus,
+        run: () => onAddComponent('hcsr04'),
+      },
+      {
+        id: 'add-dht11',
+        title: 'Add Component: DHT11 Temperature & Humidity Sensor',
+        category: 'Components',
+        keywords: ['add', 'component', 'dht11', 'temperature', 'humidity', 'dht', 'sensor'],
+        icon: GoPlus,
+        run: () => onAddComponent('dht11'),
+      },
+      {
+        id: 'add-photoresistor',
+        title: 'Add Component: LDR Photoresistor (Light Sensor)',
+        category: 'Components',
+        keywords: ['add', 'component', 'ldr', 'photoresistor', 'light', 'lux', 'sensor'],
+        icon: GoPlus,
+        run: () => onAddComponent('photoresistor'),
+      },
+      {
+        id: 'add-pir',
+        title: 'Add Component: HC-SR501 PIR Motion Sensor',
+        category: 'Components',
+        keywords: ['add', 'component', 'pir', 'motion', 'presence', 'sensor', 'hcsr501'],
+        icon: GoPlus,
+        run: () => onAddComponent('pir_sensor'),
       },
       {
         id: 'open-settings',

@@ -1132,6 +1132,209 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                     </div>
                   )}
 
+                  {/* DOIT ESP32 DevKit V1 */}
+                  {selectedComp.kind === 'esp32' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-500">Port (COM)</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={selectedComp.props?.comPort || selectedComp.props?.port || 'COM3'}
+                            onChange={(e) =>
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...(selectedComp.props || {}), comPort: e.target.value },
+                              })
+                            }
+                            className="w-20 h-6 px-1.5 bg-[#18181b] border border-[#27272a] rounded text-right font-mono text-xs text-zinc-100 focus:border-zinc-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-zinc-500">Board Model</span>
+                        <span className="font-mono text-zinc-200">DOIT ESP32 DevKit V1</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-zinc-500">Processor</span>
+                        <span className="font-mono text-zinc-200 whitespace-nowrap [word-break:keep-all]">Xtensa Dual-Core @ 240&nbsp;MHz</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-zinc-500">Operating Voltage</span>
+                        <span className="font-mono text-zinc-200 whitespace-nowrap [word-break:keep-all]">3.3&nbsp;V Logic</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-zinc-500">Wireless</span>
+                        <span className="font-mono text-zinc-200">Wi-Fi + BLE 4.2</span>
+                      </div>
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-zinc-500">Flash / SRAM</span>
+                        <span className="font-mono text-zinc-200 whitespace-nowrap [word-break:keep-all]">4&nbsp;MB / 520&nbsp;KB</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* HC-SR04 Ultrasonic Distance Sensor */}
+                  {selectedComp.kind === 'hcsr04' && (() => {
+                    const dist = selectedComp.props?.distance ?? 25.0;
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Distance</span>
+                          <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {Number(dist).toFixed(1)}&nbsp;cm
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="2"
+                          max="400"
+                          step="0.5"
+                          value={dist}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            onUpdateComponent(selectedComp.id, {
+                              props: { ...(selectedComp.props || {}), distance: val },
+                            });
+                          }}
+                          className="w-full accent-cyan-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                        />
+                        <div className="flex justify-between py-0.5 text-[11px]">
+                          <span className="text-zinc-500">Echo Pulse Time</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {(dist * 58.82).toFixed(0)}&nbsp;µs
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* DHT11 Temp & Humidity Sensor */}
+                  {selectedComp.kind === 'dht11' && (() => {
+                    const temp = selectedComp.props?.temperature ?? 25.0;
+                    const hum = selectedComp.props?.humidity ?? 50.0;
+                    return (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-500">Temperature</span>
+                            <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                              {Number(temp).toFixed(1)}&nbsp;°C
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            step="0.5"
+                            value={temp}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...(selectedComp.props || {}), temperature: val },
+                              });
+                            }}
+                            className="w-full accent-sky-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-500">Relative Humidity</span>
+                            <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                              {Number(hum).toFixed(0)}&nbsp;%RH
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="20"
+                            max="90"
+                            step="1"
+                            value={hum}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              onUpdateComponent(selectedComp.id, {
+                                props: { ...(selectedComp.props || {}), humidity: val },
+                              });
+                            }}
+                            className="w-full accent-blue-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* LDR Photoresistor */}
+                  {selectedComp.kind === 'photoresistor' && (() => {
+                    const lux = selectedComp.props?.lux ?? 500.0;
+                    const resistance = 50.0 + 500000.0 / Math.pow(1.0 + lux, 0.7);
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Light Level</span>
+                          <span className="font-mono text-zinc-200 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {Number(lux).toFixed(0)}&nbsp;lux
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1000"
+                          step="10"
+                          value={lux}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            onUpdateComponent(selectedComp.id, {
+                              props: { ...(selectedComp.props || {}), lux: val },
+                            });
+                          }}
+                          className="w-full accent-amber-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                        />
+                        <div className="flex justify-between py-0.5 text-[11px]">
+                          <span className="text-zinc-500">Calculated Resistance</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {(resistance / 1000).toFixed(1)}&nbsp;kΩ
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* HC-SR501 PIR Motion Sensor */}
+                  {selectedComp.kind === 'pir_sensor' && (() => {
+                    const isMotion = Boolean(selectedComp.props?.motionDetected);
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-500">Motion State</span>
+                          <span className={`font-mono text-xs px-2 py-0.5 rounded-full ${isMotion ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
+                            {isMotion ? 'DETECTED' : 'IDLE'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !isMotion;
+                            onUpdateComponent(selectedComp.id, {
+                              props: { ...(selectedComp.props || {}), motionDetected: next },
+                            });
+                          }}
+                          className={`w-full py-1.5 rounded-xl text-xs font-medium transition-all ${
+                            isMotion
+                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+                              : 'bg-[#1c1c20] hover:bg-[#27272a] text-zinc-300 border border-zinc-700/60'
+                          }`}
+                        >
+                          {isMotion ? 'Clear Motion' : 'Trigger Motion'}
+                        </button>
+                        <div className="flex justify-between py-0.5 text-[11px]">
+                          <span className="text-zinc-500">Digital Output (TTL)</span>
+                          <span className="font-mono text-zinc-300 tabular-nums whitespace-nowrap [word-break:keep-all]">
+                            {isMotion ? '3.3\u00A0V (HIGH)' : '0.0\u00A0V (LOW)'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Breadboard */}
                   {selectedComp.kind === 'breadboard' && (
                     <div className="space-y-1">

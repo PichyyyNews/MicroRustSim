@@ -25,10 +25,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onUpload,
   onUpdateBoardPort,
 }) => {
-  const unoBoards = components.filter((c) => c.kind === 'arduino_uno');
+  const boards = components.filter((c) => c.kind === 'arduino_uno' || c.kind === 'esp32');
 
   const [selectedBoardId, setSelectedBoardId] = useState<string>(
-    unoBoards[0]?.id || ''
+    boards[0]?.id || ''
   );
   const [comPort, setComPort] = useState<string>('COM1');
   const [selectedFile, setSelectedFile] = useState<string>('sketch.ino');
@@ -49,10 +49,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (unoBoards.length > 0) {
-      const currentBoard = unoBoards.find((b) => b.id === selectedBoardId) || unoBoards[0];
+    if (boards.length > 0) {
+      const currentBoard = boards.find((b) => b.id === selectedBoardId) || boards[0];
       setSelectedBoardId(currentBoard.id);
-      setComPort(currentBoard.props?.comPort || currentBoard.props?.port || 'COM1');
+      setComPort(currentBoard.props?.comPort || currentBoard.props?.port || (currentBoard.kind === 'esp32' ? 'COM3' : 'COM1'));
       if (currentBoard.props?.linkedFile) {
         setSelectedFile(currentBoard.props.linkedFile);
       }
@@ -102,9 +102,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleBoardChange = (boardId: string) => {
     setSelectedBoardId(boardId);
-    const board = unoBoards.find((b) => b.id === boardId);
+    const board = boards.find((b) => b.id === boardId);
     if (board) {
-      setComPort(board.props?.comPort || board.props?.port || 'COM1');
+      setComPort(board.props?.comPort || board.props?.port || (board.kind === 'esp32' ? 'COM3' : 'COM1'));
       if (board.props?.linkedFile) {
         setSelectedFile(board.props.linkedFile);
       }
@@ -179,9 +179,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         {/* Content Body */}
         <div className="p-4 space-y-3.5 text-xs bg-[#141416]">
-          {unoBoards.length === 0 ? (
+          {boards.length === 0 ? (
             <div className="p-6 bg-[#1c1c20] border border-zinc-800 rounded-xl text-zinc-400 text-center">
-              No Arduino Uno boards found on the canvas. Add a board first to flash firmware.
+              No Arduino Uno or ESP32 boards found on the canvas. Add a board first to flash firmware.
             </div>
           ) : (
             <div className="space-y-3">
@@ -196,9 +196,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   onChange={(e) => handleBoardChange(e.target.value)}
                   className="w-full bg-[#1c1c20] border border-zinc-800 rounded-xl px-3 py-2 text-zinc-200 focus:border-zinc-500 outline-none cursor-pointer"
                 >
-                  {unoBoards.map((b) => (
+                  {boards.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.id} ({b.props?.comPort || b.props?.port || 'COM1'}) — Arduino Uno R3 (ATmega328P)
+                      {b.id} ({b.props?.comPort || b.props?.port || (b.kind === 'esp32' ? 'COM3' : 'COM1')}) — {b.kind === 'esp32' ? 'DOIT ESP32 DevKit V1 (Xtensa 240MHz)' : 'Arduino Uno R3 (ATmega328P)'}
                     </option>
                   ))}
                 </select>
@@ -288,7 +288,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           <Button
             type="button"
             variant="default"
-            disabled={isCompiling || unoBoards.length === 0}
+            disabled={isCompiling || boards.length === 0}
             onClick={handleFlash}
             className="rounded-full h-7 text-xs px-4 bg-white text-zinc-950 hover:bg-zinc-200 font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >

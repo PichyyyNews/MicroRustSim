@@ -80,6 +80,11 @@ import {
 } from '@/components/ui/popover';
 
 import { ArduinoUno, ARDUINO_PINS } from './components/ArduinoUno';
+import { Esp32Board, ESP32_PINS } from './components/Esp32Board';
+import { Hcsr04 } from './components/Hcsr04';
+import { Dht11 } from './components/Dht11';
+import { Photoresistor } from './components/Photoresistor';
+import { PirSensor } from './components/PirSensor';
 import { Breadboard } from './components/Breadboard';
 import { Led } from './components/Led';
 import { Resistor } from './components/Resistor';
@@ -173,6 +178,16 @@ function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number }
   switch (kind) {
     case 'arduino_uno':
       return { w: 320, h: 220 };
+    case 'esp32':
+      return { w: 160, h: 296 };
+    case 'hcsr04':
+      return { w: 168, h: 80 };
+    case 'dht11':
+      return { w: 80, h: 110 };
+    case 'photoresistor':
+      return { w: 60, h: 70 };
+    case 'pir_sensor':
+      return { w: 90, h: 100 };
     case 'breadboard':
       return { w: 320, h: 140 };
     case 'led':
@@ -1580,6 +1595,52 @@ export default function App() {
         } else {
           local = { x: 58, y: 20 };
         }
+      } else if (comp.kind === 'esp32') {
+        w = 160;
+        h = 296;
+        let offset = ESP32_PINS[pinName];
+        if (!offset) {
+          const upper = pinName.toUpperCase();
+          offset = ESP32_PINS[upper];
+          if (!offset) {
+            const clean = upper.replace(/[._-]/g, '');
+            if (clean === 'GND' || clean === 'GND1') offset = ESP32_PINS['GND'];
+            else if (clean === 'GND2') offset = ESP32_PINS['GND.2'];
+            else if (clean === '33V' || clean === '3V3') offset = ESP32_PINS['3V3'];
+            else if (clean === '5V' || clean === 'VIN') offset = ESP32_PINS['VIN'];
+            else if (ESP32_PINS['D' + clean]) offset = ESP32_PINS['D' + clean];
+            else if (ESP32_PINS['GPIO' + clean]) offset = ESP32_PINS['GPIO' + clean];
+          }
+        }
+        if (offset) local = { x: offset.x, y: offset.y };
+      } else if (comp.kind === 'hcsr04') {
+        w = 168;
+        h = 80;
+        const norm = pinName.toUpperCase();
+        if (norm === 'VCC' || norm === '5V') local = { x: 52, y: 73 };
+        else if (norm === 'TRIG' || norm === 'TRIGGER') local = { x: 74, y: 73 };
+        else if (norm === 'ECHO') local = { x: 94, y: 73 };
+        else if (norm === 'GND' || norm === 'GROUND') local = { x: 116, y: 73 };
+      } else if (comp.kind === 'dht11') {
+        w = 80;
+        h = 110;
+        const norm = pinName.toUpperCase();
+        if (norm === 'VCC' || norm === '5V' || norm === '3V3' || norm === '3.3V' || norm === '1') local = { x: 22, y: 98 };
+        else if (norm === 'DATA' || norm === 'OUT' || norm === 'SIG' || norm === '2') local = { x: 40, y: 98 };
+        else if (norm === 'GND' || norm === 'GROUND' || norm === '3' || norm === '4') local = { x: 58, y: 98 };
+      } else if (comp.kind === 'photoresistor') {
+        w = 60;
+        h = 70;
+        const norm = pinName.toUpperCase();
+        if (norm === '1' || norm === 'A' || norm.includes('L')) local = { x: 23, y: 62 };
+        else local = { x: 37, y: 62 };
+      } else if (comp.kind === 'pir_sensor') {
+        w = 90;
+        h = 100;
+        const norm = pinName.toUpperCase();
+        if (norm === 'VCC' || norm === '5V' || norm === '1') local = { x: 23, y: 92 };
+        else if (norm === 'OUT' || norm === 'SIG' || norm === 'DATA' || norm === '2') local = { x: 45, y: 92 };
+        else if (norm === 'GND' || norm === 'GROUND' || norm === '3') local = { x: 67, y: 92 };
       }
 
       if (!local) local = { x: 20, y: 20 };
@@ -2502,13 +2563,19 @@ export default function App() {
   }, [clipboardComponents, clipboardComponent]);
 
   const handleAddComponentByType = useCallback(
-    (type: 'uno' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot' | 'cap') => {
+    (type: 'uno' | 'esp32' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot' | 'cap' | 'hcsr04' | 'dht11' | 'photoresistor' | 'pir_sensor') => {
       if (type === 'uno') {
         const id = `uno_${components.length + 1}`;
         setComponents((prev) => [...prev, { id, kind: 'arduino_uno', x: 100, y: 100, props: {} }]);
         setSelectedCompId(id);
         setSelectedWireId(null);
         setStatusMessage('Added Arduino Uno');
+      } else if (type === 'esp32') {
+        const id = `esp32_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'esp32', x: 160, y: 100, props: { board: 'doit_devkit_v1', freq: 240 } }]);
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added DOIT ESP32 DevKit V1');
       } else if (type === 'bb') {
         const id = `bb_${components.length + 1}`;
         setComponents((prev) => [...prev, { id, kind: 'breadboard', x: 300, y: 100, props: {} }]);
@@ -2559,6 +2626,34 @@ export default function App() {
         setSelectedCompId(id);
         setSelectedWireId(null);
         setStatusMessage('Added Capacitor (10µF)');
+      } else if (type === 'hcsr04') {
+        const id = `sonar_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'hcsr04', x: 500, y: 160, props: { distance: 25.0 } }]);
+        tauriInvoke('set_hcsr04_distance', { id, distanceCm: 25.0 });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added Ultrasonic HC-SR04');
+      } else if (type === 'dht11') {
+        const id = `dht_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'dht11', x: 620, y: 160, props: { temperature: 25.0, humidity: 50.0 } }]);
+        tauriInvoke('set_dht11_values', { id, temperatureC: 25.0, humidityPercent: 50.0 });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added DHT11 Temp & Humidity');
+      } else if (type === 'photoresistor') {
+        const id = `ldr_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'photoresistor', x: 740, y: 160, props: { lux: 500.0 } }]);
+        tauriInvoke('set_ldr_lux', { id, lux: 500.0 });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added LDR Photoresistor');
+      } else if (type === 'pir_sensor') {
+        const id = `pir_${components.length + 1}`;
+        setComponents((prev) => [...prev, { id, kind: 'pir_sensor', x: 860, y: 160, props: { motionDetected: false } }]);
+        tauriInvoke('set_pir_motion', { id, motion: false });
+        setSelectedCompId(id);
+        setSelectedWireId(null);
+        setStatusMessage('Added HC-SR501 PIR Motion Sensor');
       }
       setIsDirty(true);
     },
@@ -4708,6 +4803,20 @@ export default function App() {
                         );
                       }
 
+                      if (c.kind === 'esp32') {
+                        return (
+                          <div {...wrapperProps}>
+                            <Esp32Board
+                              pin2Lit={Boolean(c.props?.pin2Lit)}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
                       if (c.kind === 'breadboard') {
                         return (
                           <div {...wrapperProps}>
@@ -4811,6 +4920,107 @@ export default function App() {
                               capacitance={c.props?.capacitance || 10e-6}
                               isPolarized={Boolean(c.props?.polarized)}
                               voltageRating={c.props?.voltageRating || 25}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'hcsr04') {
+                        return (
+                          <div {...wrapperProps}>
+                            <Hcsr04
+                              id={c.id}
+                              distance={c.props?.distance ?? 25.0}
+                              onDistanceChange={(dist: number) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), distance: dist } } : item
+                                  )
+                                );
+                                tauriInvoke('set_hcsr04_distance', { id: c.id, distanceCm: dist });
+                              }}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'dht11') {
+                        return (
+                          <div {...wrapperProps}>
+                            <Dht11
+                              id={c.id}
+                              temperature={c.props?.temperature ?? 25.0}
+                              humidity={c.props?.humidity ?? 50.0}
+                              onTemperatureChange={(temp: number) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), temperature: temp } } : item
+                                  )
+                                );
+                                tauriInvoke('set_dht11_values', { id: c.id, temperatureC: temp, humidityPercent: c.props?.humidity ?? 50.0 });
+                              }}
+                              onHumidityChange={(hum: number) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), humidity: hum } } : item
+                                  )
+                                );
+                                tauriInvoke('set_dht11_values', { id: c.id, temperatureC: c.props?.temperature ?? 25.0, humidityPercent: hum });
+                              }}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'photoresistor') {
+                        return (
+                          <div {...wrapperProps}>
+                            <Photoresistor
+                              id={c.id}
+                              lux={c.props?.lux ?? 500.0}
+                              onLuxChange={(lx: number) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), lux: lx } } : item
+                                  )
+                                );
+                                tauriInvoke('set_ldr_lux', { id: c.id, lux: lx });
+                              }}
+                              onPinMouseDown={(pin: string, e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                handlePinMouseDown(c.id, pin);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
+
+                      if (c.kind === 'pir_sensor') {
+                        return (
+                          <div {...wrapperProps}>
+                            <PirSensor
+                              id={c.id}
+                              motion={Boolean(c.props?.motionDetected)}
+                              onMotionChange={(motion: boolean) => {
+                                setComponents((prev) =>
+                                  prev.map((item) =>
+                                    item.id === c.id ? { ...item, props: { ...(item.props || {}), motionDetected: motion } } : item
+                                  )
+                                );
+                                tauriInvoke('set_pir_motion', { id: c.id, motion });
+                              }}
                               onPinMouseDown={(pin: string, e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 handlePinMouseDown(c.id, pin);
@@ -5222,6 +5432,42 @@ export default function App() {
                             </span>
                           </button>
 
+                          {/* 1.1 ESP32 DevKit V1 */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `esp32_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'esp32', x: 200, y: 80, props: { board: 'doit_devkit_v1', freq: 240 } },
+                              ]);
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-blue-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-blue-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="18" y="6" width="28" height="52" rx="3" strokeWidth="2" fill="#18181b" />
+                              <rect x="22" y="10" width="20" height="18" rx="2" fill="#27272a" strokeWidth="1.5" />
+                              <rect x="26" y="52" width="12" height="6" rx="1" fill="#3f3f46" />
+                              <circle cx="25" cy="48" r="1.5" fill="#ef4444" />
+                              <circle cx="39" cy="48" r="1.5" fill="#3b82f6" />
+                              <line x1="14" y1="12" x2="18" y2="12" strokeWidth="2" stroke="#52525b" />
+                              <line x1="14" y1="20" x2="18" y2="20" strokeWidth="2" stroke="#52525b" />
+                              <line x1="14" y1="28" x2="18" y2="28" strokeWidth="2" stroke="#52525b" />
+                              <line x1="14" y1="36" x2="18" y2="36" strokeWidth="2" stroke="#52525b" />
+                              <line x1="14" y1="44" x2="18" y2="44" strokeWidth="2" stroke="#52525b" />
+                              <line x1="46" y1="12" x2="50" y2="12" strokeWidth="2" stroke="#52525b" />
+                              <line x1="46" y1="20" x2="50" y2="20" strokeWidth="2" stroke="#52525b" />
+                              <line x1="46" y1="28" x2="50" y2="28" strokeWidth="2" stroke="#52525b" />
+                              <line x1="46" y1="36" x2="50" y2="36" strokeWidth="2" stroke="#52525b" />
+                              <line x1="46" y1="44" x2="50" y2="44" strokeWidth="2" stroke="#52525b" />
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-blue-300 transition-colors">
+                              DOIT ESP32
+                            </span>
+                          </button>
+
                           {/* 2. Breadboard */}
                           <button
                             type="button"
@@ -5391,6 +5637,117 @@ export default function App() {
                             </svg>
                             <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               Capacitor
+                            </span>
+                          </button>
+
+                          {/* 8. HC-SR04 Ultrasonic Distance Sensor */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `sonar_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'hcsr04', x: 500, y: 160, props: { distance: 25.0 } },
+                              ]);
+                              tauriInvoke('set_hcsr04_distance', { id, distanceCm: 25.0 });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-cyan-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="6" y="20" width="52" height="24" rx="3" strokeWidth="2" fill="#18181b" />
+                              <circle cx="20" cy="32" r="8" fill="#27272a" strokeWidth="1.5" />
+                              <circle cx="44" cy="32" r="8" fill="#27272a" strokeWidth="1.5" />
+                              <line x1="26" y1="44" x2="26" y2="52" strokeWidth="2" stroke="#52525b" />
+                              <line x1="30" y1="44" x2="30" y2="52" strokeWidth="2" stroke="#52525b" />
+                              <line x1="34" y1="44" x2="34" y2="52" strokeWidth="2" stroke="#52525b" />
+                              <line x1="38" y1="44" x2="38" y2="52" strokeWidth="2" stroke="#52525b" />
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-cyan-300 transition-colors">
+                              HC-SR04
+                            </span>
+                          </button>
+
+                          {/* 9. DHT11 Temp & Humidity Sensor */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `dht_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'dht11', x: 620, y: 160, props: { temperature: 25.0, humidity: 50.0 } },
+                              ]);
+                              tauriInvoke('set_dht11_values', { id, temperatureC: 25.0, humidityPercent: 50.0 });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-sky-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-sky-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="18" y="10" width="28" height="36" rx="3" strokeWidth="2" fill="#18181b" />
+                              <line x1="24" y1="18" x2="40" y2="18" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="24" y1="24" x2="40" y2="24" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="24" y1="30" x2="40" y2="30" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="26" y1="46" x2="26" y2="54" strokeWidth="2" stroke="#52525b" />
+                              <line x1="32" y1="46" x2="32" y2="54" strokeWidth="2" stroke="#52525b" />
+                              <line x1="38" y1="46" x2="38" y2="54" strokeWidth="2" stroke="#52525b" />
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-sky-300 transition-colors">
+                              DHT11
+                            </span>
+                          </button>
+
+                          {/* 10. LDR Photoresistor */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `ldr_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'photoresistor', x: 740, y: 160, props: { lux: 500.0 } },
+                              ]);
+                              tauriInvoke('set_ldr_lux', { id, lux: 500.0 });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-amber-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-amber-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <circle cx="32" cy="24" r="14" fill="#18181b" strokeWidth="2" />
+                              <path d="M24 20 Q32 26 40 20 Q32 30 24 30" stroke="#f59e0b" strokeWidth="1.5" fill="none" />
+                              <line x1="28" y1="38" x2="28" y2="52" strokeWidth="2" stroke="#52525b" />
+                              <line x1="36" y1="38" x2="36" y2="52" strokeWidth="2" stroke="#52525b" />
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-amber-300 transition-colors">
+                              LDR Photo
+                            </span>
+                          </button>
+
+                          {/* 11. HC-SR501 PIR Motion Sensor */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = `pir_${components.length + 1}`;
+                              setComponents((prev) => [
+                                ...prev,
+                                { id, kind: 'pir_sensor', x: 860, y: 160, props: { motionDetected: false } },
+                              ]);
+                              tauriInvoke('set_pir_motion', { id, motion: false });
+                              setSelectedCompId(id);
+                              setSelectedWireId(null);
+                            }}
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-emerald-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                          >
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-emerald-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                              <rect x="12" y="14" width="40" height="34" rx="3" strokeWidth="2" fill="#18181b" />
+                              <circle cx="32" cy="30" r="11" fill="#27272a" stroke="#10b981" strokeWidth="1.5" />
+                              <line x1="24" y1="48" x2="24" y2="54" strokeWidth="2" stroke="#52525b" />
+                              <line x1="32" y1="48" x2="32" y2="54" strokeWidth="2" stroke="#52525b" />
+                              <line x1="40" y1="48" x2="40" y2="54" strokeWidth="2" stroke="#52525b" />
+                            </svg>
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-emerald-300 transition-colors">
+                              PIR Motion
                             </span>
                           </button>
                         </div>
