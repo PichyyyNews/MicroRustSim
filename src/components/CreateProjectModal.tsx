@@ -915,64 +915,97 @@ void loop() {
   },
   {
     id: 'esp32_wifi_server',
-    name: 'ESP32 WiFi Station & IoT REST Server',
-    badge: 'WiFi Web Server',
+    name: 'ESP32 WiFi & Live Internet HTTP Client',
+    badge: 'WiFi + HTTP',
     board: 'esp32',
-    description: 'Simulated 802.11 b/g/n WiFi association and HTTP REST Server serving telemetry JSON.',
+    description: 'Connects to Ohmic-GUEST virtual WiFi and fetches live telemetry/JSON from the internet.',
     icon: Wifi,
     sketch: `#include "config.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
 
-// Ohmic DOIT ESP32 DevKit V1 - WiFi IoT Web Server
-// Virtual WiFi Station & REST Telemetry Endpoint
+// Simulated Virtual WiFi AP: "Ohmic-GUEST" (open, no password)
+// Note: In Realistic Mode (Settings > Hardware), provide your physical host WiFi SSID/password.
+const char* ssid = "Ohmic-GUEST";
+const char* password = "";
 
-const char* ssid = "Ohmic_Lab_2.4G";
-const char* password = "circuit_master";
+// Public Internet API endpoint
+const char* apiEndpoint = "https://httpbin.org/get";
 
-int packetCounter = 0;
+int requestCount = 0;
 
 void setup() {
   pinMode(STATUS_LED, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
+  delay(100);
+
   Serial.println();
   Serial.println("============================================");
   Serial.println("[ESP32 WiFi] Initializing IEEE 802.11 b/g/n...");
   Serial.print("[ESP32 WiFi] Connecting to SSID: ");
   Serial.println(ssid);
-  
-  // Simulated WiFi association
-  for (int i = 0; i < 5; i++) {
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
     digitalWrite(STATUS_LED, HIGH);
     delay(200);
     digitalWrite(STATUS_LED, LOW);
     delay(200);
     Serial.print(".");
   }
-  
+
   Serial.println();
-  Serial.println("[ESP32 WiFi] Connected!");
-  Serial.println("[ESP32 WiFi] Assigned IP: 192.168.1.142");
-  Serial.println("[ESP32 WiFi] Gateway: 192.168.1.1 | Subnet: 255.255.255.0");
-  Serial.println("[ESP32 WebServer] HTTP REST Server listening on port 80");
-  Serial.println("[ESP32 WebServer] Endpoint /api/telemetry online");
+  Serial.println("[ESP32 WiFi] Connected successfully!");
+  Serial.print("[ESP32 WiFi] Assigned IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("[ESP32 WiFi] Subnet Mask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("[ESP32 WiFi] Gateway IP: ");
+  Serial.println(WiFi.gatewayIP());
+  Serial.print("[ESP32 WiFi] Signal RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
   Serial.println("============================================");
   Serial.println();
 }
 
 void loop() {
-  packetCounter++;
-  
-  // Heartbeat pulse
+  requestCount++;
+
+  // Activity LED pulse
   digitalWrite(STATUS_LED, HIGH);
   delay(50);
   digitalWrite(STATUS_LED, LOW);
-  
-  // Simulated HTTP GET /api/telemetry request handling
-  Serial.println("[HTTP Server] GET /api/telemetry from 192.168.1.50 -> 200 OK");
-  Serial.print("  Payload: { seq: ");
-  Serial.print(packetCounter);
-  Serial.println(", temp: 26.8, hum: 55.4, rssi: -58 }");
-  
-  delay(2000);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    Serial.print("[HTTP Client] #");
+    Serial.print(requestCount);
+    Serial.print(" GET ");
+    Serial.println(apiEndpoint);
+
+    http.begin(apiEndpoint);
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      Serial.print("[HTTP Client] Status: ");
+      Serial.println(httpResponseCode);
+      String payload = http.getString();
+      Serial.println("[HTTP Client] Response:");
+      Serial.println(payload);
+    } else {
+      Serial.print("[HTTP Client] Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  } else {
+    Serial.println("[ESP32 WiFi] Connection lost. Reconnecting...");
+    WiFi.reconnect();
+  }
+
+  delay(5000);
 }
 `,
     config: `#pragma once

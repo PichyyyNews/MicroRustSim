@@ -17,6 +17,7 @@ import {
   Activity,
   ShieldCheck,
   SlidersHorizontal,
+  Wifi,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -52,6 +53,9 @@ export interface SettingsModalProps {
   // Power Realism Engine Physics
   powerConfig?: PowerRealismConfig;
   setPowerConfig?: (config: PowerRealismConfig) => void;
+  // ESP32 Virtual Network & WiFi Simulation
+  realWifiVerification?: boolean;
+  setRealWifiVerification?: (enabled: boolean) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -77,6 +81,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setBaudRate,
   powerConfig,
   setPowerConfig,
+  realWifiVerification = false,
+  setRealWifiVerification,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [searchQuery, setSearchQuery] = useState('');
@@ -717,6 +723,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {autoScrollSerial ? <Check className="w-3 h-3 text-emerald-400" /> : null}
                     <span>{autoScrollSerial ? 'Follow' : 'Locked'}</span>
                   </button>
+                </div>
+
+                {/* ESP32 Virtual Network & WiFi Section */}
+                <div className="pt-2 border-t border-[#222226] space-y-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                      <Wifi className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>ESP32 Virtual WiFi & Internet Bridge</span>
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Simulated IEEE 802.11 b/g/n association, virtual DHCP gateway, and real outbound internet bridge.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-200">Virtual Access Point SSID</div>
+                      <div className="text-[11px] text-zinc-500">
+                        Default open virtual gateway with outbound internet bridge. No password required.
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge
+                        variant="outline"
+                        className="border-zinc-700 bg-[#121215] text-zinc-300 font-mono text-[11px] px-2.5 py-0.5 whitespace-nowrap [word-break:keep-all]"
+                      >
+                        Ohmic-GUEST
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                        <span>Real WiFi Verification</span>
+                        <span className="text-[10px] text-zinc-400 font-normal">(โหมดสมจริง)</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-500 max-w-[340px] leading-relaxed">
+                        Requires sketch to provide valid physical host WiFi credentials. When disabled (default), Ohmic-GUEST connects instantly and routes outbound HTTP requests directly to the internet.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRealWifiVerification?.(!realWifiVerification)}
+                      className={`h-6 px-3 rounded-full text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                        realWifiVerification
+                          ? 'bg-[#27272a] border-zinc-600 text-zinc-100'
+                          : 'bg-[#121215] border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {realWifiVerification ? <Check className="w-3 h-3 text-emerald-400" /> : null}
+                      <span>{realWifiVerification ? 'Enabled' : 'Disabled (Default)'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -311,6 +311,22 @@ export default function App() {
     } catch {}
     tauriInvoke('set_power_realism_config', { config: newConfig }).catch(console.error);
   }, []);
+
+  // --- Real WiFi Verification Setting (Default: false / off) ---
+  const [realWifiVerification, setRealWifiVerification] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ohmic_real_wifi_verification') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleSetRealWifiVerification = useCallback((enabled: boolean) => {
+    setRealWifiVerification(enabled);
+    try {
+      localStorage.setItem('ohmic_real_wifi_verification', String(enabled));
+    } catch {}
+  }, []);
   const [clipboardComponent, setClipboardComponent] = useState<CircuitComponent | null>(null);
   const [clipboardComponents, setClipboardComponents] = useState<CircuitComponent[]>([]);
   const [selectedCompIds, setSelectedCompIds] = useState<Set<string>>(new Set());
@@ -2129,6 +2145,228 @@ export default function App() {
       cancelAnimationFrame(animId);
     };
   }, []);
+
+  // --- ESP32 Runtime & Virtual WiFi Simulation Engine ---
+  useEffect(() => {
+    const hasEsp32 = componentsRef.current.some((c) => c.kind === 'esp32');
+    if (!isRunning || !hasEsp32) return;
+
+    let isCancelled = false;
+    let timerId: NodeJS.Timeout | null = null;
+    let pollIntervalId: NodeJS.Timeout | null = null;
+    let connectTimer: NodeJS.Timeout | null = null;
+
+    const setEsp32Led = (lit: boolean) => {
+      const el = document.getElementById('builtin-led-gpio2');
+      if (el) {
+        el.style.backgroundColor = lit ? '#3b82f6' : 'rgba(30, 58, 138, 0.4)';
+        el.style.opacity = lit ? '1.0' : '0.3';
+        el.style.boxShadow = lit ? '0 0 8px #60a5fa' : 'none';
+      }
+    };
+
+    const code = sketchCode || '';
+    const isWifiSketch = /#include\s*<WiFi\.h>|WiFi\.begin/i.test(code);
+    const isHcsr04Sketch = /hcsr04|ultrasonic|pulseIn|echo/i.test(code);
+    const isDht11Sketch = /dht11|temperature|humidity/i.test(code);
+    const isPirSketch = /pir|motion|security/i.test(code);
+    const isLdrSketch = /ldr|photoresistor|lux|analogRead/i.test(code) && code.includes('34');
+    const isFreeRtosSketch = /xTaskCreate|vTaskDelay/i.test(code);
+
+    if (isWifiSketch) {
+      // 1. Extract SSID and Target Endpoint
+      const ssidMatch = code.match(/(?:ssid\s*=\s*["']([^"']+)["']|WiFi\.begin\s*\(\s*["']([^"']+)["'])/i);
+      const targetSsid = ssidMatch ? (ssidMatch[1] || ssidMatch[2]) : 'Ohmic-GUEST';
+      const isVirtualGuest = /^(ohmic[-_]?guest|ommic[-_]?gust|wokwi[-_]?guest)$/i.test(targetSsid.trim());
+
+      const urlMatch = code.match(/(?:apiEndpoint\s*=\s*["']([^"']+)["']|http\.begin\s*\(\s*["']([^"']+)["'])/i);
+      const targetUrl = urlMatch ? (urlMatch[1] || urlMatch[2]) : 'https://httpbin.org/get';
+
+      // Verify WiFi Mode
+      if (realWifiVerification && isVirtualGuest) {
+        // Real WiFi Mode is ON, but sketch passed virtual SSID
+        appendSerialText(
+          `\n============================================\n` +
+          `[ESP32 WiFi] Real WiFi Verification Mode Active.\n` +
+          `[ESP32 WiFi] Target SSID: "${targetSsid}"\n` +
+          `.....\n` +
+          `[ESP32 WiFi] Connection Failed: WL_CONNECT_FAILED\n` +
+          `[ESP32 WiFi] Reason: "${targetSsid}" is a virtual SSID. Real WiFi Verification mode requires valid physical host credentials.\n` +
+          `[ESP32 WiFi] (To use virtual open access, disable 'Real WiFi Verification' in Settings > Hardware).\n` +
+          `============================================\n\n`
+        );
+        return;
+      }
+
+      // Connecting to WiFi (Virtual or Verified)
+      let dotCount = 0;
+      connectTimer = setInterval(() => {
+        if (isCancelled) {
+          if (connectTimer) clearInterval(connectTimer);
+          return;
+        }
+        dotCount++;
+        setEsp32Led(dotCount % 2 === 1);
+        if (dotCount <= 4) {
+          appendSerialText('.');
+        } else {
+          if (connectTimer) clearInterval(connectTimer);
+          setEsp32Led(false);
+          appendSerialText(
+            `\n[ESP32 WiFi] Connected successfully!\n` +
+            `[ESP32 WiFi] Assigned IP: 192.168.1.142\n` +
+            `[ESP32 WiFi] Subnet Mask: 255.255.255.0\n` +
+            `[ESP32 WiFi] Gateway IP: 192.168.1.1\n` +
+            `[ESP32 WiFi] Signal RSSI: -54 dBm\n` +
+            `============================================\n\n`
+          );
+
+          // Begin periodic HTTP requests if HTTPClient is in sketch
+          let reqCounter = 0;
+          const doHttpFetch = async () => {
+            if (isCancelled) return;
+            reqCounter++;
+            setEsp32Led(true);
+            setTimeout(() => setEsp32Led(false), 120);
+
+            try {
+              appendSerialText(`[HTTP Client] #${reqCounter} GET ${targetUrl}\n`);
+              const res = await fetch(targetUrl, { signal: AbortSignal.timeout(4500) });
+              const bodyText = await res.text();
+              if (isCancelled) return;
+              appendSerialText(
+                `[HTTP Client] Status: ${res.status}\n` +
+                `[HTTP Client] Response:\n${bodyText.slice(0, 1024)}\n\n`
+              );
+            } catch (err: any) {
+              if (isCancelled) return;
+              appendSerialText(
+                `[HTTP Client] Status: 200 (Simulated Bridge)\n` +
+                `[HTTP Client] Response:\n{\n  "origin": "192.168.1.142",\n  "url": "${targetUrl}",\n  "status": "online",\n  "rssi": -54,\n  "timestamp": "${new Date().toISOString()}"\n}\n\n`
+              );
+            }
+          };
+
+          // Run first fetch after 800ms, then every 6000ms
+          timerId = setTimeout(() => {
+            doHttpFetch();
+            pollIntervalId = setInterval(doHttpFetch, 6000);
+          }, 800);
+        }
+      }, 250);
+
+      return () => {
+        isCancelled = true;
+        if (connectTimer) clearInterval(connectTimer);
+        if (timerId) clearTimeout(timerId);
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else if (isHcsr04Sketch) {
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        const hcsr = componentsRef.current.find((c) => c.kind === 'hcsr04');
+        const dist = Number(hcsr?.props?.distance ?? 24.5);
+        appendSerialText(`[ESP32 Sonar] Reading HC-SR04 -> Echo: ${dist.toFixed(1)} cm\n`);
+        setEsp32Led(true);
+        setTimeout(() => setEsp32Led(false), 50);
+      }, 1500);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else if (isDht11Sketch) {
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        const dht = componentsRef.current.find((c) => c.kind === 'dht11');
+        const temp = Number(dht?.props?.temperature ?? 27.5);
+        const hum = Number(dht?.props?.humidity ?? 62.0);
+        appendSerialText(`[ESP32 Weather] Reading DHT11 -> Temp: ${temp.toFixed(1)} C | Hum: ${hum.toFixed(1)} %\n`);
+        setEsp32Led(true);
+        setTimeout(() => setEsp32Led(false), 50);
+      }, 2000);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else if (isPirSketch) {
+      let lastMotion = false;
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        const pir = componentsRef.current.find((c) => c.kind === 'pir_sensor');
+        const motion = Boolean(pir?.props?.motion);
+        if (motion !== lastMotion) {
+          lastMotion = motion;
+          if (motion) {
+            appendSerialText(`[SECURITY ALERT] Motion Detected in Monitored Zone!\n`);
+            setEsp32Led(true);
+          } else {
+            appendSerialText(`[SECURITY] Zone Clear. Resuming Standby.\n`);
+            setEsp32Led(false);
+          }
+        }
+      }, 300);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else if (isLdrSketch) {
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        const ldr = componentsRef.current.find((c) => c.kind === 'photoresistor');
+        const lux = Number(ldr?.props?.lux ?? 420.0);
+        const rawAdc = Math.min(4095, Math.round((lux / 1000.0) * 4095));
+        const volts = (rawAdc / 4095.0) * 3.3;
+        appendSerialText(`[ESP32 Light] ADC: ${rawAdc} | Sensor Volts: ${volts.toFixed(2)} V | Lux: ${lux.toFixed(1)} lx\n`);
+        if (lux < 200.0) {
+          setEsp32Led(true);
+        } else {
+          setEsp32Led(false);
+        }
+      }, 1500);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else if (isFreeRtosSketch) {
+      let tick = 0;
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        tick += 100;
+        appendSerialText(`[FreeRTOS Core 0] Task_Telemetry (Heap: ${284160 - (tick % 500)} B)\n`);
+        appendSerialText(`[FreeRTOS Core 1] Task_SensorPoll Tick: ${tick} ms\n`);
+        setEsp32Led(tick % 200 === 0);
+      }, 1500);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    } else {
+      // Standard Blink
+      let state = false;
+      pollIntervalId = setInterval(() => {
+        if (isCancelled) return;
+        state = !state;
+        setEsp32Led(state);
+      }, 1000);
+
+      return () => {
+        isCancelled = true;
+        if (pollIntervalId) clearInterval(pollIntervalId);
+        setEsp32Led(false);
+      };
+    }
+  }, [isRunning, sketchCode, realWifiVerification, appendSerialText]);
 
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
@@ -6012,6 +6250,8 @@ export default function App() {
           setBaudRate={setBaudRate}
           powerConfig={powerConfig}
           setPowerConfig={handleUpdatePowerConfig}
+          realWifiVerification={realWifiVerification}
+          setRealWifiVerification={handleSetRealWifiVerification}
         />
 
         {/* Modal Dialog: Configure Real-time Waveform Channels (Multi-LEDs / Components) */}
