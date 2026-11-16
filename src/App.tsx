@@ -2230,26 +2230,91 @@ export default function App() {
           );
 
           if (isWebSocketSketch) {
-            const wsMatch =
-              code.match(/webSocket\.begin\s*\(\s*["']([^"']+)["']\s*(?:,\s*(\d+))?\s*(?:,\s*["']([^"']+)["'])?/i) ||
-              code.match(/webSocket\.beginSSL\s*\(\s*["']([^"']+)["']\s*(?:,\s*(\d+))?\s*(?:,\s*["']([^"']+)["'])?/i);
-            const wsHost = wsMatch ? wsMatch[1] : 'echo.websocket.events';
-            const wsPort = wsMatch && wsMatch[2] ? wsMatch[2] : '80';
-            const wsPath = wsMatch && wsMatch[3] ? wsMatch[3] : '/';
+            // Extract WebSocket host, port, path from variable declarations or function calls
+            const hostVarMatch = code.match(/(?:ws_host|host|server)\s*=\s*["']([^"']+)["']/i);
+            const hostLitMatch = code.match(/webSocket\.begin(?:SSL)?\s*\(\s*["']([^"']+)["']/i);
+            const wsHost = hostVarMatch ? hostVarMatch[1] : (hostLitMatch ? hostLitMatch[1] : 'mqtt.pichyy.qzz.io');
 
-            appendSerialText(
-              `[WSc] Connecting to ws://${wsHost}:${wsPort}${wsPath}\n` +
-              `[WSc] Service connected to ${wsHost}\n`
-            );
+            const portVarMatch = code.match(/(?:ws_port|port)\s*=\s*(\d+)/i);
+            const portLitMatch = code.match(/webSocket\.begin(?:SSL)?\s*\([^,]+,\s*(\d+)/i);
+            const wsPort = portVarMatch ? parseInt(portVarMatch[1], 10) : (portLitMatch ? parseInt(portLitMatch[1], 10) : 443);
 
-            let wsCount = 0;
-            pollIntervalId = setInterval(() => {
-              if (isCancelled) return;
-              wsCount++;
+            const pathVarMatch = code.match(/(?:ws_path|path)\s*=\s*["']([^"']+)["']/i);
+            const pathLitMatch = code.match(/webSocket\.begin(?:SSL)?\s*\([^,]+,\s*[^,]+,\s*["']([^"']+)["']/i);
+            const wsPath = pathVarMatch ? pathVarMatch[1] : (pathLitMatch ? pathLitMatch[1] : '/mqtt');
+
+            const isMqtt = /MQTTClient|PubSubClient|#include\s*<MQTT\.h>/i.test(code);
+
+            if (isMqtt) {
+              // Extract user messages from their code
+              const connectedMsgMatch = code.match(/case\s+WStype_CONNECTED\s*:[^;]*Serial\.println\s*\(\s*["']([^"']+)["']/i);
+              const connectedMsg = connectedMsgMatch ? connectedMsgMatch[1] : `[WSS] เชื่อมต่อ ${wsHost} สำเร็จ (Port ${wsPort})!`;
+
+              const mqttConnectingMatch = code.match(/Serial\.print\s*\(\s*["']([^"']*(?:MQTT|กำลังเชื่อมต่อ)[^"']*)["']/i);
+              const mqttConnectingMsg = mqttConnectingMatch ? mqttConnectingMatch[1] : 'กำลังเชื่อมต่อ MQTT Broker...';
+
+              const mqttConnectedMatch = code.match(/Serial\.println\s*\(\s*["']\\?n?([^"']*(?:MQTT|สำเร็จ)[^"']*)["']/i);
+              const mqttConnectedMsg = mqttConnectedMatch ? mqttConnectedMatch[1] : 'เชื่อมต่อ MQTT สำเร็จ!';
+
+              // Step 1: WebSocket Connected
+              appendSerialText(`${connectedMsg}\n`);
               setEsp32Led(true);
-              setTimeout(() => setEsp32Led(false), 80);
-              appendSerialText(`[WSc] get text: {"event":"telemetry","msg":"heartbeat #${wsCount}","rssi":-54}\n`);
-            }, 3500);
+              setTimeout(() => setEsp32Led(false), 100);
+
+              // Step 2: MQTT Connecting
+              timerId = setTimeout(() => {
+                if (isCancelled) return;
+                appendSerialText(`${mqttConnectingMsg}.....\n${mqttConnectedMsg}\n`);
+                setEsp32Led(true);
+                setTimeout(() => setEsp32Led(false), 100);
+
+                // Step 3: Periodic Telemetry Send Loop (matching user's interval, default 5000ms)
+                const intervalMatch = code.match(/millis\(\)\s*-\s*\w+\s*>\s*(\d+)/i);
+                const loopInterval = intervalMatch ? Math.max(1500, parseInt(intervalMatch[1], 10)) : 5000;
+
+                pollIntervalId = setInterval(() => {
+                  if (isCancelled) return;
+                  const dht = componentsRef.current.find((c) => c.kind === 'dht11');
+                  const temp = Number(dht?.props?.temperature ?? 27.5);
+                  const hum = Number(dht?.props?.humidity ?? 60.0);
+
+                  setEsp32Led(true);
+                  setTimeout(() => setEsp32Led(false), 80);
+
+                  const payload = `{"temperature":${temp.toFixed(1)},"humidity":${hum.toFixed(1)},"device":"esp32-dht11"}`;
+                  const sendMsgMatch = code.match(/Serial\.println\s*\(\s*["']([^"']*(?:ส่งข้อมูล|payload|publish)[^"']*)["']/i);
+                  const sendPrefix = sendMsgMatch ? sendMsgMatch[1] : 'ส่งข้อมูล: ';
+                  appendSerialText(`${sendPrefix}${payload}\n`);
+                }, loopInterval);
+              }, 600);
+
+            } else {
+              // General WebSocket: connect to the user's host
+              const isSSL = /beginSSL/i.test(code);
+              appendSerialText(`[WSc] Connecting to ${isSSL ? 'wss' : 'ws'}://${wsHost}:${wsPort}${wsPath}\n`);
+              appendSerialText(`[WSc] Service connected to ${wsHost}\n`);
+
+              const userPrints = Array.from(code.matchAll(/Serial\.print(?:ln)?\s*\(\s*["']([^"']+)["']\s*\)/g))
+                .map((m: any) => m[1] as string)
+                .filter((s) => !s.includes('Connecting') && !s.includes('Connected') && !s.includes('WiFi'));
+
+              if (userPrints.length > 0) {
+                userPrints.forEach((msg, idx) => {
+                  setTimeout(() => {
+                    if (isCancelled) return;
+                    appendSerialText(msg + '\n');
+                    setEsp32Led(true);
+                    setTimeout(() => setEsp32Led(false), 50);
+                  }, (idx + 1) * 350);
+                });
+              } else {
+                pollIntervalId = setInterval(() => {
+                  if (isCancelled) return;
+                  setEsp32Led(true);
+                  setTimeout(() => setEsp32Led(false), 40);
+                }, 3000);
+              }
+            }
 
           } else if (isHttpClientSketch) {
             const urlMatch = code.match(/(?:apiEndpoint\s*=\s*["']([^"']+)["']|http\.begin\s*\(\s*["']([^"']+)["'])/i);
