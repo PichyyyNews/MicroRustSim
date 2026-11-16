@@ -3102,6 +3102,8 @@ dependencies = [
 name = "microrustsim-tauri"
 version = "0.3.2"
 dependencies = [
+ "ico",
+ "image",
  "parking_lot",
  "rfd",
  "serde",

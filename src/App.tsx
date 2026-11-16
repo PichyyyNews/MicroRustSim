@@ -1085,12 +1085,36 @@ export default function App() {
     if (tree) setProjectFiles(tree);
   }, [projectPath, projectName, sketchCode, fileContents, components, wires, baudRate, exportWokwiDiagram]);
 
-  // Window Close Handlers (Prompting Save / Discard / Cancel on Unsaved Changes)
-  const handleRequestClose = useCallback(() => {
+  // Window Controls Handlers (Prompting Save / Discard / Cancel on Unsaved Changes)
+  const handleRequestClose = useCallback(async () => {
     if (isDirtyRef.current) {
       setShowUnsavedCloseModal(true);
     } else {
-      tauriInvoke('close_window');
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().destroy();
+      } catch {
+        // browser or fallback
+      }
+      await tauriInvoke('close_window');
+    }
+  }, []);
+
+  const handleMinimizeWindow = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().minimize();
+    } catch {
+      await tauriInvoke('minimize_window');
+    }
+  }, []);
+
+  const handleToggleMaximizeWindow = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().toggleMaximize();
+    } catch {
+      await tauriInvoke('toggle_maximize_window');
     }
   }, []);
 
@@ -1100,6 +1124,12 @@ export default function App() {
       await handleSaveProject();
       setIsSavingOnClose(false);
       setShowUnsavedCloseModal(false);
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().destroy();
+      } catch {
+        // browser or fallback
+      }
       await tauriInvoke('close_window');
     } catch (err) {
       setIsSavingOnClose(false);
@@ -1110,6 +1140,12 @@ export default function App() {
   const handleCloseDiscard = useCallback(async () => {
     setIsDirty(false);
     setShowUnsavedCloseModal(false);
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().destroy();
+    } catch {
+      // browser or fallback
+    }
     await tauriInvoke('close_window');
   }, []);
 
@@ -3201,13 +3237,10 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <div className="flex items-center pl-1.5 pr-2 select-none">
-              <img
-                src="/Ohmic.svg"
-                alt="Ommic"
-                className="w-5 h-5 object-contain select-none shrink-0"
-                draggable={false}
-              />
+            <div className="flex items-center pl-1.5 pr-3 select-none">
+              <span className="font-sans text-[13px] font-bold tracking-[0.05em] text-zinc-100 select-none">
+                Ommic
+              </span>
             </div>
 
             {/* Menubar: File */}
@@ -3650,7 +3683,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      tauriInvoke('minimize_window');
+                      handleMinimizeWindow();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -3660,7 +3693,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      tauriInvoke('toggle_maximize_window');
+                      handleToggleMaximizeWindow();
                       setActiveMenu(null);
                     }}
                     className="w-full px-3 py-1.5 flex items-center gap-2 text-zinc-200 hover:bg-zinc-800 text-left transition-colors"
@@ -3732,13 +3765,16 @@ export default function App() {
 
           {/* Right Window Controls (—, □, ✕) */}
           <div
+            data-tauri-drag-region="false"
             className="flex items-center h-full border-l border-[#222226] pointer-events-auto"
             onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             <button
               type="button"
-              onClick={() => tauriInvoke('minimize_window')}
-              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+              data-tauri-drag-region="false"
+              onClick={handleMinimizeWindow}
+              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors cursor-pointer"
               title="Minimize"
             >
               <svg width="10" height="1" viewBox="0 0 10 1">
@@ -3747,8 +3783,9 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => tauriInvoke('toggle_maximize_window')}
-              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors"
+              data-tauri-drag-region="false"
+              onClick={handleToggleMaximizeWindow}
+              className="h-full w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] transition-colors cursor-pointer"
               title="Maximize / Restore"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
@@ -3757,8 +3794,9 @@ export default function App() {
             </button>
             <button
               type="button"
+              data-tauri-drag-region="false"
               onClick={handleRequestClose}
-              className="h-full w-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors"
+              className="h-full w-11 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-[#e81123] transition-colors cursor-pointer"
               title="Close"
             >
               <svg width="10" height="10" viewBox="0 0 10 10">

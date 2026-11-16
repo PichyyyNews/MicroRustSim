@@ -131,8 +131,9 @@ fn toggle_maximize_window(window: tauri::Window) {
 }
 
 #[tauri::command]
-fn close_window(window: tauri::Window) {
-    let _ = window.close();
+fn close_window(window: tauri::Window, app_handle: tauri::AppHandle) {
+    let _ = window.destroy();
+    app_handle.exit(0);
 }
 
 #[tauri::command]
@@ -949,6 +950,12 @@ pub fn run() {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.remove_menu();
+                if let Ok(img) = image::load_from_memory(include_bytes!("../icons/128x128.png")) {
+                    let rgba = img.to_rgba8();
+                    let (w, h) = (rgba.width(), rgba.height());
+                    let icon = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+                    let _ = window.set_icon(icon);
+                }
             }
             let app_handle = app.handle().clone();
             thread::spawn(move || {
