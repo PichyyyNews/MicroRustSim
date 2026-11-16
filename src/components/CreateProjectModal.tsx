@@ -633,8 +633,11 @@ void loop() {
 void setup() {
   pinMode(BUILTIN_LED_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32] Ohmic High-Performance Simulator Ready!");
-  Serial.printf("[ESP32] Dual-Core Xtensa active, Clock: %d MHz\n", getCpuFrequencyMhz());
+  Serial.println();
+  Serial.println("[ESP32] Ohmic High-Performance Simulator Ready!");
+  Serial.print("[ESP32] Dual-Core Xtensa active, Clock: ");
+  Serial.print(240);
+  Serial.println(" MHz");
 }
 
 void loop() {
@@ -699,13 +702,16 @@ void setup() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32] HC-SR04 Ultrasonic Distance Sensor Initialized.");
+  Serial.println();
+  Serial.println("[ESP32] HC-SR04 Ultrasonic Distance Sensor Initialized.");
 }
 
 void loop() {
   long distanceCm = readUltrasonicDistance(PIN_TRIG, PIN_ECHO);
   if (distanceCm >= 0) {
-    Serial.printf("[ESP32 Sonar] Target Distance: %ld cm\n", distanceCm);
+    Serial.print("[ESP32 Sonar] Target Distance: ");
+    Serial.print(distanceCm);
+    Serial.println(" cm");
   } else {
     Serial.println("[ESP32 Sonar] Out of Range (> 400 cm)");
   }
@@ -749,12 +755,13 @@ void loop() {
 void setup() {
   pinMode(DHT_PIN, INPUT_PULLUP);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32] DHT11 Climate Sensor Station Initialized.");
+  Serial.println();
+  Serial.println("[ESP32] DHT11 Climate Sensor Station Initialized.");
 }
 
 void loop() {
   Serial.println("[ESP32 Weather] Reading DHT11 environment packet...");
-  Serial.printf("[ESP32 Weather] Temperature: 27.5 °C | Humidity: 62.0 %%\n");
+  Serial.println("[ESP32 Weather] Temperature: 27.5 C | Humidity: 62.0 %");
   delay(1500);
 }
 `,
@@ -796,7 +803,8 @@ void setup() {
   pinMode(PIR_PIN, INPUT);
   pinMode(ALERT_LED, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32] Motion Security Alarm System Armed.");
+  Serial.println();
+  Serial.println("[ESP32] Motion Security Alarm System Armed.");
 }
 
 void loop() {
@@ -854,7 +862,8 @@ void setup() {
   pinMode(LDR_ADC_PIN, INPUT);
   pinMode(NIGHT_LAMP_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32] LDR Optical Photometer & Night Lamp Initialized.");
+  Serial.println();
+  Serial.println("[ESP32] LDR Optical Photometer & Night Lamp Initialized.");
 }
 
 void loop() {
@@ -864,7 +873,13 @@ void loop() {
   // Calculate approximate lux
   float lux = (voltage / 3.3f) * 1000.0f;
   
-  Serial.printf("[ESP32 Light] ADC: %4d | Sensor Volts: %.2fV | Lux: %.1f lx\\n", rawAdc, voltage, lux);
+  Serial.print("[ESP32 Light] ADC: ");
+  Serial.print(rawAdc);
+  Serial.print(" | Sensor Volts: ");
+  Serial.print(voltage, 2);
+  Serial.print(" V | Lux: ");
+  Serial.print(lux, 1);
+  Serial.println(" lx");
   
   if (lux < 200.0f) {
     digitalWrite(NIGHT_LAMP_PIN, HIGH);
@@ -918,9 +933,11 @@ int packetCounter = 0;
 void setup() {
   pinMode(STATUS_LED, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n============================================");
+  Serial.println();
+  Serial.println("============================================");
   Serial.println("[ESP32 WiFi] Initializing IEEE 802.11 b/g/n...");
-  Serial.printf("[ESP32 WiFi] Connecting to SSID: %s\\n", ssid);
+  Serial.print("[ESP32 WiFi] Connecting to SSID: ");
+  Serial.println(ssid);
   
   // Simulated WiFi association
   for (int i = 0; i < 5; i++) {
@@ -931,12 +948,14 @@ void setup() {
     Serial.print(".");
   }
   
-  Serial.println("\n[ESP32 WiFi] Connected!");
+  Serial.println();
+  Serial.println("[ESP32 WiFi] Connected!");
   Serial.println("[ESP32 WiFi] Assigned IP: 192.168.1.142");
   Serial.println("[ESP32 WiFi] Gateway: 192.168.1.1 | Subnet: 255.255.255.0");
   Serial.println("[ESP32 WebServer] HTTP REST Server listening on port 80");
   Serial.println("[ESP32 WebServer] Endpoint /api/telemetry online");
-  Serial.println("============================================\n");
+  Serial.println("============================================");
+  Serial.println();
 }
 
 void loop() {
@@ -948,8 +967,10 @@ void loop() {
   digitalWrite(STATUS_LED, LOW);
   
   // Simulated HTTP GET /api/telemetry request handling
-  Serial.printf("[HTTP Server] GET /api/telemetry from 192.168.1.50 -> 200 OK\\n");
-  Serial.printf("  Payload: {\\\"seq\\\":%d,\\\"temp\\\":26.8,\\\"hum\\\":55.4,\\\"rssi\\\":-58}\\n", packetCounter);
+  Serial.println("[HTTP Server] GET /api/telemetry from 192.168.1.50 -> 200 OK");
+  Serial.print("  Payload: {\"seq\":");
+  Serial.print(packetCounter);
+  Serial.println(",\"temp\":26.8,\"hum\":55.4,\"rssi\":-58}");
   
   delay(2000);
 }
@@ -991,7 +1012,8 @@ volatile int sensorValue = 0;
 void taskCore0(void *pvParameters) {
   for (;;) {
     sensorValue = (sensorValue + 17) % 1024;
-    Serial.printf("[Core 0 Task] Sensor Acquisition: Val = %d\\n", sensorValue);
+    Serial.print("[Core 0 Task] Sensor Acquisition: Val = ");
+    Serial.println(sensorValue);
     delay(400);
   }
 }
@@ -1002,14 +1024,16 @@ void taskCore1(void *pvParameters) {
     delay(100);
     digitalWrite(HEARTBEAT_PIN, LOW);
     delay(900);
-    Serial.printf("[Core 1 Task] Telemetry Broadcast: Processed = %d\\n", sensorValue);
+    Serial.print("[Core 1 Task] Telemetry Broadcast: Processed = ");
+    Serial.println(sensorValue);
   }
 }
 
 void setup() {
   pinMode(HEARTBEAT_PIN, OUTPUT);
   Serial.begin(SYSTEM_BAUD);
-  Serial.println("\n[ESP32 FreeRTOS] Starting Dual-Core Multitasking Engine...");
+  Serial.println();
+  Serial.println("[ESP32 FreeRTOS] Starting Dual-Core Multitasking Engine...");
   
   // Core 0 Task
   Serial.println("[FreeRTOS] Spawned task_sensor on Core 0 (Priority 2)");

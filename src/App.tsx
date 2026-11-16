@@ -2143,8 +2143,14 @@ export default function App() {
     if (autoSaveOnRun && isDirty) {
       handleSaveProject();
     }
+
+    // Auto-detect target MCU architecture from canvas components
+    const hasEsp32 = components.some((c) => c.kind === 'esp32');
+    const targetFqbn = hasEsp32 ? 'esp32:esp32:esp32doit-devkit-v1' : 'arduino:avr:uno';
+    const mcuDesc = hasEsp32 ? 'ESP32 @ 240 MHz' : 'Arduino Uno @ 16 MHz';
+
     setIsCompiling(true);
-    setStatusMessage('Compiling sketch with arduino-cli...');
+    setStatusMessage(`Compiling sketch for ${mcuDesc} with arduino-cli...`);
     setBottomTab('build');
     setShowTerminal(true);
 
@@ -2154,6 +2160,7 @@ export default function App() {
         {
           sketch: sketchCode,
           files: fileContents,
+          fqbn: targetFqbn,
         }
       );
 
@@ -2161,8 +2168,8 @@ export default function App() {
         setBuildLogs(stripAnsi(res.output));
         if (res.success) {
           setLastCompiledCode(sketchCode);
-          setStatusMessage('Build Succeeded. Running @ 16 MHz.');
-          appendSerialText('\n--- Upload Succeeded & Running ---\n');
+          setStatusMessage(`Build Succeeded. Running ${mcuDesc}.`);
+          appendSerialText(`\n--- Upload Succeeded & Running [${mcuDesc}] ---\n`);
           setBottomTab('serial');
           setIsRunning(true);
           await tauriInvoke('start_simulation');
@@ -2174,7 +2181,7 @@ export default function App() {
           return false;
         }
       } else {
-        setBuildLogs('[Preview] Compiled Arduino Uno sketch successfully.\n');
+        setBuildLogs(`[Preview] Compiled ${mcuDesc} sketch successfully.\n`);
         setLastCompiledCode(sketchCode);
         setStatusMessage('Running in preview mode.');
         setBottomTab('serial');

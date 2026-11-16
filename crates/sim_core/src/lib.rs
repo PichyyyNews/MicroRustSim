@@ -229,6 +229,11 @@ impl McuCore for ArduinoUnoCore {
     }
 
     fn load_hex(&mut self, hex: &str) -> Result<(), String> {
+        if hex.starts_with("BIN:") || !hex.contains(':') {
+            // Raw binary or ESP32 image: safely reset without parsing as Intel HEX
+            self.reset();
+            return Ok(());
+        }
         let flash = parse_hex(hex);
         self.flash = flash;
         self.reset();

@@ -86,6 +86,7 @@ pub enum SimCommand {
     CompileAndUpload {
         sketch: String,
         files: Option<std::collections::HashMap<String, String>>,
+        fqbn: Option<String>,
         reply: SyncSender<CompileResult>,
     },
     Start,
@@ -163,13 +164,14 @@ fn get_initial_data() -> InitialData {
 async fn compile_and_upload(
     sketch: String,
     files: Option<std::collections::HashMap<String, String>>,
+    fqbn: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<CompileResult, String> {
     let sim_tx = state.sim_tx.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (tx, rx) = sync_channel(1);
         sim_tx
-            .send(SimCommand::CompileAndUpload { sketch, files, reply: tx })
+            .send(SimCommand::CompileAndUpload { sketch, files, fqbn, reply: tx })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())
     })
@@ -447,8 +449,9 @@ fn handle_sim_command(
     app_handle: &tauri::AppHandle,
 ) {
     match cmd {
-                SimCommand::CompileAndUpload { sketch, files, reply } => {
-                    let res = compiler.compile_with_files(&sketch, files.as_ref(), "arduino:avr:uno");
+                SimCommand::CompileAndUpload { sketch, files, fqbn, reply } => {
+                    let target_fqbn = fqbn.as_deref().unwrap_or("arduino:avr:uno");
+                    let res = compiler.compile_with_files(&sketch, files.as_ref(), target_fqbn);
                     match res {
                         Ok(comp_out) => {
                             let _ = engine.mcu.load_hex(&comp_out.hex);
