@@ -41,7 +41,7 @@ export const Photoresistor: React.FC<PhotoresistorProps> = ({
           }`}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <Sun className="w-3 h-3 text-amber-400 shrink-0" />
+          <Sun className="w-3 h-3 text-zinc-400 shrink-0" />
           <input
             type="range"
             min={0}
@@ -49,7 +49,7 @@ export const Photoresistor: React.FC<PhotoresistorProps> = ({
             step={5}
             value={safeLux}
             onChange={(e) => onLuxChange?.(parseFloat(e.target.value))}
-            className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+            className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-200"
             title="Adjust Ambient Light (lux)"
           />
           <Badge
@@ -96,7 +96,7 @@ export const Photoresistor: React.FC<PhotoresistorProps> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('1', e)}
           title={`${id}:1 (Terminal 1)`}
-          className="w-2.5 h-2.5 rounded-full bg-zinc-300 border border-zinc-500 hover:scale-125 hover:ring-2 hover:ring-amber-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-2.5 h-2.5 rounded-full bg-zinc-300 border border-zinc-500 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-zinc-600" />
         </button>
@@ -106,7 +106,7 @@ export const Photoresistor: React.FC<PhotoresistorProps> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('2', e)}
           title={`${id}:2 (Terminal 2)`}
-          className="w-2.5 h-2.5 rounded-full bg-zinc-300 border border-zinc-500 hover:scale-125 hover:ring-2 hover:ring-amber-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-2.5 h-2.5 rounded-full bg-zinc-300 border border-zinc-500 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-zinc-600" />
         </button>

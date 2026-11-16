@@ -174,7 +174,7 @@ export const Esp32Board: React.FC<Esp32BoardProps> = ({ pin2Lit = false, onPinMo
         <div
           key={name}
           title={`Pin ${name}: ${pin.desc} [${pin.voltage}]`}
-          className="absolute w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-transparent hover:border-blue-400 hover:bg-blue-400/90 hover:scale-125 hover:shadow-[0_0_8px_rgba(96,165,250,0.9)] hover:ring-1 hover:ring-blue-300 transition-all cursor-crosshair z-30 flex items-center justify-center group"
+          className="absolute w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-transparent hover:border-white hover:bg-white hover:scale-115 hover:shadow-[0_0_5px_rgba(255,255,255,0.9)] hover:ring-1 hover:ring-white/80 transition-all cursor-crosshair z-30 flex items-center justify-center group"
           style={{ left: `${pin.x}px`, top: `${pin.y}px` }}
           onMouseDown={(e) => {
             e.stopPropagation();

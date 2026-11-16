@@ -43,7 +43,7 @@ export const Dht11: React.FC<Dht11Props> = ({
         >
           {/* Temperature Slider Row */}
           <div className="flex items-center gap-1.5">
-            <Thermometer className="w-3 h-3 text-orange-400 shrink-0" />
+            <Thermometer className="w-3 h-3 text-zinc-400 shrink-0" />
             <input
               type="range"
               min={0}
@@ -51,7 +51,7 @@ export const Dht11: React.FC<Dht11Props> = ({
               step={0.5}
               value={safeTemp}
               onChange={(e) => onTemperatureChange?.(parseFloat(e.target.value))}
-              className="w-14 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-400"
+              className="w-14 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-200"
               title="Adjust Temperature (°C)"
             />
             <Badge
@@ -64,7 +64,7 @@ export const Dht11: React.FC<Dht11Props> = ({
 
           {/* Humidity Slider Row */}
           <div className="flex items-center gap-1.5">
-            <Droplets className="w-3 h-3 text-blue-400 shrink-0" />
+            <Droplets className="w-3 h-3 text-zinc-400 shrink-0" />
             <input
               type="range"
               min={20}
@@ -72,7 +72,7 @@ export const Dht11: React.FC<Dht11Props> = ({
               step={1}
               value={safeHum}
               onChange={(e) => onHumidityChange?.(parseFloat(e.target.value))}
-              className="w-14 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-400"
+              className="w-14 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-200"
               title="Adjust Humidity (%RH)"
             />
             <Badge
@@ -117,7 +117,7 @@ export const Dht11: React.FC<Dht11Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('VCC', e)}
           title={`${id}:VCC (Power 3.3V - 5V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -127,7 +127,7 @@ export const Dht11: React.FC<Dht11Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('DATA', e)}
           title={`${id}:DATA (1-Wire Bidirectional Data)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -137,7 +137,7 @@ export const Dht11: React.FC<Dht11Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('GND', e)}
           title={`${id}:GND (Ground 0V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>

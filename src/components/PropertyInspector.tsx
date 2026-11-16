@@ -1196,7 +1196,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               props: { ...(selectedComp.props || {}), distance: val },
                             });
                           }}
-                          className="w-full accent-cyan-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                          className="w-full accent-zinc-200 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
                         />
                         <div className="flex justify-between py-0.5 text-[11px]">
                           <span className="text-zinc-500">Echo Pulse Time</span>
@@ -1233,7 +1233,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                                 props: { ...(selectedComp.props || {}), temperature: val },
                               });
                             }}
-                            className="w-full accent-sky-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                            className="w-full accent-zinc-200 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
                           />
                         </div>
                         <div className="space-y-1">
@@ -1255,7 +1255,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                                 props: { ...(selectedComp.props || {}), humidity: val },
                               });
                             }}
-                            className="w-full accent-blue-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                            className="w-full accent-zinc-200 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
                           />
                         </div>
                       </div>
@@ -1286,7 +1286,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                               props: { ...(selectedComp.props || {}), lux: val },
                             });
                           }}
-                          className="w-full accent-amber-500 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
+                          className="w-full accent-zinc-200 h-1.5 bg-[#18181b] rounded-lg appearance-none cursor-pointer"
                         />
                         <div className="flex justify-between py-0.5 text-[11px]">
                           <span className="text-zinc-500">Calculated Resistance</span>
@@ -1305,7 +1305,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500">Motion State</span>
-                          <span className={`font-mono text-xs px-2 py-0.5 rounded-full ${isMotion ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
+                          <span className={`font-mono text-xs px-2 py-0.5 rounded-full ${isMotion ? 'bg-zinc-700 text-zinc-100 border border-zinc-500' : 'bg-zinc-800 text-zinc-400'}`}>
                             {isMotion ? 'DETECTED' : 'IDLE'}
                           </span>
                         </div>
@@ -1319,7 +1319,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
                           }}
                           className={`w-full py-1.5 rounded-xl text-xs font-medium transition-all ${
                             isMotion
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+                              ? 'bg-zinc-200 hover:bg-white text-zinc-950 font-semibold shadow-xs'
                               : 'bg-[#1c1c20] hover:bg-[#27272a] text-zinc-300 border border-zinc-700/60'
                           }`}
                         >

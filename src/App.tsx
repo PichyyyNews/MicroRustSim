@@ -5444,14 +5444,14 @@ export default function App() {
                               setSelectedCompId(id);
                               setSelectedWireId(null);
                             }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-blue-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-blue-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
                               <rect x="18" y="6" width="28" height="52" rx="3" strokeWidth="2" fill="#18181b" />
                               <rect x="22" y="10" width="20" height="18" rx="2" fill="#27272a" strokeWidth="1.5" />
                               <rect x="26" y="52" width="12" height="6" rx="1" fill="#3f3f46" />
-                              <circle cx="25" cy="48" r="1.5" fill="#ef4444" />
-                              <circle cx="39" cy="48" r="1.5" fill="#3b82f6" />
+                              <circle cx="25" cy="48" r="1.5" fill="#52525b" />
+                              <circle cx="39" cy="48" r="1.5" fill="#52525b" />
                               <line x1="14" y1="12" x2="18" y2="12" strokeWidth="2" stroke="#52525b" />
                               <line x1="14" y1="20" x2="18" y2="20" strokeWidth="2" stroke="#52525b" />
                               <line x1="14" y1="28" x2="18" y2="28" strokeWidth="2" stroke="#52525b" />
@@ -5463,7 +5463,7 @@ export default function App() {
                               <line x1="46" y1="36" x2="50" y2="36" strokeWidth="2" stroke="#52525b" />
                               <line x1="46" y1="44" x2="50" y2="44" strokeWidth="2" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-blue-300 transition-colors">
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               DOIT ESP32
                             </span>
                           </button>
@@ -5653,9 +5653,9 @@ export default function App() {
                               setSelectedCompId(id);
                               setSelectedWireId(null);
                             }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-cyan-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-cyan-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
                               <rect x="6" y="20" width="52" height="24" rx="3" strokeWidth="2" fill="#18181b" />
                               <circle cx="20" cy="32" r="8" fill="#27272a" strokeWidth="1.5" />
                               <circle cx="44" cy="32" r="8" fill="#27272a" strokeWidth="1.5" />
@@ -5664,7 +5664,7 @@ export default function App() {
                               <line x1="34" y1="44" x2="34" y2="52" strokeWidth="2" stroke="#52525b" />
                               <line x1="38" y1="44" x2="38" y2="52" strokeWidth="2" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-cyan-300 transition-colors">
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               HC-SR04
                             </span>
                           </button>
@@ -5682,18 +5682,18 @@ export default function App() {
                               setSelectedCompId(id);
                               setSelectedWireId(null);
                             }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-sky-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-sky-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
                               <rect x="18" y="10" width="28" height="36" rx="3" strokeWidth="2" fill="#18181b" />
-                              <line x1="24" y1="18" x2="40" y2="18" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
-                              <line x1="24" y1="24" x2="40" y2="24" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
-                              <line x1="24" y1="30" x2="40" y2="30" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="24" y1="18" x2="40" y2="18" stroke="#71717a" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="24" y1="24" x2="40" y2="24" stroke="#71717a" strokeWidth="1.5" strokeDasharray="2 2" />
+                              <line x1="24" y1="30" x2="40" y2="30" stroke="#71717a" strokeWidth="1.5" strokeDasharray="2 2" />
                               <line x1="26" y1="46" x2="26" y2="54" strokeWidth="2" stroke="#52525b" />
                               <line x1="32" y1="46" x2="32" y2="54" strokeWidth="2" stroke="#52525b" />
                               <line x1="38" y1="46" x2="38" y2="54" strokeWidth="2" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-sky-300 transition-colors">
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               DHT11
                             </span>
                           </button>
@@ -5711,15 +5711,15 @@ export default function App() {
                               setSelectedCompId(id);
                               setSelectedWireId(null);
                             }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-amber-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-amber-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
                               <circle cx="32" cy="24" r="14" fill="#18181b" strokeWidth="2" />
-                              <path d="M24 20 Q32 26 40 20 Q32 30 24 30" stroke="#f59e0b" strokeWidth="1.5" fill="none" />
+                              <path d="M24 20 Q32 26 40 20 Q32 30 24 30" stroke="#71717a" strokeWidth="1.5" fill="none" />
                               <line x1="28" y1="38" x2="28" y2="52" strokeWidth="2" stroke="#52525b" />
                               <line x1="36" y1="38" x2="36" y2="52" strokeWidth="2" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-amber-300 transition-colors">
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               LDR Photo
                             </span>
                           </button>
@@ -5737,16 +5737,16 @@ export default function App() {
                               setSelectedCompId(id);
                               setSelectedWireId(null);
                             }}
-                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-emerald-500/60 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
+                            className="bg-[#141417] hover:bg-[#1a1a1f] border border-[#222226] hover:border-zinc-600 rounded-lg py-3 px-2 flex flex-col items-center justify-center gap-2 text-center transition-all group cursor-pointer active:scale-95"
                           >
-                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-emerald-400 transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
+                            <svg className="w-9 h-9 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 64 64" fill="none" stroke="currentColor">
                               <rect x="12" y="14" width="40" height="34" rx="3" strokeWidth="2" fill="#18181b" />
-                              <circle cx="32" cy="30" r="11" fill="#27272a" stroke="#10b981" strokeWidth="1.5" />
+                              <circle cx="32" cy="30" r="11" fill="#27272a" stroke="#71717a" strokeWidth="1.5" />
                               <line x1="24" y1="48" x2="24" y2="54" strokeWidth="2" stroke="#52525b" />
                               <line x1="32" y1="48" x2="32" y2="54" strokeWidth="2" stroke="#52525b" />
                               <line x1="40" y1="48" x2="40" y2="54" strokeWidth="2" stroke="#52525b" />
                             </svg>
-                            <span className="font-medium text-xs text-zinc-300 group-hover:text-emerald-300 transition-colors">
+                            <span className="font-medium text-xs text-zinc-300 group-hover:text-white transition-colors">
                               PIR Motion
                             </span>
                           </button>

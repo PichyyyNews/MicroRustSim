@@ -36,7 +36,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
           }`}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <Activity className="w-3 h-3 text-cyan-400 shrink-0" />
+          <Activity className="w-3 h-3 text-zinc-400 shrink-0" />
           <input
             type="range"
             min={2}
@@ -44,7 +44,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
             step={0.5}
             value={safeDistance}
             onChange={(e) => onDistanceChange?.(parseFloat(e.target.value))}
-            className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+            className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-200"
             title="Adjust Obstacle Distance (cm)"
           />
           <Badge
@@ -112,7 +112,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('VCC', e)}
           title={`${id}:VCC (Power +5V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -122,7 +122,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('TRIG', e)}
           title={`${id}:TRIG (Trigger Pulse Input)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -132,7 +132,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('ECHO', e)}
           title={`${id}:ECHO (Echo Pulse Output)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -142,7 +142,7 @@ export const Hcsr04: React.FC<Hcsr04Props> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('GND', e)}
           title={`${id}:GND (Ground 0V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-cyan-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>

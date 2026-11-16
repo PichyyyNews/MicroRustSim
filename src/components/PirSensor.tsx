@@ -35,18 +35,18 @@ export const PirSensor: React.FC<PirSensorProps> = ({
             onClick={() => onMotionChange?.(!motion)}
             className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
               motion
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                ? 'bg-zinc-200 text-zinc-900 border border-zinc-300 shadow-xs'
                 : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'
             }`}
             title="Toggle PIR Motion Detection"
           >
-            <Radio className={`w-3 h-3 ${motion ? 'text-emerald-400 animate-pulse' : 'text-zinc-400'}`} />
+            <Radio className={`w-3 h-3 ${motion ? 'text-zinc-900' : 'text-zinc-400'}`} />
             <span>{motion ? 'Motion On' : 'Trigger'}</span>
           </button>
           <Badge
             variant="outline"
             className={`h-5 px-1.5 font-mono text-[9px] tabular-nums whitespace-nowrap shrink-0 [word-break:keep-all] ${
-              motion ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10' : 'text-zinc-400 border-[#3f3f46]'
+              motion ? 'text-zinc-100 border-zinc-500 bg-zinc-800' : 'text-zinc-400 border-[#3f3f46]'
             }`}
           >
             {motion ? '3.3\u00A0V' : '0.0\u00A0V'}
@@ -92,7 +92,7 @@ export const PirSensor: React.FC<PirSensorProps> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('VCC', e)}
           title={`${id}:VCC (Power 4.5V - 20V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-emerald-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -102,7 +102,7 @@ export const PirSensor: React.FC<PirSensorProps> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('OUT', e)}
           title={`${id}:OUT (Digital Output 3.3V / 0V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-emerald-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
@@ -112,7 +112,7 @@ export const PirSensor: React.FC<PirSensorProps> = ({
           type="button"
           onMouseDown={(e) => onPinMouseDown?.('GND', e)}
           title={`${id}:GND (Ground 0V)`}
-          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-emerald-400 transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
+          className="w-3 h-3 rounded-full bg-amber-400 border border-amber-600 hover:scale-125 hover:ring-2 hover:ring-white transition-transform cursor-crosshair z-20 flex items-center justify-center shadow-xs"
         >
           <div className="w-1 h-1 rounded-full bg-amber-800" />
         </button>
