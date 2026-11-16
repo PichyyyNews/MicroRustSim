@@ -3239,7 +3239,7 @@ export default function App() {
           >
             <div className="flex items-center pl-1.5 pr-3 select-none">
               <span className="font-sans text-[13px] font-bold tracking-[0.05em] text-zinc-100 select-none">
-                Ommic
+                Ohmic
               </span>
             </div>
 
@@ -3759,7 +3759,7 @@ export default function App() {
             className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-400 cursor-default select-none"
           >
             <span className="truncate max-w-[400px]">
-              {projectName}{isDirty ? ' *' : ''} — Ommic
+              {projectName}{isDirty ? ' *' : ''} — Ohmic
             </span>
           </div>
 
@@ -5773,7 +5773,7 @@ export default function App() {
           <div className="flex flex-col items-center">
             <img
               src="/Ohmic.svg"
-              alt="Ommic"
+              alt="Ohmic"
               className="w-14 h-14 object-contain mb-4 animate-pulse"
             />
             <div className="w-24 h-0.5 bg-[#222226] rounded-full overflow-hidden">
