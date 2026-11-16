@@ -968,9 +968,9 @@ void loop() {
   
   // Simulated HTTP GET /api/telemetry request handling
   Serial.println("[HTTP Server] GET /api/telemetry from 192.168.1.50 -> 200 OK");
-  Serial.print("  Payload: {\"seq\":");
+  Serial.print("  Payload: { seq: ");
   Serial.print(packetCounter);
-  Serial.println(",\"temp\":26.8,\"hum\":55.4,\"rssi\":-58}");
+  Serial.println(", temp: 26.8, hum: 55.4, rssi: -58 }");
   
   delay(2000);
 }
