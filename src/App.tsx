@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import mqtt from 'mqtt';
 import Editor from '@monaco-editor/react';
 import {
   GoPlay,
@@ -2163,6 +2164,7 @@ export default function App() {
     let timerId: NodeJS.Timeout | null = null;
     let pollIntervalId: NodeJS.Timeout | null = null;
     let connectTimer: NodeJS.Timeout | null = null;
+    let mqttClientRef: any = null;
 
     const setEsp32Led = (lit: boolean) => {
       const el = document.getElementById('builtin-led-gpio2');
@@ -2246,7 +2248,7 @@ export default function App() {
             const isMqtt = /MQTTClient|PubSubClient|#include\s*<MQTT\.h>/i.test(code);
 
             if (isMqtt) {
-              // Extract user messages from their code
+              // Extract user messages and configurations from their code
               const connectedMsgMatch = code.match(/case\s+WStype_CONNECTED\s*:[^;]*Serial\.println\s*\(\s*["']([^"']+)["']/i);
               const connectedMsg = connectedMsgMatch ? connectedMsgMatch[1] : `[WSS] เชื่อมต่อ ${wsHost} สำเร็จ (Port ${wsPort})!`;
 
@@ -2256,38 +2258,109 @@ export default function App() {
               const mqttConnectedMatch = code.match(/Serial\.println\s*\(\s*["']\\?n?([^"']*(?:MQTT|สำเร็จ)[^"']*)["']/i);
               const mqttConnectedMsg = mqttConnectedMatch ? mqttConnectedMatch[1] : 'เชื่อมต่อ MQTT สำเร็จ!';
 
+              const clientIdMatch = code.match(/(?:mqtt_client_id|clientId|client_id)\s*=\s*["']([^"']+)["']/i);
+              const clientId = clientIdMatch ? clientIdMatch[1] : `esp32-dht11-${Math.random().toString(36).slice(2, 8)}`;
+
+              const userMatch = code.match(/(?:mqtt_user|username|user)\s*=\s*["']([^"']+)["']/i);
+              const mqttUser = userMatch ? userMatch[1] : undefined;
+
+              const passMatch = code.match(/(?:mqtt_pass|password|pass)\s*=\s*["']([^"']+)["']/i);
+              const mqttPass = passMatch ? passMatch[1] : undefined;
+
+              const topicSensorMatch = code.match(/(?:topic_sensor|sensor_topic|pub_topic)\s*=\s*["']([^"']+)["']/i);
+              const topicSensor = topicSensorMatch ? topicSensorMatch[1] : 'project/69123456789/sensor';
+
+              const topicControlMatch = code.match(/(?:topic_control|control_topic|sub_topic)\s*=\s*["']([^"']+)["']/i);
+              const topicControl = topicControlMatch ? topicControlMatch[1] : 'project/69123456789/control';
+
               // Step 1: WebSocket Connected
               appendSerialText(`${connectedMsg}\n`);
               setEsp32Led(true);
               setTimeout(() => setEsp32Led(false), 100);
 
-              // Step 2: MQTT Connecting
-              timerId = setTimeout(() => {
-                if (isCancelled) return;
-                appendSerialText(`${mqttConnectingMsg}.....\n${mqttConnectedMsg}\n`);
-                setEsp32Led(true);
-                setTimeout(() => setEsp32Led(false), 100);
+              // Step 2: Establish real MQTT over WSS connection
+              const cleanPath = wsPath.startsWith('/') ? wsPath : '/' + wsPath;
+              const isSSL = wsPort === 443 || /beginSSL/i.test(code);
+              const brokerProtocol = isSSL ? 'wss' : 'ws';
+              const brokerUrl = `${brokerProtocol}://${wsHost}:${wsPort}${cleanPath}`;
 
-                // Step 3: Periodic Telemetry Send Loop (matching user's interval, default 5000ms)
-                const intervalMatch = code.match(/millis\(\)\s*-\s*\w+\s*>\s*(\d+)/i);
-                const loopInterval = intervalMatch ? Math.max(1500, parseInt(intervalMatch[1], 10)) : 5000;
+              appendSerialText(`${mqttConnectingMsg}.....\n`);
 
-                pollIntervalId = setInterval(() => {
+              try {
+                mqttClientRef = mqtt.connect(brokerUrl, {
+                  clientId,
+                  username: mqttUser,
+                  password: mqttPass,
+                  clean: true,
+                  connectTimeout: 8000,
+                  reconnectPeriod: 5000,
+                });
+
+                mqttClientRef.on('connect', () => {
                   if (isCancelled) return;
-                  const dht = componentsRef.current.find((c) => c.kind === 'dht11');
-                  const temp = Number(dht?.props?.temperature ?? 27.5);
-                  const hum = Number(dht?.props?.humidity ?? 60.0);
+                  appendSerialText(`${mqttConnectedMsg}\n`);
+                  setEsp32Led(true);
+                  setTimeout(() => setEsp32Led(false), 100);
 
+                  if (topicControl) {
+                    mqttClientRef.subscribe(topicControl, (err: any) => {
+                      if (!err && !isCancelled) {
+                        appendSerialText(`[MQTT] Subscribed to [${topicControl}]\n`);
+                      }
+                    });
+                  }
+                });
+
+                mqttClientRef.on('message', (topic: string, message: any) => {
+                  if (isCancelled) return;
+                  const payloadStr = message.toString();
+                  appendSerialText(`[MQTT] ได้รับคำสั่ง [${topic}]: ${payloadStr}\n`);
                   setEsp32Led(true);
                   setTimeout(() => setEsp32Led(false), 80);
 
-                  const payload = `{"temperature":${temp.toFixed(1)},"humidity":${hum.toFixed(1)},"device":"esp32-dht11"}`;
-                  const sendMsgMatch = code.match(/Serial\.println\s*\(\s*["']([^"']*(?:ส่งข้อมูล|payload|publish)[^"']*)["']/i);
-                  const sendPrefix = sendMsgMatch ? sendMsgMatch[1] : 'ส่งข้อมูล: ';
-                  appendSerialText(`${sendPrefix}${payload}\n`);
-                }, loopInterval);
-              }, 600);
+                  if (/ON|1|true/i.test(payloadStr)) {
+                    setEsp32Led(true);
+                  } else if (/OFF|0|false/i.test(payloadStr)) {
+                    setEsp32Led(false);
+                  }
+                });
 
+                mqttClientRef.on('error', (err: any) => {
+                  console.warn('[MQTT Client Error]', err);
+                });
+              } catch (err: any) {
+                console.warn('[MQTT Connect Error]', err);
+                appendSerialText(`${mqttConnectedMsg} (Local Bridge)\n`);
+              }
+
+              // Step 3: Periodic Telemetry Send Loop (matching user's interval, default 5000ms)
+              const intervalMatch = code.match(/millis\(\)\s*-\s*\w+\s*>\s*(\d+)/i);
+              const loopInterval = intervalMatch ? Math.max(1500, parseInt(intervalMatch[1], 10)) : 5000;
+
+              pollIntervalId = setInterval(() => {
+                if (isCancelled) return;
+                const dht = componentsRef.current.find((c) => c.kind === 'dht11');
+                const temp = Number(dht?.props?.temperature ?? 27.5);
+                const hum = Number(dht?.props?.humidity ?? 60.0);
+
+                setEsp32Led(true);
+                setTimeout(() => setEsp32Led(false), 80);
+
+                const payload = `{"temperature":${temp.toFixed(1)},"humidity":${hum.toFixed(1)},"device":"${clientId}"}`;
+
+                // Real network publish over MQTT WSS
+                if (mqttClientRef && mqttClientRef.connected) {
+                  try {
+                    mqttClientRef.publish(topicSensor, payload);
+                  } catch (pubErr) {
+                    console.warn('[MQTT Publish Error]', pubErr);
+                  }
+                }
+
+                const sendMsgMatch = code.match(/Serial\.println\s*\(\s*["']([^"']*(?:ส่งข้อมูล|payload|publish)[^"']*)["']/i);
+                const sendPrefix = sendMsgMatch ? sendMsgMatch[1] : 'ส่งข้อมูล: ';
+                appendSerialText(`${sendPrefix}${payload}\n`);
+              }, loopInterval);
             } else {
               // General WebSocket: connect to the user's host
               const isSSL = /beginSSL/i.test(code);
@@ -2395,6 +2468,11 @@ export default function App() {
         if (connectTimer) clearInterval(connectTimer);
         if (timerId) clearTimeout(timerId);
         if (pollIntervalId) clearInterval(pollIntervalId);
+        if (mqttClientRef) {
+          try {
+            mqttClientRef.end(true);
+          } catch {}
+        }
         setEsp32Led(false);
       };
     } else if (isHcsr04Sketch) {
