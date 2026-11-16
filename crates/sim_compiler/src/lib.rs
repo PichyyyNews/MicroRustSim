@@ -356,16 +356,28 @@ impl CompilerBackend for ArduinoCliBackend {
         let sketch_path = sketch_dir.join("sketch.ino");
         fs::write(&sketch_path, source_code).map_err(|e| e.to_string())?;
 
-        // Write extra headers and source files (.h, .hpp, .c, .cpp) into sketch directory
+        // Write extra headers and source files (.h, .hpp, .c, .cpp, .ino) into sketch directory
         let mut wrote_config = false;
         if let Some(files) = extra_files {
             for (rel_path, content) in files {
                 let lower = rel_path.to_lowercase();
-                if lower.ends_with(".h") || lower.ends_with(".hpp") || lower.ends_with(".c") || lower.ends_with(".cpp") {
+                let is_source = lower.ends_with(".h")
+                    || lower.ends_with(".hpp")
+                    || lower.ends_with(".c")
+                    || lower.ends_with(".cpp")
+                    || lower.ends_with(".ino");
+
+                if is_source {
                     let file_name = std::path::Path::new(rel_path)
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or(rel_path);
+
+                    // Don't overwrite the primary sketch.ino with an old extra_files entry
+                    if file_name == "sketch.ino" {
+                        continue;
+                    }
+
                     if file_name == "config.h" {
                         wrote_config = true;
                     }
@@ -426,7 +438,7 @@ impl CompilerBackend for ArduinoCliBackend {
                     found_hex = fs::read_to_string(&path).ok();
                 } else if (fname.ends_with(".ino.bin") || fname.ends_with(".bin")) && !fname.contains("bootloader") && !fname.contains("partitions") {
                     if found_hex.is_none() {
-                        found_hex = Some(format!("BIN:{}", path.display()));
+                        found_hex = Some(format!("BIN:{}", fname));
                     }
                 }
             }

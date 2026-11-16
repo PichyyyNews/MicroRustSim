@@ -582,6 +582,7 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
   const [lastCompiledCode, setLastCompiledCode] = useState<string | null>(null);
+  const [activeMcuTarget, setActiveMcuTarget] = useState<'avr' | 'esp32'>('avr');
   const [pin13State, setPin13State] = useState(false);
   const [litLeds, setLitLeds] = useState<Set<string>>(new Set());
   const [ledBrightness, setLedBrightness] = useState<Record<string, number>>({});
@@ -1074,8 +1075,12 @@ export default function App() {
 
   const handleEditorContentChange = useCallback((val: string | undefined) => {
     const nextVal = val || '';
-    setFileContents((prev) => ({ ...prev, [activeTabPath]: nextVal }));
-    if (activeTabPath === 'sketch.ino' || activeTabPath.endsWith('/sketch.ino')) {
+    setFileContents((prev) => ({
+      ...prev,
+      [activeTabPath]: nextVal,
+      'sketch.ino': activeTabPath.toLowerCase().endsWith('.ino') ? nextVal : (prev['sketch.ino'] ?? nextVal),
+    }));
+    if (activeTabPath.toLowerCase().endsWith('.ino') || activeTabPath === 'sketch.ino') {
       setSketchCode(nextVal);
     }
     setIsDirty(true);
@@ -2152,7 +2157,7 @@ export default function App() {
   // --- ESP32 Runtime & Virtual WiFi Simulation Engine ---
   useEffect(() => {
     const hasEsp32 = componentsRef.current.some((c) => c.kind === 'esp32');
-    if (!isRunning || !hasEsp32) return;
+    if (!isRunning || !hasEsp32 || activeMcuTarget !== 'esp32') return;
 
     let isCancelled = false;
     let timerId: NodeJS.Timeout | null = null;
@@ -2168,8 +2173,11 @@ export default function App() {
       }
     };
 
-    const code = sketchCode || '';
+    const code = editorRef.current?.getValue?.() || sketchCode || '';
     const isWifiSketch = /#include\s*<WiFi\.h>|WiFi\.begin/i.test(code);
+    const isWebSocketSketch = /#include\s*<WebSocketsClient\.h>|WebSocketsClient/i.test(code);
+    const isHttpClientSketch = /#include\s*<HTTPClient\.h>|HTTPClient|http\.begin/i.test(code);
+    const isWebServerSketch = /#include\s*<(?:WebServer|WiFiServer)\.h>|WebServer|WiFiServer/i.test(code);
     const isHcsr04Sketch = /hcsr04|ultrasonic|pulseIn|echo/i.test(code);
     const isDht11Sketch = /dht11|temperature|humidity/i.test(code);
     const isPirSketch = /pir|motion|security/i.test(code);
@@ -2181,9 +2189,6 @@ export default function App() {
       const ssidMatch = code.match(/(?:ssid\s*=\s*["']([^"']+)["']|WiFi\.begin\s*\(\s*["']([^"']+)["'])/i);
       const targetSsid = ssidMatch ? (ssidMatch[1] || ssidMatch[2]) : 'Ohmic-GUEST';
       const isVirtualGuest = /^(ohmic[-_]?guest|ommic[-_]?gust|wokwi[-_]?guest)$/i.test(targetSsid.trim());
-
-      const urlMatch = code.match(/(?:apiEndpoint\s*=\s*["']([^"']+)["']|http\.begin\s*\(\s*["']([^"']+)["'])/i);
-      const targetUrl = urlMatch ? (urlMatch[1] || urlMatch[2]) : 'https://httpbin.org/get';
 
       // Verify WiFi Mode
       if (realWifiVerification && isVirtualGuest) {
@@ -2224,37 +2229,99 @@ export default function App() {
             `============================================\n\n`
           );
 
-          // Begin periodic HTTP requests if HTTPClient is in sketch
-          let reqCounter = 0;
-          const doHttpFetch = async () => {
-            if (isCancelled) return;
-            reqCounter++;
-            setEsp32Led(true);
-            setTimeout(() => setEsp32Led(false), 120);
+          if (isWebSocketSketch) {
+            const wsMatch =
+              code.match(/webSocket\.begin\s*\(\s*["']([^"']+)["']\s*(?:,\s*(\d+))?\s*(?:,\s*["']([^"']+)["'])?/i) ||
+              code.match(/webSocket\.beginSSL\s*\(\s*["']([^"']+)["']\s*(?:,\s*(\d+))?\s*(?:,\s*["']([^"']+)["'])?/i);
+            const wsHost = wsMatch ? wsMatch[1] : 'echo.websocket.events';
+            const wsPort = wsMatch && wsMatch[2] ? wsMatch[2] : '80';
+            const wsPath = wsMatch && wsMatch[3] ? wsMatch[3] : '/';
 
-            try {
-              appendSerialText(`[HTTP Client] #${reqCounter} GET ${targetUrl}\n`);
-              const res = await fetch(targetUrl, { signal: AbortSignal.timeout(4500) });
-              const bodyText = await res.text();
+            appendSerialText(
+              `[WSc] Connecting to ws://${wsHost}:${wsPort}${wsPath}\n` +
+              `[WSc] Service connected to ${wsHost}\n`
+            );
+
+            let wsCount = 0;
+            pollIntervalId = setInterval(() => {
               if (isCancelled) return;
-              appendSerialText(
-                `[HTTP Client] Status: ${res.status}\n` +
-                `[HTTP Client] Response:\n${bodyText.slice(0, 1024)}\n\n`
-              );
-            } catch (err: any) {
+              wsCount++;
+              setEsp32Led(true);
+              setTimeout(() => setEsp32Led(false), 80);
+              appendSerialText(`[WSc] get text: {"event":"telemetry","msg":"heartbeat #${wsCount}","rssi":-54}\n`);
+            }, 3500);
+
+          } else if (isHttpClientSketch) {
+            const urlMatch = code.match(/(?:apiEndpoint\s*=\s*["']([^"']+)["']|http\.begin\s*\(\s*["']([^"']+)["'])/i);
+            const targetUrl = urlMatch ? (urlMatch[1] || urlMatch[2]) : 'https://httpbin.org/get';
+
+            let reqCounter = 0;
+            const doHttpFetch = async () => {
               if (isCancelled) return;
-              appendSerialText(
-                `[HTTP Client] Status: 200 (Simulated Bridge)\n` +
-                `[HTTP Client] Response:\n{\n  "origin": "192.168.1.142",\n  "url": "${targetUrl}",\n  "status": "online",\n  "rssi": -54,\n  "timestamp": "${new Date().toISOString()}"\n}\n\n`
-              );
+              reqCounter++;
+              setEsp32Led(true);
+              setTimeout(() => setEsp32Led(false), 120);
+
+              try {
+                appendSerialText(`[HTTP Client] #${reqCounter} GET ${targetUrl}\n`);
+                const res = await fetch(targetUrl, { signal: AbortSignal.timeout(4500) });
+                const bodyText = await res.text();
+                if (isCancelled) return;
+                appendSerialText(
+                  `[HTTP Client] Status: ${res.status}\n` +
+                  `[HTTP Client] Response:\n${bodyText.slice(0, 1024)}\n\n`
+                );
+              } catch (err: any) {
+                if (isCancelled) return;
+                appendSerialText(
+                  `[HTTP Client] Status: 200 (Simulated Bridge)\n` +
+                  `[HTTP Client] Response:\n{\n  "origin": "192.168.1.142",\n  "url": "${targetUrl}",\n  "status": "online",\n  "rssi": -54,\n  "timestamp": "${new Date().toISOString()}"\n}\n\n`
+                );
+              }
+            };
+
+            timerId = setTimeout(() => {
+              doHttpFetch();
+              pollIntervalId = setInterval(doHttpFetch, 6000);
+            }, 800);
+
+          } else if (isWebServerSketch) {
+            appendSerialText(
+              `[HTTP Server] HTTP server started on port 80\n` +
+              `[HTTP Server] Listening on http://192.168.1.142/\n`
+            );
+            let reqCounter = 0;
+            pollIntervalId = setInterval(() => {
+              if (isCancelled) return;
+              reqCounter++;
+              setEsp32Led(true);
+              setTimeout(() => setEsp32Led(false), 50);
+              appendSerialText(`[HTTP Server] GET /api/telemetry from 192.168.1.50 -> 200 OK\n`);
+            }, 5000);
+
+          } else {
+            // General WiFi sketch: check for custom Serial.println in setup / loop
+            const printLines = Array.from(code.matchAll(/Serial\.print(?:ln)?\s*\(\s*["']([^"']+)["']\s*\)/g))
+              .map((m: any) => m[1] as string)
+              .filter((s) => !s.includes('Connecting') && !s.includes('Connected'));
+
+            if (printLines.length > 0) {
+              printLines.forEach((msg, idx) => {
+                setTimeout(() => {
+                  if (isCancelled) return;
+                  appendSerialText(msg + '\n');
+                  setEsp32Led(true);
+                  setTimeout(() => setEsp32Led(false), 50);
+                }, (idx + 1) * 250);
+              });
+            } else {
+              pollIntervalId = setInterval(() => {
+                if (isCancelled) return;
+                setEsp32Led(true);
+                setTimeout(() => setEsp32Led(false), 40);
+              }, 2000);
             }
-          };
-
-          // Run first fetch after 800ms, then every 6000ms
-          timerId = setTimeout(() => {
-            doHttpFetch();
-            pollIntervalId = setInterval(doHttpFetch, 6000);
-          }, 800);
+          }
         }
       }, 250);
 
@@ -2355,7 +2422,22 @@ export default function App() {
         setEsp32Led(false);
       };
     } else {
-      // Standard Blink
+      // General or Blink Sketch: parse custom print statements if present
+      const printLines = Array.from(code.matchAll(/Serial\.print(?:ln)?\s*\(\s*["']([^"']+)["']\s*\)/g))
+        .map((m: any) => m[1] as string);
+
+      if (printLines.length > 0) {
+        printLines.forEach((msg, idx) => {
+          setTimeout(() => {
+            if (isCancelled) return;
+            appendSerialText(msg + '\n');
+            setEsp32Led(true);
+            setTimeout(() => setEsp32Led(false), 50);
+          }, (idx + 1) * 300);
+        });
+      }
+
+      // Blink builtin LED (GPIO 2)
       let state = false;
       pollIntervalId = setInterval(() => {
         if (isCancelled) return;
@@ -2369,7 +2451,7 @@ export default function App() {
         setEsp32Led(false);
       };
     }
-  }, [isRunning, sketchCode, realWifiVerification, appendSerialText]);
+  }, [isRunning, activeMcuTarget, sketchCode, realWifiVerification, appendSerialText]);
 
   // --- Auto-scroll Serial Monitor on New Output ---
   useEffect(() => {
@@ -2380,18 +2462,67 @@ export default function App() {
   }, [displayContent, bottomTab, showTerminal, autoScrollSerial, isAutoScrollPaused]);
 
   // --- Compile & Upload ---
-  const handleCompile = async (): Promise<boolean> => {
+  const handleCompile = async (
+    overrideCode?: string,
+    targetBoardId?: string,
+    overrideFqbn?: string
+  ): Promise<boolean> => {
+    // Authoritative source of code: override, Monaco editor live value, fileContents, or sketchCode
+    const liveCode =
+      overrideCode ??
+      editorRef.current?.getValue?.() ??
+      fileContents[activeTabPath] ??
+      sketchCode;
+
+    setSketchCode(liveCode);
+    setFileContents((prev) => ({
+      ...prev,
+      [activeTabPath]: liveCode,
+      'sketch.ino': activeTabPath.toLowerCase().endsWith('.ino') ? liveCode : (prev['sketch.ino'] ?? liveCode),
+    }));
+
     if (autoSaveOnRun && isDirty) {
       handleSaveProject();
     }
 
-    // Auto-detect target MCU architecture from canvas components
-    const hasEsp32 = components.some((c) => c.kind === 'esp32');
-    const targetFqbn = hasEsp32 ? 'esp32:esp32:esp32doit-devkit-v1' : 'arduino:avr:uno';
-    const mcuDesc = hasEsp32 ? 'ESP32 @ 240 MHz' : 'Arduino Uno @ 16 MHz';
+    // Determine target MCU architecture
+    let targetFqbn = overrideFqbn;
+    if (!targetFqbn) {
+      if (targetBoardId) {
+        const board = components.find((c) => c.id === targetBoardId);
+        targetFqbn = board?.kind === 'esp32' ? 'esp32:esp32:esp32doit-devkit-v1' : 'arduino:avr:uno';
+      } else if (selectedCompId) {
+        const comp = components.find((c) => c.id === selectedCompId);
+        if (comp?.kind === 'esp32') {
+          targetFqbn = 'esp32:esp32:esp32doit-devkit-v1';
+        } else if (comp?.kind === 'arduino_uno') {
+          targetFqbn = 'arduino:avr:uno';
+        }
+      }
+
+      if (!targetFqbn) {
+        const hasEsp32OnCanvas = components.some((c) => c.kind === 'esp32');
+        const hasUnoOnCanvas = components.some((c) => c.kind === 'arduino_uno');
+        const isEsp32Code = /#include\s*<(?:WiFi|esp_wifi|WebSocketsClient|AsyncTCP|ESPAsyncWebServer|HTTPClient)\.h>|ESP\.|xTaskCreate/i.test(liveCode);
+
+        if (isEsp32Code && hasEsp32OnCanvas) {
+          targetFqbn = 'esp32:esp32:esp32doit-devkit-v1';
+        } else if (hasUnoOnCanvas) {
+          targetFqbn = 'arduino:avr:uno';
+        } else if (hasEsp32OnCanvas) {
+          targetFqbn = 'esp32:esp32:esp32doit-devkit-v1';
+        } else {
+          targetFqbn = 'arduino:avr:uno';
+        }
+      }
+    }
+
+    const isEsp32 = targetFqbn.includes('esp32');
+    setActiveMcuTarget(isEsp32 ? 'esp32' : 'avr');
+    const mcuDesc = isEsp32 ? 'ESP32 @ 240 MHz' : 'Arduino Uno @ 16 MHz';
 
     setIsCompiling(true);
-    setStatusMessage(`Compiling sketch for ${mcuDesc} with arduino-cli...`);
+    setStatusMessage(`Compiling sketch for ${mcuDesc}...`);
     setBottomTab('build');
     setShowTerminal(true);
 
@@ -2399,8 +2530,12 @@ export default function App() {
       const res = await tauriInvoke<{ success: boolean; output: string; hex: string | null }>(
         'compile_and_upload',
         {
-          sketch: sketchCode,
-          files: fileContents,
+          sketch: liveCode,
+          files: {
+            ...fileContents,
+            [activeTabPath]: liveCode,
+            'sketch.ino': activeTabPath.toLowerCase().endsWith('.ino') ? liveCode : (fileContents['sketch.ino'] ?? liveCode),
+          },
           fqbn: targetFqbn,
         }
       );
@@ -2408,7 +2543,8 @@ export default function App() {
       if (res) {
         setBuildLogs(stripAnsi(res.output));
         if (res.success) {
-          setLastCompiledCode(sketchCode);
+          setLastCompiledCode(liveCode);
+          setIsDirty(false);
           setStatusMessage(`Build Succeeded. Running ${mcuDesc}.`);
           appendSerialText(`\n--- Upload Succeeded & Running [${mcuDesc}] ---\n`);
           setBottomTab('serial');
@@ -2423,7 +2559,8 @@ export default function App() {
         }
       } else {
         setBuildLogs(`[Preview] Compiled ${mcuDesc} sketch successfully.\n`);
-        setLastCompiledCode(sketchCode);
+        setLastCompiledCode(liveCode);
+        setIsDirty(false);
         setStatusMessage('Running in preview mode.');
         setBottomTab('serial');
         setIsRunning(true);
@@ -2447,14 +2584,15 @@ export default function App() {
       await tauriInvoke('pause_simulation');
       setStatusMessage('Simulation Paused');
     } else {
-      if (sketchCode !== lastCompiledCode) {
-        await handleCompile();
+      const liveCode = editorRef.current?.getValue?.() ?? (fileContents[activeTabPath] || sketchCode);
+      if (liveCode !== lastCompiledCode) {
+        await handleCompile(liveCode);
       } else {
         setIsRunning(true);
         await tauriInvoke('start_simulation');
         setBottomTab('serial');
         setShowTerminal(true);
-        setStatusMessage('Simulation Running @ 16 MHz');
+        setStatusMessage(`Simulation Running [${activeMcuTarget === 'esp32' ? 'ESP32 @ 240 MHz' : 'Arduino Uno @ 16 MHz'}]`);
       }
     }
   };
@@ -4179,11 +4317,10 @@ export default function App() {
                   setShowLibraryManager(true);
                   setActiveMenu(null);
                 }}
-                className="text-xs h-5 px-2 rounded transition-colors text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] flex items-center gap-1.5"
+                className="text-xs h-5 px-2 rounded transition-colors text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23]"
                 title="Arduino Library Manager (Ctrl+Shift+I)"
               >
-                <Package className="w-3 h-3 text-zinc-400" />
-                <span>Libraries</span>
+                Libraries
               </button>
             </div>
 
@@ -6482,16 +6619,16 @@ export default function App() {
           onClose={() => setShowUploadModal(false)}
           components={components}
           files={projectFiles}
-          currentSketchCode={sketchCode}
+          currentSketchCode={editorRef.current?.getValue?.() || sketchCode}
           isCompiling={isCompiling}
           onUpload={async (targetBoardId, comPort, fileName) => {
-            let codeToFlash = sketchCode;
-            if (fileName !== 'sketch.ino' && fileContents[fileName]) {
+            let codeToFlash = editorRef.current?.getValue?.() || sketchCode;
+            if (fileName && fileName !== 'sketch.ino' && fileContents[fileName]) {
               codeToFlash = fileContents[fileName];
             }
             setStatusMessage(`Flashing ${fileName} to ${targetBoardId} (${comPort})...`);
             appendSerialText(`\n[Upload] Flashing ${fileName} to ${comPort} (${targetBoardId})...\n`);
-            return await handleCompile();
+            return await handleCompile(codeToFlash, targetBoardId);
           }}
           onUpdateBoardPort={(boardId, newPort, linkedFile) => {
             handleUpdateComponent(boardId, {
