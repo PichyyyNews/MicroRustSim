@@ -2546,14 +2546,18 @@ export default function App() {
           setLastCompiledCode(liveCode);
           setIsDirty(false);
           setStatusMessage(`Build Succeeded. Running ${mcuDesc}.`);
-          appendSerialText(`\n--- Upload Succeeded & Running [${mcuDesc}] ---\n`);
+          clearSerialLogs();
+          appendSerialText(`--- Upload Succeeded & Running [${mcuDesc}] ---\n`);
           setBottomTab('serial');
+          setShowTerminal(true);
           setIsRunning(true);
           await tauriInvoke('start_simulation');
           return true;
         } else {
           setStatusMessage('Compilation Failed. Check build output.');
+          appendSerialText(`\n[Build Error] Compilation failed! Sketch was NOT uploaded.\nCheck the 'Build' tab to see compiler errors.\n`);
           setBottomTab('build');
+          setShowTerminal(true);
           setIsRunning(false);
           return false;
         }

@@ -32,6 +32,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   );
   const [comPort, setComPort] = useState<string>('COM1');
   const [selectedFile, setSelectedFile] = useState<string>('sketch.ino');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // 0-Latency Dragging via Direct DOM Transform (Matches SettingsModal standard)
   const modalBoxRef = useRef<HTMLDivElement>(null);
@@ -127,9 +128,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   const handleFlash = async () => {
     if (!selectedBoardId) return;
-    const success = await onUpload(selectedBoardId, comPort, selectedFile);
-    if (success) {
-      onClose();
+    setUploadError(null);
+    try {
+      const success = await onUpload(selectedBoardId, comPort, selectedFile);
+      if (success) {
+        onClose();
+      } else {
+        setUploadError('Build Failed: Sketch has errors. Check the Build log tab for details.');
+      }
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed');
     }
   };
 
@@ -261,7 +269,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-400">Architecture:</span>
                   <Badge variant="outline" className="font-mono text-[10px] h-5 border-zinc-700 text-zinc-200 whitespace-nowrap [word-break:keep-all]">
-                    AVR ATmega328P @ 16&nbsp;MHz
+                    {boards.find((b) => b.id === selectedBoardId)?.kind === 'esp32'
+                      ? 'DOIT ESP32 DevKit V1 @ 240\u00A0MHz'
+                      : 'AVR ATmega328P @ 16\u00A0MHz'}
                   </Badge>
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-zinc-800/50">
@@ -271,6 +281,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Upload Error Banner */}
+              {uploadError && (
+                <div className="p-2.5 bg-red-950/40 border border-red-800/60 rounded-xl text-red-300 text-xs">
+                  {uploadError}
+                </div>
+              )}
             </div>
           )}
         </div>
