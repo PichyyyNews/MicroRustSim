@@ -44,6 +44,7 @@ import {
   Send,
   ArrowRight,
   ArrowDownToLine,
+  Package,
 } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -99,6 +100,7 @@ import { PropertyInspector } from './components/PropertyInspector';
 import { CreateProjectModal, ProjectTemplate } from './components/CreateProjectModal';
 import { OpenProjectModal } from './components/OpenProjectModal';
 import { SettingsModal } from './components/SettingsModal';
+import { LibraryManagerModal } from './components/LibraryManagerModal';
 import { ChannelConfigModal, WaveformChannelConfig, CHANNEL_PALETTE, buildDiagramChannels } from './components/ChannelConfigModal';
 import { CommandPaletteSearch } from './components/CommandPaletteSearch';
 import { CanvasShortcutsHelp } from './components/CanvasShortcutsHelp';
@@ -289,6 +291,7 @@ export default function App() {
   const [activeMenu, setActiveMenu] = useState<'file' | 'edit' | 'view' | 'settings' | 'about' | null>(null);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showLibraryManager, setShowLibraryManager] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(13);
   const [editorMinimap, setEditorMinimap] = useState(false);
   const [editorLineNumbers, setEditorLineNumbers] = useState(true);
@@ -3149,6 +3152,12 @@ export default function App() {
         }
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        setShowLibraryManager(true);
+        return;
+      }
+
       if (e.key === 'v' || e.key === 'V') {
         setActiveTool('select');
       } else if (e.key === 'm' || e.key === 'M') {
@@ -4161,6 +4170,23 @@ export default function App() {
               )}
             </div>
 
+            {/* Menubar: Libraries */}
+            <div className="relative">
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                onClick={() => {
+                  setShowLibraryManager(true);
+                  setActiveMenu(null);
+                }}
+                className="text-xs h-5 px-2 rounded transition-colors text-zinc-400 hover:text-zinc-100 hover:bg-[#1f1f23] flex items-center gap-1.5"
+                title="Arduino Library Manager (Ctrl+Shift+I)"
+              >
+                <Package className="w-3 h-3 text-zinc-400" />
+                <span>Libraries</span>
+              </button>
+            </div>
+
             {/* Menubar: Settings */}
             <div className="relative">
               <button
@@ -4968,6 +4994,15 @@ export default function App() {
                             })}
                           </div>
                           <div className="flex items-center gap-1 px-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => setShowLibraryManager(true)}
+                              title="Arduino Library Manager (Ctrl+Shift+I)"
+                              className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                            >
+                              <Package className="w-3.5 h-3.5" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon-xs"
@@ -6252,6 +6287,13 @@ export default function App() {
           setPowerConfig={handleUpdatePowerConfig}
           realWifiVerification={realWifiVerification}
           setRealWifiVerification={handleSetRealWifiVerification}
+          onOpenLibraryManager={() => setShowLibraryManager(true)}
+        />
+
+        {/* Modal Dialog: Arduino Library Manager */}
+        <LibraryManagerModal
+          isOpen={showLibraryManager}
+          onClose={() => setShowLibraryManager(false)}
         />
 
         {/* Modal Dialog: Configure Real-time Waveform Channels (Multi-LEDs / Components) */}

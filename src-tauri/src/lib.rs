@@ -437,6 +437,150 @@ fn create_project_dir_entry(dir_path: String, relative_path: String, is_dir: boo
     Ok(())
 }
 
+fn get_arduino_cli_path() -> String {
+    let appdata_cli = std::env::var_os("LOCALAPPDATA").map(|p| {
+        std::path::PathBuf::from(p)
+            .join("MicroRustSim")
+            .join("tools")
+            .join("arduino-cli.exe")
+    });
+
+    if let Some(ref p) = appdata_cli {
+        if p.exists() {
+            return p.to_string_lossy().to_string();
+        }
+    }
+    if std::path::Path::new("./tools/arduino-cli.exe").exists() {
+        return "./tools/arduino-cli.exe".to_string();
+    }
+    if std::path::Path::new(r"C:\Program Files\Arduino CLI\arduino-cli.exe").exists() {
+        return r"C:\Program Files\Arduino CLI\arduino-cli.exe".to_string();
+    }
+    "arduino-cli".to_string()
+}
+
+#[tauri::command]
+fn search_arduino_libraries(query: String) -> Result<String, String> {
+    let cli = get_arduino_cli_path();
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.args(["lib", "search", &query, "--format", "json"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() && stdout.trim().is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format!("Search error: {}", stderr));
+    }
+    Ok(stdout)
+}
+
+#[tauri::command]
+fn list_installed_arduino_libraries() -> Result<String, String> {
+    let cli = get_arduino_cli_path();
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.args(["lib", "list", "--format", "json"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() && stdout.trim().is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format!("List error: {}", stderr));
+    }
+    Ok(stdout)
+}
+
+#[tauri::command]
+fn install_arduino_library(name: String) -> Result<String, String> {
+    let cli = get_arduino_cli_path();
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.args(["lib", "install", &name]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        return Err(format!("Install error: {}\n{}", stdout, stderr));
+    }
+    Ok(format!("{}\n{}", stdout, stderr).trim().to_string())
+}
+
+#[tauri::command]
+fn uninstall_arduino_library(name: String) -> Result<String, String> {
+    let cli = get_arduino_cli_path();
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.args(["lib", "uninstall", &name]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        return Err(format!("Uninstall error: {}\n{}", stdout, stderr));
+    }
+    Ok(format!("{}\n{}", stdout, stderr).trim().to_string())
+}
+
+#[tauri::command]
+async fn install_arduino_library_zip() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Select Arduino Library (.ZIP)")
+        .add_filter("Zip Archive", &["zip"])
+        .pick_file()
+        .await;
+
+    if let Some(f) = file {
+        let zip_path = f.path().to_string_lossy().to_string();
+        let cli = get_arduino_cli_path();
+        let mut cmd = std::process::Command::new(&cli);
+        cmd.args(["lib", "install", "--zip-path", &zip_path]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(format!("ZIP install failed: {}\n{}", stdout, stderr));
+        }
+        Ok(Some(format!("{}\n{}", stdout, stderr).trim().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn open_arduino_libraries_folder() -> Result<(), String> {
+    let docs = std::env::var_os("USERPROFILE")
+        .map(|p| std::path::PathBuf::from(p).join("Documents").join("Arduino").join("libraries"));
+    if let Some(p) = docs {
+        let _ = std::fs::create_dir_all(&p);
+        #[cfg(windows)]
+        {
+            let mut cmd = std::process::Command::new("explorer");
+            cmd.arg(&p);
+            let _ = cmd.spawn();
+        }
+    }
+    Ok(())
+}
+
 fn handle_sim_command(
     cmd: SimCommand,
     engine: &mut SimulationEngine,
@@ -1131,6 +1275,12 @@ pub fn run() {
             save_user_setting,
             select_folder_dialog,
             create_project_dir_entry,
+            search_arduino_libraries,
+            list_installed_arduino_libraries,
+            install_arduino_library,
+            uninstall_arduino_library,
+            install_arduino_library_zip,
+            open_arduino_libraries_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

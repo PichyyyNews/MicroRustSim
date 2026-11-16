@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wifi,
+  Package,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -56,6 +57,7 @@ export interface SettingsModalProps {
   // ESP32 Virtual Network & WiFi Simulation
   realWifiVerification?: boolean;
   setRealWifiVerification?: (enabled: boolean) => void;
+  onOpenLibraryManager?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -83,6 +85,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setPowerConfig,
   realWifiVerification = false,
   setRealWifiVerification,
+  onOpenLibraryManager,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [searchQuery, setSearchQuery] = useState('');
@@ -809,6 +812,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="font-mono text-xs text-zinc-300 bg-[#121215] px-2.5 py-1 rounded-full border border-zinc-800">
                     arduino:avr:uno
                   </span>
+                </div>
+
+                <div className="p-3 bg-[#1c1c20] border border-zinc-800/60 rounded-xl flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Arduino Library Manager</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-500">
+                      Search, install, and manage official C++ libraries from registry or .ZIP files.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenLibraryManager?.();
+                    }}
+                    className="h-7 px-3.5 rounded-full text-xs font-medium border border-zinc-700/80 bg-[#121215] hover:bg-zinc-800 text-zinc-200 transition-colors cursor-pointer shrink-0"
+                  >
+                    Open Manager...
+                  </button>
                 </div>
               </div>
             )}
