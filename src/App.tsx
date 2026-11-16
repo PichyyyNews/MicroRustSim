@@ -6072,7 +6072,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">Ohmic</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.3.1 • Cycle-Accurate Simulator</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.3.3 • Dual Core & AVR Simulator</p>
                   </div>
                 </div>
                 <button
