@@ -208,7 +208,39 @@ pub fn normalize_pin_alias(comp_id: &str, pin_name: &str) -> (String, bool) {
         return (format!("{}:{}", comp_id, pin_name.to_uppercase()), false);
     }
 
-    // 2. Breadboard
+    // 1b. MCU (DOIT ESP32 DevKit V1 30-Pin)
+    if c_lower.starts_with("esp32") || c_lower.contains("esp32") {
+        if p_lower.starts_with("gnd") {
+            return (format!("{}:GND", comp_id), true);
+        }
+        if p_lower == "3.3v" || p_lower == "3v3" {
+            return (format!("{}:3.3V", comp_id), false);
+        }
+        if p_lower == "5v" || p_lower == "vin" {
+            return (format!("{}:5V", comp_id), false);
+        }
+        let clean = p_lower.replace(['.', '_', '-'], "");
+        let canon = if clean.starts_with("gpio") {
+            clean[4..].to_string()
+        } else if clean.starts_with('d') && clean.len() > 1 && clean[1..].chars().all(|c| c.is_ascii_digit()) {
+            clean[1..].to_string()
+        } else {
+            p_lower.to_uppercase()
+        };
+        return (format!("{}:{}", comp_id, canon), false);
+    }
+
+    // 2. Universal Sensor Ground & Power Rail Normalization
+    if p_lower == "gnd" || p_lower.starts_with("gnd.") || p_lower == "ground" || p_lower == "neg" || p_lower == "-" {
+        return (format!("{}:GND", comp_id), true);
+    }
+    if (c_lower.starts_with("sonar") || c_lower.starts_with("hcsr") || c_lower.starts_with("dht") || c_lower.starts_with("pir"))
+        && (p_lower == "vcc" || p_lower == "5v" || p_lower == "3v3" || p_lower == "3.3v")
+    {
+        return (format!("{}:VCC", comp_id), false);
+    }
+
+    // 3. Breadboard
     if c_lower.starts_with("bb") || c_lower.contains("breadboard") {
         if let Some(canon) = canonicalize_breadboard_pin(&p_lower) {
             return (format!("{}:{}", comp_id, canon), false);
@@ -502,11 +534,25 @@ impl MnaCircuitSolver {
         // 1. Collect all canonical non-ground nodes in the circuit
         let mut node_set: HashSet<String> = HashSet::new();
 
-        // Always include Uno power rails
-        for &pin in &["5V", "3.3V"] {
-            let (canon, is_gnd) = normalize_pin_alias("uno1", pin);
-            if !is_gnd {
-                node_set.insert(canon);
+        // Discover all active MCU IDs in the circuit (Uno and ESP32)
+        let mut mcu_ids: HashSet<String> = HashSet::new();
+        mcu_ids.insert("uno1".to_string());
+        for wire in wires {
+            for comp in [&wire.from.component_id, &wire.to.component_id] {
+                let cl = comp.to_lowercase();
+                if cl.starts_with("uno") || cl.starts_with("esp32") || cl.contains("arduino") || cl.contains("esp32") {
+                    mcu_ids.insert(comp.clone());
+                }
+            }
+        }
+
+        // Always include power rails for all active MCUs (Uno + ESP32)
+        for mcu_id in &mcu_ids {
+            for &pin in &["5V", "3.3V"] {
+                let (canon, is_gnd) = normalize_pin_alias(mcu_id, pin);
+                if !is_gnd {
+                    node_set.insert(canon);
+                }
             }
         }
 
@@ -649,6 +695,18 @@ impl MnaCircuitSolver {
                 pin_to_node.insert((pir_id.clone(), p.to_string()), get_node_idx(pir_id, p));
             }
         }
+        let esp32_pins = [
+            "EN", "VP", "VN", "D34", "D35", "D32", "D33", "D25", "D26", "D27", "D14", "D12", "D13", "GND", "VIN", "5V",
+            "D23", "D22", "TX0", "RX0", "D21", "D19", "D18", "D5", "TX2", "RX2", "D4", "D2", "D15", "3V3", "3.3V",
+            "2", "4", "5", "12", "13", "14", "15", "18", "19", "21", "22", "23", "25", "26", "27", "32", "33", "34", "35",
+        ];
+        for mcu_id in &mcu_ids {
+            if mcu_id.to_lowercase().starts_with("esp32") || mcu_id.to_lowercase().contains("esp32") {
+                for &pin in &esp32_pins {
+                    pin_to_node.insert((mcu_id.clone(), pin.to_string()), get_node_idx(mcu_id, pin));
+                }
+            }
+        }
 
         // Check if external wires connect to pot terminals
         let mut pot_vcc_wired: HashSet<String> = HashSet::new();
@@ -720,6 +778,20 @@ impl MnaCircuitSolver {
         mna.stamp_thevenin_source(pwr5v_idx, None, 0, v_src_5v, r_int_5v_base);
         // Branch 1: 3.3V Rail
         mna.stamp_thevenin_source(pwr33_idx, None, 1, v_src_3v3, r_int_3v3_base);
+
+        // Stamp ESP32 Regulated Power Rails (5V VIN + 3.3V LDO Output)
+        for mcu_id in &mcu_ids {
+            if mcu_id.to_lowercase().starts_with("esp32") || mcu_id.to_lowercase().contains("esp32") {
+                let esp_5v_idx = get_node_idx(mcu_id, "5V");
+                let esp_33_idx = get_node_idx(mcu_id, "3.3V");
+                if let Some(idx) = esp_5v_idx {
+                    mna.stamp_norton_source(Some(idx), None, 1.0 / 0.05, 5.0 / 0.05);
+                }
+                if let Some(idx) = esp_33_idx {
+                    mna.stamp_norton_source(Some(idx), None, 1.0 / 0.05, 3.3 / 0.05);
+                }
+            }
+        }
 
         // 3. Stamp MCU GPIO pins
         let mut pwm_pins: Vec<(String, u8, u32, Option<usize>)> = Vec::new();
@@ -1459,6 +1531,30 @@ impl MnaCircuitSolver {
             pin_voltages.insert(PinId::new("uno1", pin_name), volt);
             if pin_name == "13" {
                 pin_voltages.insert(PinId::new("uno1", "LED_BUILTIN"), volt);
+            }
+        }
+
+        // ESP32 Board Pins
+        for mcu_id in &mcu_ids {
+            if mcu_id.to_lowercase().starts_with("esp32") || mcu_id.to_lowercase().contains("esp32") {
+                for gnd_alias in &["GND", "GND.1", "GND.2", "GND_1", "GND_2"] {
+                    pin_voltages.insert(PinId::new(mcu_id, *gnd_alias), 0.0);
+                }
+                for &pin_name in &esp32_pins {
+                    if pin_name.starts_with("GND") {
+                        continue;
+                    }
+                    let volt = if let Some(idx) = get_node_idx(mcu_id, pin_name) {
+                        node_volt_clean(Some(idx))
+                    } else if pin_name == "5V" || pin_name == "VIN" {
+                        5.0
+                    } else if pin_name == "3.3V" || pin_name == "3V3" {
+                        3.3
+                    } else {
+                        0.0
+                    };
+                    pin_voltages.insert(PinId::new(mcu_id, pin_name), volt);
+                }
             }
         }
 

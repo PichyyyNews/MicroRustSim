@@ -1604,4 +1604,110 @@ mod tests {
         pir.timer_s = 0.0;
         assert!(!pir.is_output_high(), "Expired timer pulls output low");
     }
+
+    #[test]
+    fn test_all_sensors_with_esp32_wiring() {
+        let mut engine = SimulationEngine::new_with_uno();
+
+        // 1. Add 4 sensors + voltage divider resistor for LDR
+        engine.hcsr04s.insert("sonar1".to_string(), components::Hcsr04Component::new("sonar1"));
+        engine.dht11s.insert("dht1".to_string(), components::Dht11Component::new("dht1"));
+        engine.ldrs.insert("ldr1".to_string(), components::PhotoresistorComponent::new("ldr1"));
+        let mut pir = components::PirComponent::new("pir1");
+        pir.motion_detected = true;
+        engine.pirs.insert("pir1".to_string(), pir);
+        engine.resistors.insert("r_div".to_string(), components::ResistorComponent::new("r_div", 10000.0));
+
+        // 2. Wire sensors to ESP32 (esp32_1)
+        // HC-SR04: VCC -> 5V, GND -> GND, TRIG -> D5, ECHO -> D18
+        engine.add_wire(Wire { id: "w1".into(), from: PinId::new("esp32_1", "5V"), to: PinId::new("sonar1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w2".into(), from: PinId::new("esp32_1", "GND"), to: PinId::new("sonar1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w3".into(), from: PinId::new("esp32_1", "D5"), to: PinId::new("sonar1", "TRIG"), color: "#3b82f6".into() });
+        engine.add_wire(Wire { id: "w4".into(), from: PinId::new("sonar1", "ECHO"), to: PinId::new("esp32_1", "D18"), color: "#10b981".into() });
+
+        // DHT11: VCC -> 3V3, GND -> GND, DATA -> D4
+        engine.add_wire(Wire { id: "w5".into(), from: PinId::new("esp32_1", "3V3"), to: PinId::new("dht1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w6".into(), from: PinId::new("esp32_1", "GND"), to: PinId::new("dht1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w7".into(), from: PinId::new("dht1", "DATA"), to: PinId::new("esp32_1", "D4"), color: "#eab308".into() });
+
+        // PIR: VCC -> 5V, GND -> GND, OUT -> D19
+        engine.add_wire(Wire { id: "w8".into(), from: PinId::new("esp32_1", "5V"), to: PinId::new("pir1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w9".into(), from: PinId::new("esp32_1", "GND"), to: PinId::new("pir1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w10".into(), from: PinId::new("pir1", "OUT"), to: PinId::new("esp32_1", "D19"), color: "#a855f7".into() });
+
+        // LDR Divider: 3V3 -> LDR1:1, LDR1:2 -> D34, LDR1:2 -> R_DIV:1, R_DIV:2 -> GND
+        engine.add_wire(Wire { id: "w11".into(), from: PinId::new("esp32_1", "3V3"), to: PinId::new("ldr1", "1"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w12".into(), from: PinId::new("ldr1", "2"), to: PinId::new("esp32_1", "D34"), color: "#f97316".into() });
+        engine.add_wire(Wire { id: "w13".into(), from: PinId::new("ldr1", "2"), to: PinId::new("r_div", "1"), color: "#f97316".into() });
+        engine.add_wire(Wire { id: "w14".into(), from: PinId::new("r_div", "2"), to: PinId::new("esp32_1", "GND"), color: "#000000".into() });
+
+        engine.resolve_electrical_nets();
+
+        // Check power rails delivered to sensors
+        let esp_5v = engine.get_pin_voltage("esp32_1", "5V");
+        let esp_33 = engine.get_pin_voltage("esp32_1", "3.3V");
+        assert!((esp_5v - 5.0).abs() < 0.1, "ESP32 5V rail should be ~5.0V, got {}", esp_5v);
+        assert!((esp_33 - 3.3).abs() < 0.1, "ESP32 3.3V rail should be ~3.3V, got {}", esp_33);
+
+        let sonar_vcc = engine.get_pin_voltage("sonar1", "VCC");
+        assert!((sonar_vcc - 5.0).abs() < 0.1, "HC-SR04 VCC should be ~5.0V, got {}", sonar_vcc);
+
+        let dht_vcc = engine.get_pin_voltage("dht1", "VCC");
+        assert!((dht_vcc - 3.3).abs() < 0.1, "DHT11 VCC should be ~3.3V, got {}", dht_vcc);
+
+        let dht_data = engine.get_pin_voltage("dht1", "DATA");
+        assert!(dht_data > 2.5, "DHT11 DATA pullup should hold line HIGH (~3.3V), got {}", dht_data);
+
+        let pir_out = engine.get_pin_voltage("esp32_1", "19");
+        assert!((pir_out - 3.3).abs() < 0.2, "PIR active output to ESP32 GPIO19 should be 3.3V, got {}", pir_out);
+
+        let ldr_div = engine.get_pin_voltage("esp32_1", "34");
+        assert!(ldr_div > 0.5 && ldr_div < 3.2, "LDR voltage divider on GPIO34 should be within range, got {}", ldr_div);
+    }
+
+    #[test]
+    fn test_all_sensors_with_arduino_uno_wiring() {
+        let mut engine = SimulationEngine::new_with_uno();
+
+        engine.hcsr04s.insert("sonar1".to_string(), components::Hcsr04Component::new("sonar1"));
+        engine.dht11s.insert("dht1".to_string(), components::Dht11Component::new("dht1"));
+        engine.ldrs.insert("ldr1".to_string(), components::PhotoresistorComponent::new("ldr1"));
+        let mut pir = components::PirComponent::new("pir1");
+        pir.motion_detected = true;
+        engine.pirs.insert("pir1".to_string(), pir);
+        engine.resistors.insert("r_div".to_string(), components::ResistorComponent::new("r_div", 10000.0));
+
+        // Wire sensors to Arduino Uno (uno1)
+        engine.add_wire(Wire { id: "w1".into(), from: PinId::new("uno1", "5V"), to: PinId::new("sonar1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w2".into(), from: PinId::new("uno1", "GND"), to: PinId::new("sonar1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w3".into(), from: PinId::new("uno1", "9"), to: PinId::new("sonar1", "TRIG"), color: "#3b82f6".into() });
+        engine.add_wire(Wire { id: "w4".into(), from: PinId::new("sonar1", "ECHO"), to: PinId::new("uno1", "8"), color: "#10b981".into() });
+
+        engine.add_wire(Wire { id: "w5".into(), from: PinId::new("uno1", "5V"), to: PinId::new("dht1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w6".into(), from: PinId::new("uno1", "GND"), to: PinId::new("dht1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w7".into(), from: PinId::new("dht1", "DATA"), to: PinId::new("uno1", "2"), color: "#eab308".into() });
+
+        engine.add_wire(Wire { id: "w8".into(), from: PinId::new("uno1", "5V"), to: PinId::new("pir1", "VCC"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w9".into(), from: PinId::new("uno1", "GND"), to: PinId::new("pir1", "GND"), color: "#000000".into() });
+        engine.add_wire(Wire { id: "w10".into(), from: PinId::new("pir1", "OUT"), to: PinId::new("uno1", "7"), color: "#a855f7".into() });
+
+        engine.add_wire(Wire { id: "w11".into(), from: PinId::new("uno1", "5V"), to: PinId::new("ldr1", "1"), color: "#ef4444".into() });
+        engine.add_wire(Wire { id: "w12".into(), from: PinId::new("ldr1", "2"), to: PinId::new("uno1", "A0"), color: "#f97316".into() });
+        engine.add_wire(Wire { id: "w13".into(), from: PinId::new("ldr1", "2"), to: PinId::new("r_div", "1"), color: "#f97316".into() });
+        engine.add_wire(Wire { id: "w14".into(), from: PinId::new("r_div", "2"), to: PinId::new("uno1", "GND"), color: "#000000".into() });
+
+        engine.resolve_electrical_nets();
+
+        let uno_5v = engine.get_pin_voltage("uno1", "5V");
+        assert!((uno_5v - 5.0).abs() < 0.2, "Uno 5V rail should be ~5.0V, got {}", uno_5v);
+
+        let sonar_vcc = engine.get_pin_voltage("sonar1", "VCC");
+        assert!((sonar_vcc - 5.0).abs() < 0.2, "HC-SR04 VCC should be ~5.0V, got {}", sonar_vcc);
+
+        let pir_out = engine.get_pin_voltage("uno1", "7");
+        assert!((pir_out - 3.3).abs() < 0.2, "PIR output to Uno Pin 7 should be 3.3V, got {}", pir_out);
+
+        let a0_div = engine.get_pin_voltage("uno1", "A0");
+        assert!(a0_div > 0.5 && a0_div < 4.8, "LDR voltage divider on A0 should be within range, got {}", a0_div);
+    }
 }

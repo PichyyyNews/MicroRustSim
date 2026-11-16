@@ -865,7 +865,7 @@ export default function App() {
       author: 'Ohmic User',
       editor: 'ohmic',
       parts: comps.map((c) => ({
-        type: c.kind === 'arduino_uno' ? 'wokwi-arduino-uno' : `wokwi-${c.kind}`,
+        type: c.kind === 'arduino_uno' ? 'wokwi-arduino-uno' : c.kind === 'esp32' ? 'wokwi-esp32' : `wokwi-${c.kind}`,
         id: c.id,
         top: c.y,
         left: c.x,
@@ -893,8 +893,13 @@ export default function App() {
         if (parsed.parts && Array.isArray(parsed.parts)) {
           const newComps: CircuitComponent[] = parsed.parts.map((p: any) => {
             let kind: ComponentKind = 'resistor';
-            if (p.type?.includes('uno')) kind = 'arduino_uno';
+            if (p.type?.includes('esp32')) kind = 'esp32';
+            else if (p.type?.includes('uno')) kind = 'arduino_uno';
             else if (p.type?.includes('breadboard')) kind = 'breadboard';
+            else if (p.type?.includes('hcsr04') || p.type?.includes('sonar') || p.type?.includes('ultrasonic')) kind = 'hcsr04';
+            else if (p.type?.includes('dht11') || p.type?.includes('dht')) kind = 'dht11';
+            else if (p.type?.includes('photoresistor') || p.type?.includes('ldr')) kind = 'photoresistor';
+            else if (p.type?.includes('pir')) kind = 'pir_sensor';
             else if (p.type?.includes('led')) kind = 'led';
             else if (p.type?.includes('resistor')) kind = 'resistor';
             else if (p.type?.includes('pushbutton') || p.type?.includes('btn')) kind = 'pushbutton';
