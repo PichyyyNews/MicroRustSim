@@ -3201,10 +3201,13 @@ export default function App() {
             className="flex items-center gap-0.5"
             data-tauri-drag-region="false"
           >
-            <div className="flex items-center pl-1.5 pr-3 select-none">
-              <span className="font-disclaimer text-[24px] font-bold leading-none tracking-[0.18em] text-zinc-100 select-none">
-                OHMIC
-              </span>
+            <div className="flex items-center pl-1.5 pr-2 select-none">
+              <img
+                src="/Ohmic.svg"
+                alt="Ommic"
+                className="w-5 h-5 object-contain select-none shrink-0"
+                draggable={false}
+              />
             </div>
 
             {/* Menubar: File */}
@@ -3723,7 +3726,7 @@ export default function App() {
             className="flex-1 h-full flex items-center justify-center text-[11px] font-mono text-zinc-400 cursor-default select-none"
           >
             <span className="truncate max-w-[400px]">
-              {projectName}{isDirty ? ' *' : ''} — Ohmic
+              {projectName}{isDirty ? ' *' : ''} — Ommic
             </span>
           </div>
 
@@ -5732,8 +5735,8 @@ export default function App() {
           <div className="flex flex-col items-center">
             <img
               src="/Ohmic.svg"
-              alt="Ohmic"
-              className="w-12 h-12 object-contain mb-4 animate-pulse"
+              alt="Ommic"
+              className="w-14 h-14 object-contain mb-4 animate-pulse"
             />
             <div className="w-24 h-0.5 bg-[#222226] rounded-full overflow-hidden">
               <div className="w-full h-full bg-zinc-300 rounded-full animate-pulse" />
