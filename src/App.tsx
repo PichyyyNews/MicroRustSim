@@ -177,9 +177,9 @@ const PauseIcon = ({ className }: { className?: string }) => (
 function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number } {
   switch (kind) {
     case 'arduino_uno':
-      return { w: 320, h: 220 };
+      return { w: 285.2, h: 209 };
     case 'esp32':
-      return { w: 160, h: 296 };
+      return { w: 126, h: 233 };
     case 'hcsr04':
       return { w: 168, h: 80 };
     case 'dht11':
@@ -189,15 +189,15 @@ function getComponentBoundingSize(kind: ComponentKind): { w: number; h: number }
     case 'pir_sensor':
       return { w: 90, h: 100 };
     case 'breadboard':
-      return { w: 320, h: 140 };
+      return { w: 440, h: 226 };
     case 'led':
-      return { w: 60, h: 60 };
+      return { w: 48, h: 64 };
     case 'resistor':
-      return { w: 60, h: 30 };
+      return { w: 80, h: 20 };
     case 'pushbutton':
       return { w: 52, h: 52 };
     case 'potentiometer':
-      return { w: 60, h: 60 };
+      return { w: 56, h: 64 };
     case 'capacitor':
       return { w: 60, h: 40 };
     case 'text_label':
@@ -721,6 +721,7 @@ export default function App() {
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [wireDraftStart, setWireDraftStart] = useState<{ compId: string; pinName: string } | null>(null);
+  const [wireSnapTarget, setWireSnapTarget] = useState<{ compId: string; pinName: string; x: number; y: number } | null>(null);
   const [mouseCanvasPos, setMouseCanvasPos] = useState({ x: 0, y: 0 });
 
   // --- Dynamic Waveform Channels & Config Modal ---
@@ -1485,52 +1486,52 @@ export default function App() {
         }
         if (offset) local = offset;
       } else if (comp.kind === 'breadboard') {
-        w = 540;
-        h = 240;
-        const X0 = 38;
-        const dx = 16;
+        w = 440;
+        h = 226;
+        const X0 = 31;
+        const dx = 13;
         const rowY: Record<string, number> = {
-          a: 72,
-          b: 82,
-          c: 92,
-          d: 102,
+          a: 60,
+          b: 73,
+          c: 86,
+          d: 99,
           e: 112,
-          f: 134,
-          g: 144,
-          h: 154,
-          i: 164,
-          j: 174,
+          f: 130,
+          g: 143,
+          h: 156,
+          i: 169,
+          j: 182,
         };
 
         const pLower = pinName.toLowerCase();
         if (pLower.includes('top') && (pLower.includes('plus') || pLower.includes('+'))) {
           const m = pLower.match(/\d+/);
           const col = m ? parseInt(m[0], 10) : 1;
-          local = { x: X0 + (col - 1) * dx, y: 26 };
+          local = { x: X0 + (col - 1) * dx, y: 20 };
         } else if (pLower.includes('top') && (pLower.includes('minus') || pLower.includes('-'))) {
           const m = pLower.match(/\d+/);
           const col = m ? parseInt(m[0], 10) : 1;
-          local = { x: X0 + (col - 1) * dx, y: 39 };
+          local = { x: X0 + (col - 1) * dx, y: 33 };
         } else if ((pLower.includes('bot') || pLower.includes('bottom')) && (pLower.includes('plus') || pLower.includes('+'))) {
           const m = pLower.match(/\d+/);
           const col = m ? parseInt(m[0], 10) : 1;
-          local = { x: X0 + (col - 1) * dx, y: 201 };
+          local = { x: X0 + (col - 1) * dx, y: 196 };
         } else if ((pLower.includes('bot') || pLower.includes('bottom')) && (pLower.includes('minus') || pLower.includes('-'))) {
           const m = pLower.match(/\d+/);
           const col = m ? parseInt(m[0], 10) : 1;
-          local = { x: X0 + (col - 1) * dx, y: 223 };
+          local = { x: X0 + (col - 1) * dx, y: 209 };
         } else if (pLower.startsWith('tp.') || pLower.startsWith('tp_') || pLower.startsWith('t+.')) {
           const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
-          local = { x: X0 + (col - 1) * dx, y: 26 };
+          local = { x: X0 + (col - 1) * dx, y: 20 };
         } else if (pLower.startsWith('tm.') || pLower.startsWith('tm_') || pLower.startsWith('t-.')) {
           const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
-          local = { x: X0 + (col - 1) * dx, y: 39 };
+          local = { x: X0 + (col - 1) * dx, y: 33 };
         } else if (pLower.startsWith('bp.') || pLower.startsWith('bp_') || pLower.startsWith('b+.')) {
           const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
-          local = { x: X0 + (col - 1) * dx, y: 201 };
+          local = { x: X0 + (col - 1) * dx, y: 196 };
         } else if (pLower.startsWith('bm.') || pLower.startsWith('bm_') || pLower.startsWith('b-.')) {
           const col = parseInt(pLower.replace(/[^0-9]/g, ''), 10) || 1;
-          local = { x: X0 + (col - 1) * dx, y: 223 };
+          local = { x: X0 + (col - 1) * dx, y: 209 };
         } else {
           // Check for row pin like 'a_15', 'a15', '15.a', '15a', 'a.15'
           const m1 = pLower.match(/^([a-j])[._-]?(\d+)$/);
@@ -1538,11 +1539,11 @@ export default function App() {
           if (m1) {
             const row = m1[1];
             const col = parseInt(m1[2], 10) || 1;
-            local = { x: X0 + (col - 1) * dx, y: rowY[row] };
+            local = { x: X0 + (col - 1) * dx, y: rowY[row] || 60 };
           } else if (m2) {
             const row = m2[2];
             const col = parseInt(m2[1], 10) || 1;
-            local = { x: X0 + (col - 1) * dx, y: rowY[row] };
+            local = { x: X0 + (col - 1) * dx, y: rowY[row] || 60 };
           }
         }
       } else if (comp.kind === 'led') {
@@ -1601,8 +1602,8 @@ export default function App() {
           local = { x: 58, y: 20 };
         }
       } else if (comp.kind === 'esp32') {
-        w = 160;
-        h = 296;
+        w = 126;
+        h = 233;
         let offset = ESP32_PINS[pinName];
         if (!offset) {
           const upper = pinName.toUpperCase();
@@ -1622,17 +1623,17 @@ export default function App() {
         w = 168;
         h = 80;
         const norm = pinName.toUpperCase();
-        if (norm === 'VCC' || norm === '5V') local = { x: 52, y: 73 };
-        else if (norm === 'TRIG' || norm === 'TRIGGER') local = { x: 74, y: 73 };
-        else if (norm === 'ECHO') local = { x: 94, y: 73 };
-        else if (norm === 'GND' || norm === 'GROUND') local = { x: 116, y: 73 };
+        if (norm === 'VCC' || norm === '5V') local = { x: 42, y: 72 };
+        else if (norm === 'TRIG' || norm === 'TRIGGER') local = { x: 70, y: 72 };
+        else if (norm === 'ECHO') local = { x: 98, y: 72 };
+        else if (norm === 'GND' || norm === 'GROUND') local = { x: 126, y: 72 };
       } else if (comp.kind === 'dht11') {
         w = 80;
         h = 110;
         const norm = pinName.toUpperCase();
-        if (norm === 'VCC' || norm === '5V' || norm === '3V3' || norm === '3.3V' || norm === '1') local = { x: 22, y: 98 };
-        else if (norm === 'DATA' || norm === 'OUT' || norm === 'SIG' || norm === '2') local = { x: 40, y: 98 };
-        else if (norm === 'GND' || norm === 'GROUND' || norm === '3' || norm === '4') local = { x: 58, y: 98 };
+        if (norm === 'VCC' || norm === '5V' || norm === '3V3' || norm === '3.3V' || norm === '1') local = { x: 24, y: 92 };
+        else if (norm === 'DATA' || norm === 'OUT' || norm === 'SIG' || norm === '2') local = { x: 40, y: 92 };
+        else if (norm === 'GND' || norm === 'GROUND' || norm === '3' || norm === '4') local = { x: 57, y: 92 };
       } else if (comp.kind === 'photoresistor') {
         w = 60;
         h = 70;
@@ -1643,9 +1644,9 @@ export default function App() {
         w = 90;
         h = 100;
         const norm = pinName.toUpperCase();
-        if (norm === 'VCC' || norm === '5V' || norm === '1') local = { x: 23, y: 92 };
-        else if (norm === 'OUT' || norm === 'SIG' || norm === 'DATA' || norm === '2') local = { x: 45, y: 92 };
-        else if (norm === 'GND' || norm === 'GROUND' || norm === '3') local = { x: 67, y: 92 };
+        if (norm === 'VCC' || norm === '5V' || norm === '1') local = { x: 26, y: 88 };
+        else if (norm === 'OUT' || norm === 'SIG' || norm === 'DATA' || norm === '2') local = { x: 45, y: 88 };
+        else if (norm === 'GND' || norm === 'GROUND' || norm === '3') local = { x: 64, y: 88 };
       }
 
       if (!local) local = { x: 20, y: 20 };
@@ -1674,6 +1675,92 @@ export default function App() {
       };
     },
     [components]
+  );
+
+  // --- Magnetic Snap Target Detection for Wire Connections ---
+  const findNearestPin = useCallback(
+    (
+      worldX: number,
+      worldY: number,
+      excludeCompId?: string,
+      excludePinName?: string,
+      snapRadius: number = 22
+    ): { compId: string; pinName: string; x: number; y: number } | null => {
+      let best: { compId: string; pinName: string; x: number; y: number; dist: number } | null = null;
+
+      const COMPONENT_PIN_LIST: Record<string, string[]> = {
+        arduino_uno: [
+          'RESET', '3.3V', '5V', 'GND_1', 'GND_2', 'VIN',
+          'A0', 'A1', 'A2', 'A3', 'A4', 'A5',
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', 'GND', 'AREF'
+        ],
+        esp32: [
+          'EN', 'VP', 'VN', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND', 'VIN',
+          'D23', 'D22', 'TX0', 'RX0', 'D21', 'D19', 'D18', 'D5', 'TX2', 'RX2', 'D4', 'D2', 'D15', 'GND.2', '3V3'
+        ],
+        led: ['anode', 'cathode'],
+        resistor: ['1', '2'],
+        pushbutton: ['1a', '1b', '2a', '2b'],
+        potentiometer: ['1', '2', '3'],
+        capacitor: ['1', '2'],
+        hcsr04: ['VCC', 'TRIG', 'ECHO', 'GND'],
+        dht11: ['VCC', 'DATA', 'GND'],
+        photoresistor: ['1', '2'],
+        pir_sensor: ['VCC', 'OUT', 'GND'],
+      };
+
+      for (const comp of components) {
+        if (comp.kind === 'text_label') continue;
+
+        let candidatePins: string[] = [];
+        if (comp.kind === 'breadboard') {
+          // Fast spatial pin candidate detection on 30x10 breadboard
+          const w = 440;
+          const h = 226;
+          const cx = w / 2;
+          const cy = h / 2;
+          let dx = worldX - (comp.x + cx);
+          let dy = worldY - (comp.y + cy);
+          const rot = comp.rotation || 0;
+          if (rot !== 0) {
+            const rad = (-rot * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const rx = dx * cos - dy * sin;
+            const ry = dx * sin + dy * cos;
+            dx = rx;
+            dy = ry;
+          }
+          if (comp.flipped) dx = -dx;
+          const localX = cx + dx;
+
+          const colFloat = (localX - 31) / 13 + 1;
+          const centerCol = Math.round(colFloat);
+          const rows = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+          for (let col = Math.max(1, centerCol - 1); col <= Math.min(30, centerCol + 1); col++) {
+            candidatePins.push(`top_plus_${col}`, `top_minus_${col}`, `bot_plus_${col}`, `bot_minus_${col}`);
+            for (const r of rows) {
+              candidatePins.push(`${r}_${col}`);
+            }
+          }
+        } else {
+          candidatePins = COMPONENT_PIN_LIST[comp.kind] || [];
+        }
+
+        for (const pinName of candidatePins) {
+          if (excludeCompId === comp.id && excludePinName === pinName) continue;
+          const pos = getPinWorldPos(comp.id, pinName);
+          if (!pos) continue;
+          const dist = Math.hypot(pos.x - worldX, pos.y - worldY);
+          if (dist <= snapRadius && (!best || dist < best.dist)) {
+            best = { compId: comp.id, pinName, x: pos.x, y: pos.y, dist };
+          }
+        }
+      }
+
+      return best ? { compId: best.compId, pinName: best.pinName, x: best.x, y: best.y } : null;
+    },
+    [components, getPinWorldPos]
   );
 
   // --- Simulation Cycle Loop (60 FPS, Strict Single-Flight Concurrency) ---
@@ -3159,7 +3246,14 @@ export default function App() {
           setSelectedWireId(null);
         }
       } else if (activeTool === 'wire') {
+        if (wireDraftStart && wireSnapTarget) {
+          handlePinMouseDown(wireSnapTarget.compId, wireSnapTarget.pinName);
+          setWireSnapTarget(null);
+          return;
+        }
         setWireDraftStart(null);
+      setWireSnapTarget(null);
+        setWireSnapTarget(null);
       }
     }
   };
@@ -3170,10 +3264,17 @@ export default function App() {
     }
 
     const rect = e.currentTarget.getBoundingClientRect();
-    setMouseCanvasPos({
-      x: (e.clientX - rect.left - pan.x) / zoom,
-      y: (e.clientY - rect.top - pan.y) / zoom,
-    });
+    const canvasX = (e.clientX - rect.left - pan.x) / zoom;
+    const canvasY = (e.clientY - rect.top - pan.y) / zoom;
+    setMouseCanvasPos({ x: canvasX, y: canvasY });
+
+    // Magnetic pin snap when actively drafting a wire
+    if (wireDraftStart) {
+      const snap = findNearestPin(canvasX, canvasY, wireDraftStart.compId, wireDraftStart.pinName);
+      setWireSnapTarget(snap);
+    } else if (wireSnapTarget) {
+      setWireSnapTarget(null);
+    }
 
     // Update Rubber-Band Multi-Selection Box (Requirement 2)
     if (selectionBox) {
@@ -3277,6 +3378,7 @@ export default function App() {
         syncWireToRust(newWire);
       }
       setWireDraftStart(null);
+      setWireSnapTarget(null);
     }
   };
 
@@ -5070,8 +5172,8 @@ export default function App() {
                           ? {
                               fromX: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.x || 0,
                               fromY: getPinWorldPos(wireDraftStart.compId, wireDraftStart.pinName)?.y || 0,
-                              toX: mouseCanvasPos.x,
-                              toY: mouseCanvasPos.y,
+                              toX: wireSnapTarget ? wireSnapTarget.x : mouseCanvasPos.x,
+                              toY: wireSnapTarget ? wireSnapTarget.y : mouseCanvasPos.y,
                               color: currentWireColor,
                             }
                           : null
@@ -5100,6 +5202,54 @@ export default function App() {
                       onAddAndDragWaypoint={handleAddAndDragWaypoint}
                       onDeleteWaypoint={handleDeleteWaypoint}
                     />
+
+                    {/* Magnetic Pin Snap Reticle Indicator Overlay */}
+                    {wireDraftStart && wireSnapTarget && (
+                      <g className="pointer-events-none select-none z-50">
+                        {/* Outer pulsing emerald snap ring */}
+                        <circle
+                          cx={wireSnapTarget.x}
+                          cy={wireSnapTarget.y}
+                          r="12"
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="2"
+                          strokeDasharray="4 2"
+                          className="animate-spin"
+                          style={{ animationDuration: '3s' }}
+                        />
+                        <circle
+                          cx={wireSnapTarget.x}
+                          cy={wireSnapTarget.y}
+                          r="18"
+                          fill="rgba(16, 185, 129, 0.15)"
+                          stroke="#10b981"
+                          strokeWidth="1"
+                          className="animate-pulse"
+                        />
+                        <circle
+                          cx={wireSnapTarget.x}
+                          cy={wireSnapTarget.y}
+                          r="3.5"
+                          fill="#10b981"
+                        />
+                        {/* Micro Pin Label Badge */}
+                        <foreignObject
+                          x={wireSnapTarget.x - 48}
+                          y={wireSnapTarget.y - 30}
+                          width="96"
+                          height="24"
+                          className="overflow-visible pointer-events-none"
+                        >
+                          <div className="flex items-center justify-center">
+                            <span className="px-2 py-0.5 rounded-full bg-[#0c1a14]/95 text-emerald-300 border border-emerald-500/80 font-mono text-[9px] font-semibold shadow-xl whitespace-nowrap backdrop-blur-xs flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                              {wireSnapTarget.pinName}
+                            </span>
+                          </div>
+                        </foreignObject>
+                      </g>
+                    )}
 
                     {/* Discrete Hardware Circuit Fault Indicators Overlay */}
                     <FaultOverlay

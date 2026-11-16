@@ -363,23 +363,43 @@ export const WireLayer: React.FC<WireLayerProps> = ({
               }}
             />
 
-            {/* Terminal End Caps */}
-            <circle
-              cx={p1.x}
-              cy={p1.y}
-              r={isSelected ? 3.5 : 3}
-              fill={isSelected ? '#ffffff' : '#cbd5e1'}
-              stroke={isSelected ? wire.color : '#334155'}
-              strokeWidth={isSelected ? 1.5 : 1}
-            />
-            <circle
-              cx={p2.x}
-              cy={p2.y}
-              r={isSelected ? 3.5 : 3}
-              fill={isSelected ? '#ffffff' : '#cbd5e1'}
-              stroke={isSelected ? wire.color : '#334155'}
-              strokeWidth={isSelected ? 1.5 : 1}
-            />
+            {/* Terminal End Caps - Authentic metallic jumper pin tips */}
+            <g key={`term-${wire.id}-p1`}>
+              <circle
+                cx={p1.x}
+                cy={p1.y}
+                r={isSelected ? 3.2 : 2.5}
+                fill={isSelected ? '#ffffff' : wire.color}
+                stroke={isSelected ? wire.color : '#09090b'}
+                strokeWidth={1}
+                className="drop-shadow-xs"
+              />
+              <circle
+                cx={p1.x}
+                cy={p1.y}
+                r={1}
+                fill="#ffffff"
+                pointerEvents="none"
+              />
+            </g>
+            <g key={`term-${wire.id}-p2`}>
+              <circle
+                cx={p2.x}
+                cy={p2.y}
+                r={isSelected ? 3.2 : 2.5}
+                fill={isSelected ? '#ffffff' : wire.color}
+                stroke={isSelected ? wire.color : '#09090b'}
+                strokeWidth={1}
+                className="drop-shadow-xs"
+              />
+              <circle
+                cx={p2.x}
+                cy={p2.y}
+                r={1}
+                fill="#ffffff"
+                pointerEvents="none"
+              />
+            </g>
 
             {/* 5. Canva-Style Line & Segment Controls (Visible strictly when Selected) */}
             {activeTool !== 'eraser' && isSelected && (

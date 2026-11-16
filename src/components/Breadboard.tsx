@@ -9,20 +9,21 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
   const rowsTop = ['a', 'b', 'c', 'd', 'e'];
   const rowsBottom = ['f', 'g', 'h', 'i', 'j'];
 
-  const X0 = 38;
-  const dx = 16;
+  // Proportional 13px x 13px square grid (aligned with standard 0.1" pitch)
+  const X0 = 31;
+  const dx = 13;
 
   const rowY: Record<string, number> = {
-    a: 72,
-    b: 82,
-    c: 92,
-    d: 102,
+    a: 60,
+    b: 73,
+    c: 86,
+    d: 99,
     e: 112,
-    f: 134,
-    g: 144,
-    h: 154,
-    i: 164,
-    j: 174,
+    f: 130,
+    g: 143,
+    h: 156,
+    i: 169,
+    j: 182,
   };
 
   const labeledCols = [1, 5, 10, 15, 20, 25, 30];
@@ -30,9 +31,9 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
   return (
     <div className="relative select-none filter drop-shadow-xl">
       <svg
-        width="540"
-        height="240"
-        viewBox="0 0 540 240"
+        width="440"
+        height="226"
+        viewBox="0 0 440 226"
         className="overflow-visible"
         style={{ display: 'block' }}
       >
@@ -40,9 +41,9 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
         <rect
           x="0"
           y="0"
-          width="540"
-          height="240"
-          rx="14"
+          width="440"
+          height="226"
+          rx="12"
           fill="#f8fafc"
           stroke="#cbd5e1"
           strokeWidth="1.5"
@@ -50,11 +51,11 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
 
         {/* Outer Bevel Shadow */}
         <rect
-          x="4"
-          y="4"
-          width="532"
-          height="232"
-          rx="10"
+          x="3"
+          y="3"
+          width="434"
+          height="220"
+          rx="9"
           fill="none"
           stroke="#e2e8f0"
           strokeWidth="1"
@@ -62,254 +63,327 @@ export const Breadboard: React.FC<BreadboardProps> = ({ onPinMouseDown }) => {
 
         {/* ----------------- TOP POWER RAILS ----------------- */}
         {/* Red + Power Line */}
-        <text x="18" y="19" textAnchor="middle" fontSize="11" fontWeight="700" fill="#ef4444">
+        <text x="14" y="24" textAnchor="middle" fontSize="11" fontWeight="700" fill="#ef4444">
           +
         </text>
-        <line x1="28" y1="16" x2="512" y2="16" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="22" y1="20" x2="418" y2="20" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
 
         {/* Top + Pins */}
         {columns.map((col) => {
           const cx = X0 + (col - 1) * dx;
           const pinName = `top_plus_${col}`;
           return (
-            <circle
-              key={pinName}
-              cx={cx}
-              cy={26}
-              r="2.8"
-              fill="#1e293b"
-              stroke="#64748b"
-              strokeWidth="0.75"
-              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                onPinMouseDown?.(pinName, e);
-              }}
-            >
-              <title>{`Top + (Col ${col})`}</title>
-            </circle>
+            <g key={pinName}>
+              <circle
+                cx={cx}
+                cy={20}
+                r="2.5"
+                fill="#1e293b"
+                stroke="#64748b"
+                strokeWidth="0.75"
+                className="transition-colors group-hover:fill-white"
+              />
+              {/* Invisible generous 13px hit target */}
+              <circle
+                cx={cx}
+                cy={20}
+                r="6.5"
+                fill="transparent"
+                className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onPinMouseDown?.(pinName, e);
+                }}
+              >
+                <title>{`Top + (Col ${col})`}</title>
+              </circle>
+            </g>
           );
         })}
 
         {/* Top - Pins */}
+        <text x="14" y="37" textAnchor="middle" fontSize="13" fontWeight="700" fill="#3b82f6">
+          -
+        </text>
+        <line x1="22" y1="33" x2="418" y2="33" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
         {columns.map((col) => {
           const cx = X0 + (col - 1) * dx;
           const pinName = `top_minus_${col}`;
           return (
-            <circle
-              key={pinName}
-              cx={cx}
-              cy={39}
-              r="2.8"
-              fill="#1e293b"
-              stroke="#64748b"
-              strokeWidth="0.75"
-              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                onPinMouseDown?.(pinName, e);
-              }}
+            <g key={pinName}>
+              <circle
+                cx={cx}
+                cy={33}
+                r="2.5"
+                fill="#1e293b"
+                stroke="#64748b"
+                strokeWidth="0.75"
+              />
+              <circle
+                cx={cx}
+                cy={33}
+                r="6.5"
+                fill="transparent"
+                className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onPinMouseDown?.(pinName, e);
+                }}
+              >
+                <title>{`Top - (Col ${col})`}</title>
+              </circle>
+            </g>
+          );
+        })}
+
+        {/* Separator Groove */}
+        <line x1="16" y1="46" x2="424" y2="46" stroke="#e2e8f0" strokeWidth="1" />
+
+        {/* ----------------- COLUMN LABELS (Top) ----------------- */}
+        {labeledCols.map((col) => {
+          const cx = X0 + (col - 1) * dx;
+          return (
+            <text
+              key={`top-lbl-${col}`}
+              x={cx}
+              y={53}
+              textAnchor="middle"
+              fontSize="7.5"
+              fill="#64748b"
+              fontWeight="600"
+              fontFamily="monospace"
             >
-              <title>{`Top - (Col ${col})`}</title>
-            </circle>
+              {col}
+            </text>
           );
         })}
 
-        {/* Blue - Power Line */}
-        <line x1="28" y1="49" x2="512" y2="49" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-        <text x="18" y="52" textAnchor="middle" fontSize="13" fontWeight="700" fill="#3b82f6">
-          -
-        </text>
+        {/* ----------------- UPPER TERMINAL ROWS (a-e) ----------------- */}
+        {rowsTop.map((row) => (
+          <g key={`row-${row}`}>
+            {/* Left Row Label */}
+            <text
+              x="16"
+              y={rowY[row] + 2.5}
+              textAnchor="middle"
+              fontSize="8.5"
+              fill="#64748b"
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {row}
+            </text>
 
-        {/* ----------------- TOP TERMINAL STRIP (Rows a - e) ----------------- */}
-        {/* Top Column Numbers */}
-        {labeledCols.map((col) => (
-          <text
-            key={`top_lbl_${col}`}
-            x={X0 + (col - 1) * dx}
-            y={62}
-            textAnchor="middle"
-            fontSize="8"
-            fontFamily="monospace"
-            fill="#94a3b8"
-          >
-            {col}
-          </text>
-        ))}
+            {/* Right Row Label */}
+            <text
+              x="424"
+              y={rowY[row] + 2.5}
+              textAnchor="middle"
+              fontSize="8.5"
+              fill="#64748b"
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {row}
+            </text>
 
-        {/* Rows a to e */}
-        {rowsTop.map((row) => {
-          const y = rowY[row];
-          return (
-            <g key={`row_group_${row}`}>
-              {/* Left & Right Row Labels */}
-              <text x="20" y={y + 3} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="#94a3b8">
-                {row}
-              </text>
-              <text x="520" y={y + 3} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="#94a3b8">
-                {row}
-              </text>
-
-              {/* Pin Sockets (30 columns) */}
-              {columns.map((col) => {
-                const cx = X0 + (col - 1) * dx;
-                const pinName = `${row}_${col}`;
-                return (
+            {/* 30 Pin Sockets */}
+            {columns.map((col) => {
+              const cx = X0 + (col - 1) * dx;
+              const cy = rowY[row];
+              const pinName = `${row}_${col}`;
+              return (
+                <g key={pinName}>
                   <rect
-                    key={pinName}
-                    x={cx - 2.6}
-                    y={y - 2.6}
-                    width="5.2"
-                    height="5.2"
+                    x={cx - 2.5}
+                    y={cy - 2.5}
+                    width="5"
+                    height="5"
                     rx="1"
-                    fill="#1e293b"
+                    fill="#0f172a"
                     stroke="#475569"
-                    strokeWidth="0.75"
-                    className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
+                    strokeWidth="0.6"
+                  />
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r="6.5"
+                    fill="transparent"
+                    className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onPinMouseDown?.(pinName, e);
                     }}
                   >
-                    <title>{`${row}${col}`}</title>
-                  </rect>
-                );
-              })}
-            </g>
-          );
-        })}
+                    <title>{`Row ${row.toUpperCase()} Col ${col}`}</title>
+                  </circle>
+                </g>
+              );
+            })}
+          </g>
+        ))}
 
-        {/* Central DIP Divider Trough */}
-        <rect x="24" y="119" width="492" height="7.5" rx="2" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="0.5" />
-        <text
-          x="270"
-          y="125"
-          textAnchor="middle"
-          fontSize="6.5"
-          fontWeight="700"
-          fill="#94a3b8"
-          letterSpacing="2"
-        >
-          OHMIC
-        </text>
+        {/* ----------------- CENTER IC TROUGH DIVIDER ----------------- */}
+        <rect x="14" y="119" width="412" height="4" fill="#e2e8f0" rx="1.5" />
+        <rect x="16" y="120" width="408" height="2" fill="#cbd5e1" rx="1" />
 
-        {/* ----------------- BOTTOM TERMINAL STRIP (Rows f - j) ----------------- */}
-        {rowsBottom.map((row) => {
-          const y = rowY[row];
-          return (
-            <g key={`row_group_${row}`}>
-              {/* Left & Right Row Labels */}
-              <text x="20" y={y + 3} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="#94a3b8">
-                {row}
-              </text>
-              <text x="520" y={y + 3} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="#94a3b8">
-                {row}
-              </text>
+        {/* ----------------- LOWER TERMINAL ROWS (f-j) ----------------- */}
+        {rowsBottom.map((row) => (
+          <g key={`row-${row}`}>
+            {/* Left Row Label */}
+            <text
+              x="16"
+              y={rowY[row] + 2.5}
+              textAnchor="middle"
+              fontSize="8.5"
+              fill="#64748b"
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {row}
+            </text>
 
-              {/* Pin Sockets (30 columns) */}
-              {columns.map((col) => {
-                const cx = X0 + (col - 1) * dx;
-                const pinName = `${row}_${col}`;
-                return (
+            {/* Right Row Label */}
+            <text
+              x="424"
+              y={rowY[row] + 2.5}
+              textAnchor="middle"
+              fontSize="8.5"
+              fill="#64748b"
+              fontWeight="700"
+              fontFamily="monospace"
+            >
+              {row}
+            </text>
+
+            {/* 30 Pin Sockets */}
+            {columns.map((col) => {
+              const cx = X0 + (col - 1) * dx;
+              const cy = rowY[row];
+              const pinName = `${row}_${col}`;
+              return (
+                <g key={pinName}>
                   <rect
-                    key={pinName}
-                    x={cx - 2.6}
-                    y={y - 2.6}
-                    width="5.2"
-                    height="5.2"
+                    x={cx - 2.5}
+                    y={cy - 2.5}
+                    width="5"
+                    height="5"
                     rx="1"
-                    fill="#1e293b"
+                    fill="#0f172a"
                     stroke="#475569"
-                    strokeWidth="0.75"
-                    className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
+                    strokeWidth="0.6"
+                  />
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r="6.5"
+                    fill="transparent"
+                    className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onPinMouseDown?.(pinName, e);
                     }}
                   >
-                    <title>{`${row}${col}`}</title>
-                  </rect>
-                );
-              })}
-            </g>
+                    <title>{`Row ${row.toUpperCase()} Col ${col}`}</title>
+                  </circle>
+                </g>
+              );
+            })}
+          </g>
+        ))}
+
+        {/* ----------------- COLUMN LABELS (Bottom) ----------------- */}
+        {labeledCols.map((col) => {
+          const cx = X0 + (col - 1) * dx;
+          return (
+            <text
+              key={`bot-lbl-${col}`}
+              x={cx}
+              y={190}
+              textAnchor="middle"
+              fontSize="7.5"
+              fill="#64748b"
+              fontWeight="600"
+              fontFamily="monospace"
+            >
+              {col}
+            </text>
           );
         })}
 
-        {/* Bottom Column Numbers */}
-        {labeledCols.map((col) => (
-          <text
-            key={`bot_lbl_${col}`}
-            x={X0 + (col - 1) * dx}
-            y={188}
-            textAnchor="middle"
-            fontSize="8"
-            fontFamily="monospace"
-            fill="#94a3b8"
-          >
-            {col}
-          </text>
-        ))}
+        {/* Separator Groove */}
+        <line x1="16" y1="193" x2="424" y2="193" stroke="#e2e8f0" strokeWidth="1" />
 
         {/* ----------------- BOTTOM POWER RAILS ----------------- */}
-        {/* Bottom + Pins */}
+        {/* Red + Power Line */}
+        <text x="14" y="200" textAnchor="middle" fontSize="11" fontWeight="700" fill="#ef4444">
+          +
+        </text>
+        <line x1="22" y1="196" x2="418" y2="196" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
         {columns.map((col) => {
           const cx = X0 + (col - 1) * dx;
           const pinName = `bot_plus_${col}`;
           return (
-            <circle
-              key={pinName}
-              cx={cx}
-              cy={201}
-              r="2.8"
-              fill="#1e293b"
-              stroke="#64748b"
-              strokeWidth="0.75"
-              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                onPinMouseDown?.(pinName, e);
-              }}
-            >
-              <title>{`Bottom + (Col ${col})`}</title>
-            </circle>
-          );
-        })}
-
-        {/* Red + Power Line */}
-        <line x1="28" y1="210" x2="512" y2="210" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-        <text x="18" y="213" textAnchor="middle" fontSize="11" fontWeight="700" fill="#ef4444">
-          +
-        </text>
-
-        {/* Bottom - Pins */}
-        {columns.map((col) => {
-          const cx = X0 + (col - 1) * dx;
-          const pinName = `bot_minus_${col}`;
-          return (
-            <circle
-              key={pinName}
-              cx={cx}
-              cy={223}
-              r="2.8"
-              fill="#1e293b"
-              stroke="#64748b"
-              strokeWidth="0.75"
-              className="cursor-crosshair transition-all hover:fill-white hover:stroke-white filter hover:drop-shadow-[0_0_3px_rgba(255,255,255,0.9)]"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                onPinMouseDown?.(pinName, e);
-              }}
-            >
-              <title>{`Bottom - (Col ${col})`}</title>
-            </circle>
+            <g key={pinName}>
+              <circle
+                cx={cx}
+                cy={196}
+                r="2.5"
+                fill="#1e293b"
+                stroke="#64748b"
+                strokeWidth="0.75"
+              />
+              <circle
+                cx={cx}
+                cy={196}
+                r="6.5"
+                fill="transparent"
+                className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onPinMouseDown?.(pinName, e);
+                }}
+              >
+                <title>{`Bottom + (Col ${col})`}</title>
+              </circle>
+            </g>
           );
         })}
 
         {/* Blue - Power Line */}
-        <line x1="28" y1="231" x2="512" y2="231" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-        <text x="18" y="234" textAnchor="middle" fontSize="13" fontWeight="700" fill="#3b82f6">
+        <text x="14" y="213" textAnchor="middle" fontSize="13" fontWeight="700" fill="#3b82f6">
           -
         </text>
+        <line x1="22" y1="209" x2="418" y2="209" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
+        {columns.map((col) => {
+          const cx = X0 + (col - 1) * dx;
+          const pinName = `bot_minus_${col}`;
+          return (
+            <g key={pinName}>
+              <circle
+                cx={cx}
+                cy={209}
+                r="2.5"
+                fill="#1e293b"
+                stroke="#64748b"
+                strokeWidth="0.75"
+              />
+              <circle
+                cx={cx}
+                cy={209}
+                r="6.5"
+                fill="transparent"
+                className="cursor-crosshair hover:stroke-white/70 hover:stroke-1 transition-all"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onPinMouseDown?.(pinName, e);
+                }}
+              >
+                <title>{`Bottom - (Col ${col})`}</title>
+              </circle>
+            </g>
+          );
+        })}
       </svg>
     </div>
   );

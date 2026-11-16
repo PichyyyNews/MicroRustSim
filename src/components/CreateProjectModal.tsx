@@ -1217,7 +1217,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       <div
         ref={modalBoxRef}
         onClick={(e) => e.stopPropagation()}
-        className="w-[720px] max-w-[96vw] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl flex flex-col overflow-hidden outline-none will-change-transform"
+        className="w-[840px] max-w-[96vw] bg-[#141416] border border-[#242428] rounded-2xl shadow-2xl flex flex-col overflow-hidden outline-none will-change-transform"
         style={{ transform: 'translate3d(0px, 0px, 0px)' }}
       >
         {/* Draggable Header */}
@@ -1294,7 +1294,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             </div>
 
             {/* Inset Box List for Templates (Anti-Card-Nesting, Expanded Height) */}
-            <div className="rounded-xl bg-[#1c1c20] p-1.5 border border-zinc-800/60 max-h-72 overflow-y-auto space-y-1 scrollbar-thin">
+            <div className="rounded-xl bg-[#1c1c20] p-1.5 border border-zinc-800/60 max-h-[360px] overflow-y-auto space-y-1 scrollbar-thin">
               {filteredTemplates.map((tpl) => {
                 const IconComponent = tpl.icon;
                 const isSelected = tpl.id === selectedTemplateId;
