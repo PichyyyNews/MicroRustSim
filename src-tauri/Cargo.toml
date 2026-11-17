@@ -1,6 +1,6 @@
 [package]
 name = "microrustsim-tauri"
-version = "0.3.4"
+version = "0.3.5"
 description = "Ohmic - High performance MCU and circuit simulator"
 edition = "2021"
 

@@ -33,6 +33,8 @@ pub struct LedBatchPayload {
     pub branch_currents: HashMap<String, f32>,
     pub faults: Vec<CircuitFault>,
     pub damaged_components: Vec<String>,
+    pub lit_leds: Vec<String>,
+    pub led_brightness: HashMap<String, f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -581,6 +583,61 @@ fn open_arduino_libraries_folder() -> Result<(), String> {
     Ok(())
 }
 
+fn emit_sim_telemetry(
+    engine: &SimulationEngine,
+    app_handle: &tauri::AppHandle,
+    edges: Vec<LedEdge>,
+    current_cycle: u64,
+    current_state: bool,
+    cycles_per_sec: u64,
+    edges_per_sec: u64,
+    serial: Option<String>,
+) {
+    let mut lit_leds = Vec::new();
+    let mut led_brightness = HashMap::new();
+    for (id, l) in &engine.leds {
+        if l.is_lit && !l.is_blown {
+            lit_leds.push(id.clone());
+            led_brightness.insert(id.clone(), l.brightness);
+        }
+    }
+
+    let mut damaged_components = Vec::new();
+    for (id, l) in &engine.leds {
+        if l.is_blown {
+            damaged_components.push(id.clone());
+        }
+    }
+    for (id, r) in &engine.resistors {
+        if r.is_blown {
+            damaged_components.push(id.clone());
+        }
+    }
+    for (id, c) in &engine.capacitors {
+        if c.is_damaged {
+            damaged_components.push(id.clone());
+        }
+    }
+
+    let payload = LedBatchPayload {
+        edges,
+        current_cycle,
+        current_state,
+        cycles_per_sec,
+        edges_per_sec,
+        serial,
+        millis: engine.mcu.millis(),
+        pin_voltages: engine.pin_voltages_map(),
+        mcu_pin_voltages: engine.mcu_pin_voltages_map(),
+        branch_currents: engine.branch_currents.clone(),
+        faults: engine.faults.clone(),
+        damaged_components,
+        lit_leds,
+        led_brightness,
+    };
+    let _ = app_handle.emit("led", &payload);
+}
+
 fn handle_sim_command(
     cmd: SimCommand,
     engine: &mut SimulationEngine,
@@ -637,20 +694,16 @@ fn handle_sim_command(
                     *base_sim_cycle = engine.mcu.cycles();
                     *last_pb5_state = engine.mcu.get_pin_state("13") == LogicState::High;
                     edges.clear();
-                    let _ = app_handle.emit("led", &LedBatchPayload {
-                        edges: Vec::new(),
-                        current_cycle: *base_sim_cycle,
-                        current_state: *last_pb5_state,
-                        cycles_per_sec: 0,
-                        edges_per_sec: 0,
-                        serial: None,
-                        millis: 0.0,
-                        pin_voltages: HashMap::new(),
-                        mcu_pin_voltages: HashMap::new(),
-                        branch_currents: HashMap::new(),
-                        faults: Vec::new(),
-                        damaged_components: Vec::new(),
-                    });
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        *base_sim_cycle,
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::Step { cycles, reply } => {
                     if *is_running {
@@ -721,12 +774,32 @@ fn handle_sim_command(
                         btn.is_pressed = pressed;
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetPot { id, value } => {
                     if let Some(pot) = engine.pots.get_mut(&id) {
                         pot.value = value.clamp(0.0, 1.0);
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::WriteSerial { input } => {
                     let line = format!("{}\n", input);
@@ -736,10 +809,30 @@ fn handle_sim_command(
                     engine.wires.retain(|w| w.id != wire.id);
                     engine.add_wire(wire);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::RemoveWire { id } => {
                     engine.remove_wire(&id);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddLed { id, color, vf } => {
                     let mut led = components::LedComponent::new(id.clone(), color);
@@ -748,34 +841,104 @@ fn handle_sim_command(
                     }
                     engine.leds.insert(id, led);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddResistor { id, ohms } => {
                     engine.resistors.insert(id.clone(), components::ResistorComponent::new(id, ohms));
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddButton { id } => {
                     engine.buttons.insert(id.clone(), components::PushbuttonComponent::new(id));
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddPot { id } => {
                     engine.pots.insert(id.clone(), components::PotentiometerComponent::new(id));
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddCapacitor { id, farads, polarized } => {
                     engine.capacitors.insert(id.clone(), components::CapacitorComponent::new(id, farads, polarized));
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddHcsr04 { id, distance_cm } => {
                     let mut comp = components::Hcsr04Component::new(id.clone());
                     comp.distance_cm = distance_cm;
                     engine.hcsr04s.insert(id, comp);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetHcsr04Distance { id, distance_cm } => {
                     if let Some(sonar) = engine.hcsr04s.get_mut(&id) {
                         sonar.distance_cm = distance_cm.clamp(2.0, 400.0);
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddDht11 { id, temperature, humidity } => {
                     let mut comp = components::Dht11Component::new(id.clone());
@@ -783,6 +946,16 @@ fn handle_sim_command(
                     comp.humidity = humidity;
                     engine.dht11s.insert(id, comp);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetDht11Values { id, temperature, humidity } => {
                     if let Some(dht) = engine.dht11s.get_mut(&id) {
@@ -790,34 +963,94 @@ fn handle_sim_command(
                         dht.humidity = humidity.clamp(20.0, 90.0);
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddLdr { id, lux } => {
                     let mut comp = components::PhotoresistorComponent::new(id.clone());
                     comp.lux = lux;
                     engine.ldrs.insert(id, comp);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetLdrLux { id, lux } => {
                     if let Some(ldr) = engine.ldrs.get_mut(&id) {
                         ldr.lux = lux.clamp(0.0, 10000.0);
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::AddPir { id, motion } => {
                     let mut comp = components::PirComponent::new(id.clone());
                     comp.motion_detected = motion;
                     engine.pirs.insert(id, comp);
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetPirMotion { id, motion } => {
                     if let Some(pir) = engine.pirs.get_mut(&id) {
                         pir.motion_detected = motion;
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SetPowerRealism(config) => {
                     engine.power_config = config;
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
                 SimCommand::SyncCircuit { components, wires } => {
                     engine.wires.clear();
@@ -966,6 +1199,16 @@ fn handle_sim_command(
                         });
                     }
                     engine.resolve_electrical_nets();
+                    emit_sim_telemetry(
+                        engine,
+                        app_handle,
+                        Vec::new(),
+                        engine.mcu.cycles(),
+                        *last_pb5_state,
+                        0,
+                        0,
+                        None,
+                    );
                 }
     }
 }
@@ -1144,42 +1387,20 @@ fn run_simulation_thread(sim_rx: Receiver<SimCommand>, app_handle: tauri::AppHan
                 None
             };
 
-            let mut damaged_components = Vec::new();
-            for (id, l) in &engine.leds {
-                if l.is_blown {
-                    damaged_components.push(id.clone());
-                }
-            }
-            for (id, r) in &engine.resistors {
-                if r.is_blown {
-                    damaged_components.push(id.clone());
-                }
-            }
-            for (id, c) in &engine.capacitors {
-                if c.is_damaged {
-                    damaged_components.push(id.clone());
-                }
-            }
-
             if is_running {
                 engine.resolve_electrical_nets();
             }
 
-            let payload = LedBatchPayload {
-                edges: batch,
-                current_cycle: engine.mcu.cycles(),
-                current_state: last_pb5_state,
-                cycles_per_sec: last_actual_cps,
-                edges_per_sec: last_actual_eps,
+            emit_sim_telemetry(
+                &engine,
+                &app_handle,
+                batch,
+                engine.mcu.cycles(),
+                last_pb5_state,
+                last_actual_cps,
+                last_actual_eps,
                 serial,
-                millis: engine.mcu.millis(),
-                pin_voltages: engine.pin_voltages_map(),
-                mcu_pin_voltages: engine.mcu_pin_voltages_map(),
-                branch_currents: engine.branch_currents.clone(),
-                faults: engine.faults.clone(),
-                damaged_components,
-            };
-            let _ = app_handle.emit("led", &payload);
+            );
             last_batch_time = Instant::now();
         }
 

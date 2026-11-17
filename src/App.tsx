@@ -1852,9 +1852,13 @@ export default function App() {
     branch_currents?: Record<string, number>;
     faults?: CircuitFault[];
     damaged_components?: string[];
+    lit_leds?: string[];
+    led_brightness?: Record<string, number>;
   }
 
   const ledEdgesRef = useRef<LedEdge[]>([]);
+  const litLedsRef = useRef<Set<string>>(new Set());
+  const ledBrightnessRef = useRef<Record<string, number>>({});
   const lastTelemetryUpdateRef = useRef<number>(0);
   const ledStateRef = useRef<{
     currentCycle: number;
@@ -1940,16 +1944,19 @@ export default function App() {
       }
     }
 
-    // 2. External canvas LEDs (e.g. led1 wired to Pin 13)
+    // 2. External canvas LEDs (strictly following MNA circuit solver physics)
     const domeEls = document.querySelectorAll<HTMLElement>('[data-led-dome]');
     domeEls.forEach((domeEl) => {
       const ledId = domeEl.getAttribute('data-led-dome');
+      if (!ledId) return;
       const coreEl = document.querySelector<HTMLElement>(`[data-led-core="${ledId}"]`);
       const reflEl = document.querySelector<HTMLElement>(`[data-led-reflection="${ledId}"]`);
       const glowColor = domeEl.getAttribute('data-glow-color') || '#ef4444';
 
-      const b = duty > 0.01 ? Math.min(1.0, Math.max(0.04, duty)) : 0.0;
-      const isLit = b > 0.01;
+      // Physical brightness directly from the MNA circuit solver!
+      // When wire is cut, disconnected, or current is 0, b is 0.0!
+      const b = ledBrightnessRef.current[ledId] ?? 0.0;
+      const isLit = litLedsRef.current.has(ledId) && b > 0.005;
 
       if (isLit) {
         const blur1 = Math.round(b * 16 + 3);
@@ -2004,6 +2011,18 @@ export default function App() {
           ledStateRef.current.cyclesPerSec = payload.cycles_per_sec;
           ledStateRef.current.edgesPerSec = payload.edges_per_sec;
 
+          // Per-LED physical states from MNA circuit solver
+          if (payload.lit_leds) {
+            litLedsRef.current = new Set(payload.lit_leds);
+          } else {
+            litLedsRef.current.clear();
+          }
+          if (payload.led_brightness) {
+            ledBrightnessRef.current = payload.led_brightness;
+          } else {
+            ledBrightnessRef.current = {};
+          }
+
           // Bounded memory buffer: prune edges older than 1,000,000 cycles (~62ms)
           const minCycle =
             payload.current_cycle > 1_000_000 ? payload.current_cycle - 1_000_000 : 0;
@@ -2044,6 +2063,12 @@ export default function App() {
             }
             if (payload.damaged_components) {
               setDamagedComponents(new Set(payload.damaged_components));
+            }
+            if (payload.lit_leds) {
+              setLitLeds(new Set(payload.lit_leds));
+            }
+            if (payload.led_brightness) {
+              setLedBrightness(payload.led_brightness);
             }
 
             // Record waveform histories
@@ -6800,7 +6825,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-sm text-zinc-100">Ohmic</h3>
-                    <p className="text-[10px] text-zinc-500 font-mono">v0.3.4 • Dual Core & AVR Simulator</p>
+                    <p className="text-[10px] text-zinc-500 font-mono">v0.3.5 • Dual Core & AVR Simulator</p>
                   </div>
                 </div>
                 <button

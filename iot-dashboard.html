@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LBtech IoT Cloud Dashboard — ESP32 + DHT11</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- MQTT.js CDN -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            canvas: '#09090b',
+            surface: '#121215',
+            inset: '#18181b',
+            borderSubtle: '#222226'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #09090b;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #121215; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-6 lg:p-8 select-none">
+  <div class="max-w-6xl w-full mx-auto space-y-6">
+
+    <!-- Top Bar: Header & Connection Status -->
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#121215] border border-[#222226] rounded-2xl p-5 shadow-xl">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2.5">
+          <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+          <h1 class="text-lg font-bold tracking-tight text-white">LBtech IoT Cloud Dashboard</h1>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">WSS • Cloudflare</span>
+        </div>
+        <p class="text-xs text-zinc-400 font-mono">
+          Broker: <span class="text-zinc-200">mqtt.pichyy.qzz.io</span>:443/mqtt | ID: <span class="text-zinc-200">69123456789</span>
+        </p>
+      </div>
+
+      <!-- Live Connection Pill & Actions -->
+      <div class="flex items-center gap-3">
+        <div id="conn-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono font-medium border border-amber-500/30 bg-amber-500/10 text-amber-300 transition-colors">
+          <span id="conn-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          <span id="conn-status">Connecting to WSS...</span>
+        </div>
+        <button id="btn-reconnect" onclick="reconnectMQTT()" class="px-3 py-1.5 rounded-full text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all font-medium cursor-pointer">
+          Reconnect
+        </button>
+      </div>
+    </header>
+
+    <!-- Metrics Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- 1. Temperature Card -->
+      <div class="bg-[#121215] border border-[#222226] rounded-2xl p-5 flex flex-col justify-between shadow-lg relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Temperature</span>
+          <span class="text-lg">🌡️</span>
+        </div>
+        <div class="my-4 flex items-baseline gap-2">
+          <span id="val-temp" class="text-4xl md:text-5xl font-bold font-mono text-white tabular-nums tracking-tight">--.-</span>
+          <span class="text-xl font-mono text-zinc-400">°C</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+          <span>Target: DHT11 (Pin D4)</span>
+          <span id="temp-badge" class="text-emerald-400 font-medium">Optimal</span>
+        </div>
+      </div>
+
+      <!-- 2. Humidity Card -->
+      <div class="bg-[#121215] border border-[#222226] rounded-2xl p-5 flex flex-col justify-between shadow-lg relative overflow-hidden group">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Humidity</span>
+          <span class="text-lg">💧</span>
+        </div>
+        <div class="my-4 flex items-baseline gap-2">
+          <span id="val-hum" class="text-4xl md:text-5xl font-bold font-mono text-blue-400 tabular-nums tracking-tight">--.-</span>
+          <span class="text-xl font-mono text-zinc-400">%</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+          <span>RH Relative</span>
+          <span id="hum-badge" class="text-blue-400 font-medium">Normal</span>
+        </div>
+      </div>
+
+      <!-- 3. Telemetry Packets Card -->
+      <div class="bg-[#121215] border border-[#222226] rounded-2xl p-5 flex flex-col justify-between shadow-lg">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-zinc-400 uppercase tracking-wider">Packets Received</span>
+          <span class="text-lg">📦</span>
+        </div>
+        <div class="my-4 flex items-baseline gap-2">
+          <span id="val-packets" class="text-4xl md:text-5xl font-bold font-mono text-zinc-100 tabular-nums">0</span>
+          <span class="text-xs font-mono text-zinc-500">pkts</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+          <span>Interval: ~5 sec</span>
+          <span id="val-age" class="text-zinc-400">Waiting...</span>
+        </div>
+      </div>
+
+      <!-- 4. Device Status Card -->
+      <div class="bg-[#121215] border border-[#222226] rounded-2xl p-5 flex flex-col justify-between shadow-lg">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-zinc-400 uppercase tracking-wider">MCU Target</span>
+          <span class="text-lg">⚡</span>
+        </div>
+        <div class="my-3 space-y-1">
+          <div class="text-base font-semibold text-white font-mono" id="val-device">esp32-dht11</div>
+          <div class="text-xs text-zinc-400 font-mono">NodeMCU ESP32 (Xtensa)</div>
+        </div>
+        <div class="pt-2 border-t border-zinc-800 text-[11px] text-emerald-400 flex items-center justify-between font-mono">
+          <span>Tunnel WSS :443</span>
+          <span>Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Chart Section -->
+    <div class="bg-[#121215] border border-[#222226] rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-zinc-200">Real-Time Sensor Telemetry Chart</h2>
+          <span class="text-[10px] text-zinc-500 font-mono">project/69123456789/sensor</span>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-mono">
+          <span class="flex items-center gap-1.5 text-emerald-400">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Temp (°C)
+          </span>
+          <span class="flex items-center gap-1.5 text-blue-400">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Humidity (%)
+          </span>
+        </div>
+      </div>
+      <div class="h-64 w-full">
+        <canvas id="telemetryChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Bottom Split: Control Panel & Live Activity Log -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <!-- Control Panel (2 Cols) -->
+      <div class="lg:col-span-2 bg-[#121215] border border-[#222226] rounded-2xl p-5 shadow-xl space-y-4 flex flex-col justify-between">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-zinc-200">Remote Control Panel</h2>
+            <span class="text-[10px] text-zinc-500 font-mono">topic_control</span>
+          </div>
+          <p class="text-xs text-zinc-400 leading-relaxed">
+            Send remote commands to topic <code class="text-zinc-300 font-mono bg-zinc-800 px-1.5 py-0.5 rounded">project/69123456789/control</code>. The ESP32 handles this in <code class="text-zinc-300 font-mono">messageReceived()</code>.
+          </p>
+
+          <!-- Quick Action Buttons -->
+          <div class="grid grid-cols-2 gap-2.5">
+            <button onclick="sendControlCommand('LED_ON')" class="py-2.5 px-3 bg-zinc-800 hover:bg-emerald-600 hover:text-white text-zinc-200 text-xs font-medium rounded-xl border border-zinc-700 transition-all flex items-center justify-center gap-2 cursor-pointer">
+              <span>💡</span> LED ON
+            </button>
+            <button onclick="sendControlCommand('LED_OFF')" class="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-xl border border-zinc-700 transition-all flex items-center justify-center gap-2 cursor-pointer">
+              <span>🌑</span> LED OFF
+            </button>
+            <button onclick="sendControlCommand('RELAY_ON')" class="py-2.5 px-3 bg-zinc-800 hover:bg-blue-600 hover:text-white text-zinc-200 text-xs font-medium rounded-xl border border-zinc-700 transition-all flex items-center justify-center gap-2 cursor-pointer">
+              <span>🔌</span> RELAY ON
+            </button>
+            <button onclick="sendControlCommand('RELAY_OFF')" class="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-xl border border-zinc-700 transition-all flex items-center justify-center gap-2 cursor-pointer">
+              <span>⛔</span> RELAY OFF
+            </button>
+          </div>
+
+          <!-- Custom Payload Form -->
+          <div class="space-y-1.5 pt-2">
+            <label class="text-[11px] text-zinc-400 font-medium">Custom Command Payload:</label>
+            <div class="flex gap-2">
+              <input id="input-command" type="text" placeholder="e.g. BEEP or {\"fan\":true}" class="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-zinc-200 font-mono outline-none focus:border-zinc-400">
+              <button onclick="sendCustomCommand()" class="px-4 py-1.5 bg-white text-zinc-950 font-semibold text-xs rounded-xl hover:bg-zinc-200 transition-all cursor-pointer">
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="send-status" class="text-[11px] font-mono text-zinc-500 h-4"></div>
+      </div>
+
+      <!-- Live Activity Log Terminal (3 Cols) -->
+      <div class="lg:col-span-3 bg-[#121215] border border-[#222226] rounded-2xl p-5 shadow-xl space-y-3 flex flex-col">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-zinc-200">Live MQTT Packet Monitor</h2>
+            <span id="log-count" class="text-[10px] text-zinc-500 font-mono">(0 entries)</span>
+          </div>
+          <button onclick="clearLogs()" class="text-xs text-zinc-500 hover:text-zinc-300 font-mono transition-colors cursor-pointer">
+            Clear
+          </button>
+        </div>
+
+        <div id="log-container" class="flex-1 h-64 bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 font-mono text-xs overflow-y-auto space-y-1.5">
+          <div class="text-zinc-600">// Activity logs will appear here in real-time...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Client-Side MQTT Logic & Realtime Chart Script -->
+  <script>
+    const CONFIG = {
+      brokerUrl: 'wss://mqtt.pichyy.qzz.io:443/mqtt',
+      clientId: 'web-dashboard-' + Math.random().toString(16).substring(2, 10),
+      username: '69123456789',
+      password: 'News030347',
+      topicSensor: 'project/69123456789/sensor',
+      topicControl: 'project/69123456789/control'
+    };
+
+    let client = null;
+    let packetCount = 0;
+    let lastPacketTime = 0;
+    let chart = null;
+
+    // Initialize Chart.js
+    function initChart() {
+      const ctx = document.getElementById('telemetryChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Temperature (°C)',
+              data: [],
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Humidity (%)',
+              data: [],
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              borderWidth: 2,
+              pointRadius: 3,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 300 },
+          scales: {
+            x: {
+              grid: { color: '#1c1c20' },
+              ticks: { color: '#71717a', font: { family: 'monospace', size: 10 } }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              suggestedMin: 15,
+              suggestedMax: 45,
+              grid: { color: '#1c1c20' },
+              ticks: { color: '#10b981', font: { family: 'monospace', size: 10 } }
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              suggestedMin: 20,
+              suggestedMax: 100,
+              grid: { drawOnChartArea: false },
+              ticks: { color: '#3b82f6', font: { family: 'monospace', size: 10 } }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function appendLog(type, text) {
+      const container = document.getElementById('log-container');
+      const time = new Date().toLocaleTimeString();
+      const row = document.createElement('div');
+      row.className = 'flex items-start gap-2 leading-relaxed';
+
+      let tagColor = 'text-zinc-400';
+      let tag = '[INFO]';
+      if (type === 'IN') {
+        tag = '[SENS]';
+        tagColor = 'text-emerald-400';
+      } else if (type === 'OUT') {
+        tag = '[CTRL]';
+        tagColor = 'text-amber-400';
+      } else if (type === 'ERR') {
+        tag = '[ERR]';
+        tagColor = 'text-red-400';
+      } else if (type === 'SYS') {
+        tag = '[MQTT]';
+        tagColor = 'text-blue-400';
+      }
+
+      row.innerHTML = `<span class="text-zinc-600 shrink-0">${time}</span> <span class="${tagColor} shrink-0">${tag}</span> <span class="text-zinc-300 break-all">${text}</span>`;
+      container.appendChild(row);
+      container.scrollTop = container.scrollHeight;
+
+      const entries = container.querySelectorAll('div').length;
+      document.getElementById('log-count').textContent = `(${entries} entries)`;
+    }
+
+    function clearLogs() {
+      const container = document.getElementById('log-container');
+      container.innerHTML = '<div class="text-zinc-600">// Log buffer cleared.</div>';
+      document.getElementById('log-count').textContent = '(0 entries)';
+    }
+
+    function updateConnBadge(status, color, text) {
+      const badge = document.getElementById('conn-badge');
+      const dot = document.getElementById('conn-dot');
+      const txt = document.getElementById('conn-status');
+
+      badge.className = `flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono font-medium border transition-colors ${
+        color === 'green' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' :
+        color === 'yellow' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' :
+        'border-red-500/30 bg-red-500/10 text-red-400'
+      }`;
+      dot.className = `w-2 h-2 rounded-full ${color === 'green' ? 'bg-emerald-400' : color === 'yellow' ? 'bg-amber-400 animate-ping' : 'bg-red-500'}`;
+      txt.textContent = text;
+    }
+
+    function connectMQTT() {
+      if (client) {
+        try { client.end(); } catch (e) {}
+      }
+
+      updateConnBadge('connecting', 'yellow', 'Connecting WSS...');
+      appendLog('SYS', `Opening WebSocket to ${CONFIG.brokerUrl}...`);
+
+      client = mqtt.connect(CONFIG.brokerUrl, {
+        clientId: CONFIG.clientId,
+        username: CONFIG.username,
+        password: CONFIG.password,
+        clean: true,
+        reconnectPeriod: 4000,
+        connectTimeout: 10000
+      });
+
+      client.on('connect', () => {
+        updateConnBadge('connected', 'green', 'WSS Connected');
+        appendLog('SYS', `Authenticated as "${CONFIG.username}". Subscribing to ${CONFIG.topicSensor}...`);
+
+        client.subscribe(CONFIG.topicSensor, (err) => {
+          if (err) {
+            appendLog('ERR', `Failed to subscribe: ${err.message}`);
+          } else {
+            appendLog('SYS', `Subscribed successfully! Listening for telemetry...`);
+          }
+        });
+      });
+
+      client.on('message', (topic, payload) => {
+        const str = payload.toString();
+        packetCount++;
+        lastPacketTime = Date.now();
+        document.getElementById('val-packets').textContent = packetCount;
+
+        appendLog('IN', `${str}`);
+
+        try {
+          const json = JSON.parse(str);
+          if (json.temperature !== undefined) {
+            const t = parseFloat(json.temperature);
+            document.getElementById('val-temp').textContent = t.toFixed(1);
+            document.getElementById('temp-badge').textContent = t > 32 ? 'High' : t < 22 ? 'Cool' : 'Optimal';
+            document.getElementById('temp-badge').className = t > 32 ? 'text-amber-400 font-medium' : 'text-emerald-400 font-medium';
+          }
+          if (json.humidity !== undefined) {
+            const h = parseFloat(json.humidity);
+            document.getElementById('val-hum').textContent = h.toFixed(1);
+            document.getElementById('hum-badge').textContent = h > 75 ? 'Humid' : h < 35 ? 'Dry' : 'Comfortable';
+          }
+          if (json.device) {
+            document.getElementById('val-device').textContent = json.device;
+          }
+
+          // Update chart
+          if (chart && json.temperature !== undefined && json.humidity !== undefined) {
+            const now = new Date().toLocaleTimeString();
+            chart.data.labels.push(now);
+            chart.data.datasets[0].data.push(parseFloat(json.temperature));
+            chart.data.datasets[1].data.push(parseFloat(json.humidity));
+
+            if (chart.data.labels.length > 20) {
+              chart.data.labels.shift();
+              chart.data.datasets[0].data.shift();
+              chart.data.datasets[1].data.shift();
+            }
+            chart.update();
+          }
+        } catch (e) {
+          // Plain string fallback
+        }
+      });
+
+      client.on('error', (err) => {
+        updateConnBadge('error', 'red', 'Connection Error');
+        appendLog('ERR', `Error: ${err.message}`);
+      });
+
+      client.on('close', () => {
+        updateConnBadge('disconnected', 'red', 'Disconnected');
+      });
+    }
+
+    function sendControlCommand(cmd) {
+      if (!client || !client.connected) {
+        alert('MQTT Client is not connected to WSS yet!');
+        return;
+      }
+      client.publish(CONFIG.topicControl, cmd);
+      appendLog('OUT', `Published [${cmd}] to ${CONFIG.topicControl}`);
+
+      const statusEl = document.getElementById('send-status');
+      statusEl.textContent = `Sent: "${cmd}" at ${new Date().toLocaleTimeString()}`;
+      statusEl.className = 'text-[11px] font-mono text-emerald-400';
+      setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    }
+
+    function sendCustomCommand() {
+      const input = document.getElementById('input-command');
+      const val = input.value.trim();
+      if (!val) return;
+      sendControlCommand(val);
+      input.value = '';
+    }
+
+    function reconnectMQTT() {
+      appendLog('SYS', 'User requested manual reconnect.');
+      connectMQTT();
+    }
+
+    // Packet Age Counter
+    setInterval(() => {
+      if (lastPacketTime === 0) return;
+      const secAgo = Math.floor((Date.now() - lastPacketTime) / 1000);
+      document.getElementById('val-age').textContent = `${secAgo}s ago`;
+    }, 1000);
+
+    // Bootstrap
+    window.addEventListener('DOMContentLoaded', () => {
+      initChart();
+      connectMQTT();
+    });
+  </script>
+</body>
+</html>
