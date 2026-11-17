@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use std::thread;
 use parking_lot::Mutex;
@@ -461,42 +462,254 @@ fn get_arduino_cli_path() -> String {
     "arduino-cli".to_string()
 }
 
-#[tauri::command]
-fn search_arduino_libraries(query: String) -> Result<String, String> {
-    let cli = get_arduino_cli_path();
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.args(["lib", "search", &query, "--format", "json"]);
-    #[cfg(windows)]
+fn find_arduino_library_index_path() -> Option<std::path::PathBuf> {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let p = std::path::PathBuf::from(local_app_data).join("Arduino15").join("library_index.json");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        let p = std::path::PathBuf::from(user_profile).join("AppData").join("Local").join("Arduino15").join("library_index.json");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let p_mac = std::path::PathBuf::from(&home).join("Library").join("Arduino15").join("library_index.json");
+        if p_mac.exists() {
+            return Some(p_mac);
+        }
+        let p_linux = std::path::PathBuf::from(&home).join(".arduino15").join("library_index.json");
+        if p_linux.exists() {
+            return Some(p_linux);
+        }
+    }
+    None
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ArduinoIndexRawEntry {
+    name: String,
+    version: String,
+    #[serde(default)]
+    author: String,
+    #[serde(default)]
+    maintainer: Option<String>,
+    #[serde(default)]
+    sentence: Option<String>,
+    #[serde(default)]
+    paragraph: Option<String>,
+    #[serde(default)]
+    website: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    architectures: Option<Vec<String>>,
+    #[serde(default)]
+    provides_includes: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedLib {
+    name: String,
+    version: String,
+    author: String,
+    sentence: String,
+    paragraph: Option<String>,
+    website: Option<String>,
+    category: Option<String>,
+    provides_includes: Vec<String>,
+    name_lower: String,
+    sentence_lower: String,
+    includes_lower: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SearchLibraryOutputItem {
+    name: String,
+    latest: SearchLibraryLatest,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SearchLibraryLatest {
+    name: String,
+    version: String,
+    author: String,
+    sentence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paragraph: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    website: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    category: Option<String>,
+    provides_includes: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SearchResponse {
+    libraries: Vec<SearchLibraryOutputItem>,
+}
+
+static LIB_CACHE: OnceLock<parking_lot::RwLock<Option<Vec<CachedLib>>>> = OnceLock::new();
+
+fn get_or_load_library_cache() -> Vec<CachedLib> {
+    let cache_lock = LIB_CACHE.get_or_init(|| parking_lot::RwLock::new(None));
     {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+        let read = cache_lock.read();
+        if let Some(ref libs) = *read {
+            return libs.clone();
+        }
     }
-    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if !output.status.success() && stdout.trim().is_empty() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(format!("Search error: {}", stderr));
+
+    let mut write = cache_lock.write();
+    if let Some(ref libs) = *write {
+        return libs.clone();
     }
-    Ok(stdout)
+
+    let mut map: std::collections::HashMap<String, CachedLib> = std::collections::HashMap::new();
+
+    if let Some(idx_path) = find_arduino_library_index_path() {
+        if let Ok(file) = std::fs::File::open(&idx_path) {
+            let reader = std::io::BufReader::new(file);
+            #[derive(serde::Deserialize)]
+            struct IndexFile {
+                libraries: Vec<ArduinoIndexRawEntry>,
+            }
+            if let Ok(parsed) = serde_json::from_reader::<_, IndexFile>(reader) {
+                for item in parsed.libraries {
+                    let key = item.name.to_lowercase();
+                    let provides_includes = item.provides_includes.unwrap_or_default();
+                    let includes_lower = provides_includes.iter().map(|s| s.to_lowercase()).collect();
+                    let name_lower = item.name.to_lowercase();
+                    let sentence = item.sentence.unwrap_or_default();
+                    let sentence_lower = sentence.to_lowercase();
+
+                    let cached = CachedLib {
+                        name: item.name,
+                        version: item.version,
+                        author: item.author,
+                        sentence,
+                        paragraph: item.paragraph,
+                        website: item.website,
+                        category: item.category,
+                        provides_includes,
+                        name_lower,
+                        sentence_lower,
+                        includes_lower,
+                    };
+                    map.insert(key, cached);
+                }
+            }
+        }
+    }
+
+    let result: Vec<CachedLib> = map.into_values().collect();
+    *write = Some(result.clone());
+    result
 }
 
 #[tauri::command]
-fn list_installed_arduino_libraries() -> Result<String, String> {
-    let cli = get_arduino_cli_path();
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.args(["lib", "list", "--format", "json"]);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+async fn search_arduino_libraries(query: String) -> Result<String, String> {
+    let q_clean = query.trim().to_lowercase();
+    if q_clean.is_empty() {
+        return Ok(r#"{"libraries":[]}"#.to_string());
     }
-    let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if !output.status.success() && stdout.trim().is_empty() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(format!("List error: {}", stderr));
-    }
-    Ok(stdout)
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let cached = get_or_load_library_cache();
+        if !cached.is_empty() {
+            let mut matches: Vec<(i32, &CachedLib)> = Vec::new();
+            for lib in &cached {
+                let mut score = 0;
+                if lib.name_lower == q_clean {
+                    score += 1000;
+                } else if lib.name_lower.starts_with(&q_clean) {
+                    score += 500;
+                } else if lib.name_lower.contains(&q_clean) {
+                    score += 200;
+                }
+
+                if lib.includes_lower.iter().any(|h| h.contains(&q_clean)) {
+                    score += 150;
+                }
+
+                if lib.sentence_lower.contains(&q_clean) {
+                    score += 50;
+                }
+
+                if score > 0 {
+                    matches.push((score, lib));
+                }
+            }
+
+            matches.sort_by(|a, b| {
+                b.0.cmp(&a.0).then_with(|| a.1.name_lower.cmp(&b.1.name_lower))
+            });
+
+            let results: Vec<SearchLibraryOutputItem> = matches
+                .into_iter()
+                .take(60)
+                .map(|(_, lib)| SearchLibraryOutputItem {
+                    name: lib.name.clone(),
+                    latest: SearchLibraryLatest {
+                        name: lib.name.clone(),
+                        version: lib.version.clone(),
+                        author: lib.author.clone(),
+                        sentence: lib.sentence.clone(),
+                        paragraph: lib.paragraph.clone(),
+                        website: lib.website.clone(),
+                        category: lib.category.clone(),
+                        provides_includes: lib.provides_includes.clone(),
+                    },
+                })
+                .collect();
+
+            let resp = SearchResponse { libraries: results };
+            return serde_json::to_string(&resp).map_err(|e| e.to_string());
+        }
+
+        let cli = get_arduino_cli_path();
+        let mut cmd = std::process::Command::new(&cli);
+        cmd.args(["lib", "search", &query, "--format", "json"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        if !output.status.success() && stdout.trim().is_empty() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(format!("Search error: {}", stderr));
+        }
+        Ok(stdout)
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?
+}
+
+#[tauri::command]
+async fn list_installed_arduino_libraries() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cli = get_arduino_cli_path();
+        let mut cmd = std::process::Command::new(&cli);
+        cmd.args(["lib", "list", "--format", "json"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let output = cmd.output().map_err(|e| format!("Failed to execute arduino-cli: {}", e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        if !output.status.success() && stdout.trim().is_empty() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(format!("List error: {}", stderr));
+        }
+        Ok(stdout)
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?
 }
 
 #[tauri::command]

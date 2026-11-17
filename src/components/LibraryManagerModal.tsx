@@ -244,10 +244,14 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({
     }
   };
 
-  // Debounced search
+  const searchSeqRef = useRef(0);
+
+  // High-performance Debounced search with sequence tracking to prevent out-of-order race conditions
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const q = searchQuery.trim();
+    if (!q) {
       setSearchResults([]);
+      setIsLoading(false);
       if (activeTab === 'search') {
         setActiveTab('popular');
       }
@@ -255,17 +259,21 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({
     }
 
     setActiveTab('search');
-    setIsLoading(true);
-    setErrorMessage(null);
+    const seq = ++searchSeqRef.current;
 
     const timer = setTimeout(async () => {
+      if (seq !== searchSeqRef.current) return;
+      setIsLoading(true);
+      setErrorMessage(null);
+
       try {
-        const raw = await tauriInvoke<string>('search_arduino_libraries', { query: searchQuery.trim() });
+        const raw = await tauriInvoke<string>('search_arduino_libraries', { query: q });
+        if (seq !== searchSeqRef.current) return;
         if (raw) {
           const parsed = JSON.parse(raw);
           const results: ArduinoLibrary[] = [];
           if (Array.isArray(parsed.libraries)) {
-            for (const item of parsed.libraries) {
+            for (const item of parsed.libraries.slice(0, 50)) {
               const latest = item.latest || {};
               const name = item.name || latest.name;
               if (name) {
@@ -285,11 +293,15 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({
           setSearchResults(results);
         }
       } catch (err: any) {
-        setErrorMessage(err?.message || String(err));
+        if (seq === searchSeqRef.current) {
+          setErrorMessage(err?.message || String(err));
+        }
       } finally {
-        setIsLoading(false);
+        if (seq === searchSeqRef.current) {
+          setIsLoading(false);
+        }
       }
-    }, 400);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);

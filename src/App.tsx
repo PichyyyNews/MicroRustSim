@@ -871,6 +871,98 @@ export default function App() {
     });
   }, []);
 
+  // --- Canvas Undo / Redo History Stacks ---
+  interface CanvasHistorySnapshot {
+    components: CircuitComponent[];
+    wires: CircuitWire[];
+  }
+  const canvasUndoStackRef = useRef<CanvasHistorySnapshot[]>([]);
+  const canvasRedoStackRef = useRef<CanvasHistorySnapshot[]>([]);
+  const isHistoryNavigatingRef = useRef(false);
+  const dragStartSnapshotRef = useRef<CanvasHistorySnapshot | null>(null);
+
+  const pushCanvasHistory = useCallback((prevComps?: CircuitComponent[], prevWires?: CircuitWire[]) => {
+    if (isHistoryNavigatingRef.current) return;
+    const comps = prevComps || componentsRef.current;
+    const wrs = prevWires || wiresRef.current;
+    canvasUndoStackRef.current.push({
+      components: JSON.parse(JSON.stringify(comps)),
+      wires: JSON.parse(JSON.stringify(wrs)),
+    });
+    if (canvasUndoStackRef.current.length > 50) {
+      canvasUndoStackRef.current.shift();
+    }
+    canvasRedoStackRef.current = [];
+  }, []);
+
+  const handleCanvasUndo = useCallback(() => {
+    if (canvasUndoStackRef.current.length === 0) {
+      setStatusMessage('Nothing to undo');
+      return;
+    }
+    const currentSnapshot: CanvasHistorySnapshot = {
+      components: JSON.parse(JSON.stringify(componentsRef.current)),
+      wires: JSON.parse(JSON.stringify(wiresRef.current)),
+    };
+    canvasRedoStackRef.current.push(currentSnapshot);
+
+    const prev = canvasUndoStackRef.current.pop()!;
+    isHistoryNavigatingRef.current = true;
+    setComponents(prev.components);
+    setWires(prev.wires);
+    setSelectedCompId(null);
+    setSelectedCompIds(new Set());
+    setSelectedWireId(null);
+    setIsDirty(true);
+    setStatusMessage('Undo (Canvas)');
+
+    for (const w of currentSnapshot.wires) {
+      if (!prev.wires.some((pw) => pw.id === w.id)) {
+        tauriInvoke('remove_wire', { id: w.id }).catch(() => {});
+      }
+    }
+    for (const w of prev.wires) {
+      syncWireToRust(w);
+    }
+    setTimeout(() => {
+      isHistoryNavigatingRef.current = false;
+    }, 60);
+  }, [syncWireToRust]);
+
+  const handleCanvasRedo = useCallback(() => {
+    if (canvasRedoStackRef.current.length === 0) {
+      setStatusMessage('Nothing to redo');
+      return;
+    }
+    const currentSnapshot: CanvasHistorySnapshot = {
+      components: JSON.parse(JSON.stringify(componentsRef.current)),
+      wires: JSON.parse(JSON.stringify(wiresRef.current)),
+    };
+    canvasUndoStackRef.current.push(currentSnapshot);
+
+    const next = canvasRedoStackRef.current.pop()!;
+    isHistoryNavigatingRef.current = true;
+    setComponents(next.components);
+    setWires(next.wires);
+    setSelectedCompId(null);
+    setSelectedCompIds(new Set());
+    setSelectedWireId(null);
+    setIsDirty(true);
+    setStatusMessage('Redo (Canvas)');
+
+    for (const w of currentSnapshot.wires) {
+      if (!next.wires.some((nw) => nw.id === w.id)) {
+        tauriInvoke('remove_wire', { id: w.id }).catch(() => {});
+      }
+    }
+    for (const w of next.wires) {
+      syncWireToRust(w);
+    }
+    setTimeout(() => {
+      isHistoryNavigatingRef.current = false;
+    }, 60);
+  }, [syncWireToRust]);
+
   // --- Load Recent Projects on App Mount ---
   const loadRecentProjects = useCallback(async () => {
     const res = await tauriInvoke<RecentProject[]>('list_recent_projects');
@@ -1435,10 +1527,11 @@ export default function App() {
 
   // --- Wire Actions: Delete, Color, Routing Mode ---
   const handleDeleteWire = useCallback((wireId: string) => {
+    pushCanvasHistory();
     setWires((prev) => prev.filter((w) => w.id !== wireId));
     tauriInvoke('remove_wire', { id: wireId });
     setSelectedWireId((curr) => (curr === wireId ? null : curr));
-  }, []);
+  }, [pushCanvasHistory]);
 
   const handleToggleRoutingMode = useCallback(() => {
     if (selectedWireId) {
@@ -2933,10 +3026,19 @@ export default function App() {
           syncWireToRust(wire);
         }
       }
-      if (draggedMultiCompRef.current) {
+      if (draggedMultiCompRef.current || draggedCompRef.current) {
+        if (dragStartSnapshotRef.current) {
+          const startSnapshot = dragStartSnapshotRef.current;
+          dragStartSnapshotRef.current = null;
+          const changed = componentsRef.current.some((c) => {
+            const orig = startSnapshot.components.find((sc) => sc.id === c.id);
+            return !orig || orig.x !== c.x || orig.y !== c.y;
+          });
+          if (changed) {
+            pushCanvasHistory(startSnapshot.components, startSnapshot.wires);
+          }
+        }
         draggedMultiCompRef.current = null;
-      }
-      if (draggedCompRef.current) {
         draggedCompRef.current = null;
       }
       if (selectionBoxRef.current) {
@@ -2962,6 +3064,7 @@ export default function App() {
 
   // --- Component Management & Transform Handlers ---
   const handleDeleteComponent = useCallback((id: string) => {
+    pushCanvasHistory();
     setComponents((prev) => prev.filter((c) => c.id !== id));
     const attachedWires = wires.filter((w) => w.fromComp === id || w.toComp === id);
     for (const w of attachedWires) {
@@ -2976,10 +3079,11 @@ export default function App() {
       next.delete(id);
       return next;
     });
-  }, [wires, selectedCompId]);
+  }, [wires, selectedCompId, pushCanvasHistory]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedCompIds.size > 0) {
+      pushCanvasHistory();
       const ids = new Set(selectedCompIds);
       setComponents((prev) => prev.filter((c) => !ids.has(c.id)));
       const attachedWires = wires.filter((w) => ids.has(w.fromComp) || ids.has(w.toComp));
@@ -2996,10 +3100,11 @@ export default function App() {
     if (selectedCompId) {
       handleDeleteComponent(selectedCompId);
     }
-  }, [selectedCompIds, selectedCompId, wires, handleDeleteComponent]);
+  }, [selectedCompIds, selectedCompId, wires, handleDeleteComponent, pushCanvasHistory]);
 
   const handleRotateSelected = useCallback(() => {
     if (selectedCompIds.size > 0) {
+      pushCanvasHistory();
       setComponents((prev) =>
         prev.map((c) =>
           selectedCompIds.has(c.id)
@@ -3011,6 +3116,7 @@ export default function App() {
       return;
     }
     if (!selectedCompId) return;
+    pushCanvasHistory();
     setComponents((prev) =>
       prev.map((c) => {
         if (c.id !== selectedCompId) return c;
@@ -3019,10 +3125,11 @@ export default function App() {
       })
     );
     setIsDirty(true);
-  }, [selectedCompId, selectedCompIds]);
+  }, [selectedCompId, selectedCompIds, pushCanvasHistory]);
 
   const handleFlipSelected = useCallback(() => {
     if (selectedCompIds.size > 0) {
+      pushCanvasHistory();
       setComponents((prev) =>
         prev.map((c) =>
           selectedCompIds.has(c.id) ? { ...c, flipped: !c.flipped } : c
@@ -3032,6 +3139,7 @@ export default function App() {
       return;
     }
     if (!selectedCompId) return;
+    pushCanvasHistory();
     setComponents((prev) =>
       prev.map((c) => {
         if (c.id !== selectedCompId) return c;
@@ -3039,7 +3147,7 @@ export default function App() {
       })
     );
     setIsDirty(true);
-  }, [selectedCompId, selectedCompIds]);
+  }, [selectedCompId, selectedCompIds, pushCanvasHistory]);
 
   // --- Component Copy & Paste Helpers ---
   const handleCopyComponent = useCallback((comp: CircuitComponent) => {
@@ -3138,6 +3246,7 @@ export default function App() {
       : null;
 
     if (multi && multi.length > 1) {
+      pushCanvasHistory();
       const newComps: CircuitComponent[] = [];
       const newIds = new Set<string>();
 
@@ -3182,6 +3291,7 @@ export default function App() {
     const single = clipboardCompRef.current || clipboardComponent;
     if (!single) return;
 
+    pushCanvasHistory();
     const newComp = sanitizeForPaste(single, { x: 40, y: 40 });
 
     setComponents((prev) => [...prev, newComp]);
@@ -3211,10 +3321,11 @@ export default function App() {
         polarized: Boolean(newComp.props?.polarized),
       });
     }
-  }, [clipboardComponents, clipboardComponent]);
+  }, [clipboardComponents, clipboardComponent, pushCanvasHistory]);
 
   const handleAddComponentByType = useCallback(
     (type: 'uno' | 'esp32' | 'bb' | 'led' | 'resistor' | 'btn' | 'pot' | 'cap' | 'hcsr04' | 'dht11' | 'photoresistor' | 'pir_sensor') => {
+      pushCanvasHistory();
       if (type === 'uno') {
         const id = `uno_${components.length + 1}`;
         setComponents((prev) => [...prev, { id, kind: 'arduino_uno', x: 100, y: 100, props: {} }]);
@@ -3394,7 +3505,135 @@ export default function App() {
     );
   }, []);
 
-  // --- Keyboard Shortcuts (V: Select, M: Move, W: Wire, E: Eraser, R: Rotate, F: Flip, Del: Delete) ---
+  // --- Edit Menu Actions (Undo, Redo, Cut, Copy, Paste, Find, Replace) ---
+  const handleEditUndo = useCallback(() => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (isEditorActive && editorRef.current) {
+      editorRef.current.focus();
+      editorRef.current.trigger('menu', 'undo', null);
+      setStatusMessage('Undo (Editor)');
+    } else {
+      handleCanvasUndo();
+    }
+  }, [handleCanvasUndo]);
+
+  const handleEditRedo = useCallback(() => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (isEditorActive && editorRef.current) {
+      editorRef.current.focus();
+      editorRef.current.trigger('menu', 'redo', null);
+      setStatusMessage('Redo (Editor)');
+    } else {
+      handleCanvasRedo();
+    }
+  }, [handleCanvasRedo]);
+
+  const handleEditCut = useCallback(() => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (isEditorActive && editorRef.current) {
+      editorRef.current.focus();
+      document.execCommand('cut');
+      setStatusMessage('Cut to clipboard');
+    } else if (selectedCompIds.size > 0) {
+      pushCanvasHistory();
+      handleCopySelectedGroup();
+      handleDeleteSelected();
+      setStatusMessage(`Cut ${selectedCompIds.size} component(s) to clipboard`);
+    } else if (selectedCompId) {
+      pushCanvasHistory();
+      const comp = components.find((c) => c.id === selectedCompId);
+      if (comp) handleCopyComponent(comp);
+      handleDeleteComponent(selectedCompId);
+      setStatusMessage('Component cut to clipboard');
+    } else if (selectedWireId) {
+      pushCanvasHistory();
+      handleDeleteWire(selectedWireId);
+      setStatusMessage('Wire deleted');
+    }
+  }, [selectedCompId, selectedCompIds, selectedWireId, components, handleCopyComponent, handleCopySelectedGroup, handleDeleteComponent, handleDeleteSelected, handleDeleteWire, pushCanvasHistory]);
+
+  const handleEditCopy = useCallback(() => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (isEditorActive && editorRef.current) {
+      editorRef.current.focus();
+      const selection = editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection());
+      if (selection && selection.length > 0) {
+        navigator.clipboard.writeText(selection);
+        setStatusMessage('Selection copied to clipboard');
+      } else {
+        const full = editorRef.current.getValue();
+        navigator.clipboard.writeText(full);
+        setStatusMessage('Full file copied to clipboard');
+      }
+      return;
+    }
+
+    if (selectedCompIds.size > 0) {
+      handleCopySelectedGroup();
+      return;
+    }
+    if (selectedCompId) {
+      const comp = components.find((c) => c.id === selectedCompId);
+      if (comp) {
+        handleCopyComponent(comp);
+        return;
+      }
+    }
+    if (selectedWireId) {
+      setStatusMessage('Wire selected');
+      return;
+    }
+    navigator.clipboard.writeText(sketchCode);
+    setStatusMessage('Sketch code copied');
+  }, [selectedCompId, selectedCompIds, selectedWireId, components, handleCopyComponent, handleCopySelectedGroup, sketchCode]);
+
+  const handleEditPaste = useCallback(async () => {
+    const activeEl = document.activeElement;
+    const isEditorActive = activeEl?.closest('.monaco-editor');
+    if (isEditorActive && editorRef.current) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          editorRef.current.focus();
+          editorRef.current.trigger('keyboard', 'type', { text });
+          setStatusMessage('Pasted from clipboard');
+        }
+      } catch (err) {
+        console.warn('Paste failed:', err);
+      }
+      return;
+    }
+
+    handlePasteComponent();
+  }, [handlePasteComponent]);
+
+  const handleEditFind = useCallback(() => {
+    if (!showEditor) setShowEditor(true);
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.getAction('actions.find')?.run();
+      }
+    }, 60);
+    setStatusMessage('Find in editor');
+  }, [showEditor]);
+
+  const handleEditReplace = useCallback(() => {
+    if (!showEditor) setShowEditor(true);
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.getAction('editor.action.startFindReplaceAction')?.run();
+      }
+    }, 60);
+    setStatusMessage('Find & Replace in editor');
+  }, [showEditor]);
+
+  // --- Keyboard Shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+X, Ctrl+V, V, M, W, E, R, F, Del) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
@@ -3419,32 +3658,41 @@ export default function App() {
         return;
       }
 
-      // Component Copy / Paste / Duplicate on Canvas
+      // Canvas Undo / Redo Shortcuts
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleCanvasRedo();
+        } else {
+          handleCanvasUndo();
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        handleCanvasRedo();
+        return;
+      }
+
+      // Component Copy / Cut / Paste / Duplicate on Canvas
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-        if (selectedCompIds.size > 1) {
+        if (selectedCompIds.size > 0 || selectedCompId) {
           e.preventDefault();
-          handleCopySelectedGroup();
-          return;
-        } else if (selectedCompId) {
-          e.preventDefault();
-          const comp = components.find((c) => c.id === selectedCompId);
-          if (comp) handleCopyComponent(comp);
+          handleEditCopy();
           return;
         }
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) {
-        if (selectedCompIds.size > 0 || selectedCompId) {
+        if (selectedCompIds.size > 0 || selectedCompId || selectedWireId) {
           e.preventDefault();
           handleEditCut();
           return;
         }
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-        if (clipboardComponent || clipboardComponents.length > 0) {
-          e.preventDefault();
-          handlePasteComponent();
-          return;
-        }
+        e.preventDefault();
+        handleEditPaste();
+        return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
         if (selectedCompIds.size > 1) {
@@ -3511,8 +3759,11 @@ export default function App() {
     selectedCompIds,
     selectedWireId,
     components,
-    clipboardComponent,
-    clipboardComponents,
+    handleCanvasUndo,
+    handleCanvasRedo,
+    handleEditCopy,
+    handleEditCut,
+    handleEditPaste,
     handleCopyComponent,
     handleCopySelectedGroup,
     handlePasteComponent,
@@ -3524,113 +3775,6 @@ export default function App() {
     handleSaveProject,
     handleOpenNativeFolder,
   ]);
-
-  // --- Edit Menu Actions (Undo, Redo, Cut, Copy, Paste, Find, Replace) ---
-  const handleEditUndo = useCallback(() => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-      editorRef.current.trigger('menu', 'undo', null);
-      setStatusMessage('Undo');
-    }
-  }, []);
-
-  const handleEditRedo = useCallback(() => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-      editorRef.current.trigger('menu', 'redo', null);
-      setStatusMessage('Redo');
-    }
-  }, []);
-
-  const handleEditCut = useCallback(() => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-      document.execCommand('cut');
-      setStatusMessage('Cut to clipboard');
-    } else if (selectedCompIds.size > 0) {
-      handleCopySelectedGroup();
-      handleDeleteSelected();
-      setStatusMessage(`Cut ${selectedCompIds.size} component(s) to clipboard`);
-    } else if (selectedCompId) {
-      const comp = components.find((c) => c.id === selectedCompId);
-      if (comp) handleCopyComponent(comp);
-      handleDeleteComponent(selectedCompId);
-      setStatusMessage('Component cut to clipboard');
-    } else if (selectedWireId) {
-      handleDeleteWire(selectedWireId);
-      setStatusMessage('Wire deleted');
-    }
-  }, [selectedCompId, selectedCompIds, selectedWireId, components, handleCopyComponent, handleCopySelectedGroup, handleDeleteComponent, handleDeleteSelected, handleDeleteWire]);
-
-  const handleEditCopy = useCallback(() => {
-    if (selectedCompIds.size > 1) {
-      handleCopySelectedGroup();
-      return;
-    }
-    if (selectedCompId) {
-      const comp = components.find((c) => c.id === selectedCompId);
-      if (comp) {
-        handleCopyComponent(comp);
-        return;
-      }
-    }
-    if (editorRef.current) {
-      editorRef.current.focus();
-      const selection = editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection());
-      if (selection && selection.length > 0) {
-        navigator.clipboard.writeText(selection);
-        setStatusMessage('Selection copied to clipboard');
-      } else {
-        const full = editorRef.current.getValue();
-        navigator.clipboard.writeText(full);
-        setStatusMessage('Full file copied to clipboard');
-      }
-    } else {
-      navigator.clipboard.writeText(sketchCode);
-      setStatusMessage('Sketch code copied');
-    }
-  }, [selectedCompId, selectedCompIds, components, handleCopyComponent, handleCopySelectedGroup, sketchCode]);
-
-  const handleEditPaste = useCallback(async () => {
-    const activeEl = document.activeElement;
-    const isEditorActive = activeEl?.closest('.monaco-editor');
-    if (clipboardComponent && !isEditorActive) {
-      handlePasteComponent();
-      return;
-    }
-    try {
-      const text = await navigator.clipboard.readText();
-      if (editorRef.current && text) {
-        editorRef.current.focus();
-        editorRef.current.trigger('keyboard', 'type', { text });
-        setStatusMessage('Pasted from clipboard');
-      }
-    } catch (err) {
-      console.warn('Paste failed:', err);
-    }
-  }, [clipboardComponent, handlePasteComponent]);
-
-  const handleEditFind = useCallback(() => {
-    if (!showEditor) setShowEditor(true);
-    setTimeout(() => {
-      if (editorRef.current) {
-        editorRef.current.focus();
-        editorRef.current.getAction('actions.find')?.run();
-      }
-    }, 60);
-    setStatusMessage('Find in editor');
-  }, [showEditor]);
-
-  const handleEditReplace = useCallback(() => {
-    if (!showEditor) setShowEditor(true);
-    setTimeout(() => {
-      if (editorRef.current) {
-        editorRef.current.focus();
-        editorRef.current.getAction('editor.action.startFindReplaceAction')?.run();
-      }
-    }, 60);
-    setStatusMessage('Find & Replace in editor');
-  }, [showEditor]);
 
   // --- Close Menubar Dropdown when Clicking Outside ---
   useEffect(() => {
@@ -3680,6 +3824,10 @@ export default function App() {
     }
 
     if (activeTool === 'move' || activeTool === 'select') {
+      dragStartSnapshotRef.current = {
+        components: JSON.parse(JSON.stringify(componentsRef.current)),
+        wires: JSON.parse(JSON.stringify(wiresRef.current)),
+      };
       if (isAlreadyInMulti) {
         draggedMultiCompRef.current = {
           startMouseX: e.clientX,
@@ -3939,6 +4087,7 @@ export default function App() {
           routingMode: wireRoutingMode,
           waypoints: [],
         };
+        pushCanvasHistory();
         setWires((prev) => [...prev, newWire]);
         syncWireToRust(newWire);
       }
@@ -5050,7 +5199,7 @@ export default function App() {
                       type="button"
                       className={`h-7 px-2.5 flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer border ${
                         powerConfig.mode === 'realistic'
-                          ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20'
+                          ? 'bg-[#18181b] border-zinc-700/80 text-zinc-200 hover:bg-[#202024] hover:text-white'
                           : 'bg-transparent border-[#242428] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                       }`}
                     >
@@ -5058,12 +5207,15 @@ export default function App() {
                       <span className="hidden sm:inline">Physics</span>
                       <Badge
                         variant="outline"
-                        className={`h-4.5 px-1.5 text-[10px] uppercase font-mono tracking-wider whitespace-nowrap shrink-0 tabular-nums border-none ${
+                        className={`h-4.5 px-1.5 text-[10px] uppercase font-mono tracking-wider whitespace-nowrap shrink-0 tabular-nums border ${
                           powerConfig.mode === 'realistic'
-                            ? 'bg-amber-500/20 text-amber-200'
-                            : 'bg-zinc-800/80 text-zinc-400'
+                            ? 'bg-[#202024] text-zinc-300 border-zinc-700/70'
+                            : 'bg-zinc-800/80 text-zinc-500 border-zinc-800'
                         }`}
                       >
+                        {powerConfig.mode === 'realistic' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400/80 inline-block mr-1" />
+                        )}
                         {powerConfig.mode === 'realistic' ? 'Realistic' : 'Ideal'}
                       </Badge>
                     </PopoverTrigger>
@@ -5091,7 +5243,7 @@ export default function App() {
                     }}
                     className={`h-6 px-2.5 rounded-full text-[11px] font-medium transition-colors cursor-pointer border ${
                       powerConfig.mode === 'realistic'
-                        ? 'bg-amber-500 text-black font-semibold border-amber-400 hover:bg-amber-400'
+                        ? 'bg-zinc-700 text-zinc-100 font-semibold border-zinc-500 hover:bg-zinc-600'
                         : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
                     }`}
                   >
@@ -6158,6 +6310,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `uno_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6185,6 +6338,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `esp32_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6221,6 +6375,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `bb_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6248,6 +6403,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `led_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6274,6 +6430,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `r_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6302,6 +6459,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `btn_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6330,6 +6488,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `pot_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6358,6 +6517,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `c_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6393,6 +6553,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `sonar_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6422,6 +6583,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `dht_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6451,6 +6613,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `ldr_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
@@ -6477,6 +6640,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => {
+                              pushCanvasHistory();
                               const id = `pir_${components.length + 1}`;
                               setComponents((prev) => [
                                 ...prev,
