@@ -5,6 +5,7 @@ import {
   GoChevronDown,
   GoChevronRight,
   GoAlert,
+  GoX,
 } from 'react-icons/go';
 import {
   RotateCw,
@@ -200,6 +201,7 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
   onDeleteComponent,
   onDeleteWire,
   onButtonPress,
+  onClose,
 }) => {
   const selectedComp = components.find((c) => c.id === selectedCompId);
   const selectedWire = wires.find((w) => w.id === selectedWireId);
@@ -251,20 +253,32 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
             </span>
           )}
         </div>
-        {selectedComp && (
-          <button
-            type="button"
-            title="Delete Selected Component (Del)"
-            onClick={() => onDeleteComponent(selectedComp.id)}
-            className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 rounded transition-colors"
-          >
-            <GoTrash className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {selectedComp && (
+            <button
+              type="button"
+              title="Delete Selected Component (Del)"
+              onClick={() => onDeleteComponent(selectedComp.id)}
+              className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+            >
+              <GoTrash className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              title="Close Inspector"
+              onClick={onClose}
+              className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 rounded transition-colors cursor-pointer"
+            >
+              <GoX className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Clean Flat Body */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 text-zinc-300 space-y-3 font-sans">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 text-zinc-300 space-y-3 font-sans scrollbar-thin">
         {/* State 1: Nothing selected */}
         {!selectedComp && !selectedWire && (
           <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 py-12">

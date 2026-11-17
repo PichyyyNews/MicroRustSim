@@ -54,7 +54,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
   Tooltip,
@@ -6128,7 +6127,7 @@ export default function App() {
                   {showPalette && (
                     <ResizablePanel
                       id="palette-panel"
-                      defaultSize={showInspector ? (layoutConfig.rightPaletteSplit ?? 45) : 100}
+                      defaultSize={showInspector ? Math.max(30, layoutConfig.rightPaletteSplit ?? 45) : 100}
                       minSize="20%"
                     >
                       <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
@@ -6136,19 +6135,32 @@ export default function App() {
                         <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
                           <GoPackage className="text-zinc-500" /> Components
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => togglePalette()}
-                          title="Collapse Palette"
-                          className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                        >
-                          <GoSidebarCollapse className="rotate-180" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleInspector()}
+                            title={showInspector ? "Hide Inspector" : "Show Inspector"}
+                            className={`h-5 px-1.5 rounded flex items-center gap-1 text-[11px] transition-colors cursor-pointer ${
+                              showInspector ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            <SlidersHorizontal className="w-3 h-3" />
+                            <span className="text-[10px] hidden sm:inline">Inspector</span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => togglePalette()}
+                            title="Collapse Palette"
+                            className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                          >
+                            <GoSidebarCollapse className="rotate-180" />
+                          </Button>
+                        </div>
                       </div>
 
-                      <ScrollArea className="flex-1 p-2 text-xs">
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs scrollbar-thin select-none">
+                        <div className="grid grid-cols-2 gap-2 pb-6">
                           {/* 1. Arduino Uno */}
                           <button
                             type="button"
@@ -6495,7 +6507,7 @@ export default function App() {
                             </span>
                           </button>
                         </div>
-                      </ScrollArea>
+                      </div>
                     </aside>
                     </ResizablePanel>
                   )}
@@ -6503,7 +6515,7 @@ export default function App() {
                   {showInspector && (
                     <ResizablePanel
                       id="inspector-panel"
-                      defaultSize={showPalette ? (layoutConfig.rightInspectorSplit ?? 55) : 100}
+                      defaultSize={showPalette ? Math.min(70, layoutConfig.rightInspectorSplit ?? 55) : 100}
                       minSize="20%"
                     >
                       <ErrorBoundary fallbackTitle="Property Inspector Error">
