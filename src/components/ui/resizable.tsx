@@ -23,8 +23,17 @@ function ResizablePanelGroup({
   )
 }
 
-function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
-  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+function ResizablePanel({
+  className,
+  ...props
+}: ResizablePrimitive.PanelProps) {
+  return (
+    <ResizablePrimitive.Panel
+      data-slot="resizable-panel"
+      className={cn("min-h-0 min-w-0 overflow-hidden", className)}
+      {...props}
+    />
+  )
 }
 
 interface ResizableHandleProps extends ResizablePrimitive.SeparatorProps {

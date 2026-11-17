@@ -46,6 +46,8 @@ import {
   ArrowRight,
   ArrowDownToLine,
   Package,
+  Rows2,
+  Columns2,
 } from 'lucide-react';
 
 // Official shadcn/ui components (Open Code + Composition)
@@ -415,6 +417,8 @@ export default function App() {
   const [showExplorer, setShowExplorer] = useState(true);
   const [showTerminal, setShowTerminal] = useState(true);
   const [showInspector, setShowInspector] = useState(true);
+  const [rightSidebarMode, setRightSidebarMode] = useState<'tabs' | 'split'>('tabs');
+  const [rightActiveTab, setRightActiveTab] = useState<'components' | 'inspector'>('components');
   const [bottomTab, setBottomTab] = useState<'serial' | 'waveform' | 'build'>('serial');
 
   // --- Initial Loading Splash Screen State ---
@@ -447,6 +451,8 @@ export default function App() {
             if (typeof parsed.showTerminal === 'boolean') setShowTerminal(parsed.showTerminal);
             if (typeof parsed.showPalette === 'boolean') setShowPalette(parsed.showPalette);
             if (typeof parsed.showInspector === 'boolean') setShowInspector(parsed.showInspector);
+            if (parsed.rightSidebarMode) setRightSidebarMode(parsed.rightSidebarMode);
+            if (parsed.rightActiveTab) setRightActiveTab(parsed.rightActiveTab);
             setLayoutConfig((prev) => ({ ...prev, ...parsed }));
           }
         }
@@ -5479,6 +5485,9 @@ export default function App() {
                               setSelectedCompId(c.id);
                               setSelectedCompIds(new Set([c.id]));
                               setSelectedWireId(null);
+                              if (rightSidebarMode === 'tabs') {
+                                setRightActiveTab('inspector');
+                              }
                             }
                           }
                         },
@@ -5783,6 +5792,9 @@ export default function App() {
                         } else {
                           setSelectedWireId(wireId);
                           setSelectedCompId(null);
+                          if (rightSidebarMode === 'tabs') {
+                            setRightActiveTab('inspector');
+                          }
                         }
                       }}
                       onStartDragSegment={handleStartDragSegment}
@@ -6100,67 +6112,89 @@ export default function App() {
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {/* Right Column: Component Palette (Top) & Property Inspector (Bottom) */}
+          {/* Right Column: Component Palette & Property Inspector */}
           {(showPalette || showInspector) && (
             <>
               <ResizableHandle withHandle />
               <ResizablePanel
                 id="right-column-panel"
+                className="min-h-0 overflow-hidden flex flex-col"
                 defaultSize={layoutConfig.rightColumnSize ?? 22}
                 minSize="15%"
                 maxSize="45%"
               >
-                <ResizablePanelGroup
-                  orientation="vertical"
-                  className="h-full w-full"
-                  onLayoutChanged={(layout) => {
-                    const updates: Partial<WorkspaceLayout> = {};
-                    if (layout['palette-panel'] !== undefined) {
-                      updates.rightPaletteSplit = Math.round(layout['palette-panel']);
-                    }
-                    if (layout['inspector-panel'] !== undefined) {
-                      updates.rightInspectorSplit = Math.round(layout['inspector-panel']);
-                    }
-                    persistLayout(updates);
-                  }}
-                >
-                  {showPalette && (
-                    <ResizablePanel
-                      id="palette-panel"
-                      defaultSize={showInspector ? Math.max(30, layoutConfig.rightPaletteSplit ?? 45) : 100}
-                      minSize="20%"
-                    >
-                      <aside className="h-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
-                      <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
-                        <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
-                          <GoPackage className="text-zinc-500" /> Components
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleInspector()}
-                            title={showInspector ? "Hide Inspector" : "Show Inspector"}
-                            className={`h-5 px-1.5 rounded flex items-center gap-1 text-[11px] transition-colors cursor-pointer ${
-                              showInspector ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
-                            }`}
-                          >
-                            <SlidersHorizontal className="w-3 h-3" />
-                            <span className="text-[10px] hidden sm:inline">Inspector</span>
-                          </button>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => togglePalette()}
-                            title="Collapse Palette"
-                            className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
-                          >
-                            <GoSidebarCollapse className="rotate-180" />
-                          </Button>
-                        </div>
+                {rightSidebarMode === 'tabs' ? (
+                  <aside className="h-full w-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
+                    {/* Unified Right Sidebar Tab Bar */}
+                    <div className="h-8 px-2 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0 select-none">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRightActiveTab('components');
+                            persistLayout({ rightActiveTab: 'components' });
+                          }}
+                          className={`h-6 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                            rightActiveTab === 'components'
+                              ? 'bg-[#1c1c20] text-zinc-100 shadow-sm border border-zinc-700/60 font-semibold'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <GoPackage className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Components</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">13</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRightActiveTab('inspector');
+                            persistLayout({ rightActiveTab: 'inspector' });
+                          }}
+                          className={`h-6 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                            rightActiveTab === 'inspector'
+                              ? 'bg-[#1c1c20] text-zinc-100 shadow-sm border border-zinc-700/60 font-semibold'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Inspector</span>
+                          {(selectedCompId || selectedWireId) && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          )}
+                        </button>
                       </div>
 
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRightSidebarMode('split');
+                            persistLayout({ rightSidebarMode: 'split' });
+                          }}
+                          title="Split View (Show both Components & Inspector vertically)"
+                          className="h-6 px-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 rounded flex items-center gap-1 text-[11px] transition-colors cursor-pointer"
+                        >
+                          <Rows2 className="w-3.5 h-3.5" />
+                          <span className="text-[10px] hidden xl:inline">Split</span>
+                        </button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => togglePalette()}
+                          title="Collapse Sidebar"
+                          className="h-6 w-6 text-zinc-500 hover:text-zinc-200"
+                        >
+                          <GoSidebarCollapse className="rotate-180" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Tab Body: 100% Full Height */}
+                    {rightActiveTab === 'components' ? (
                       <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs scrollbar-thin select-none">
-                        <div className="grid grid-cols-2 gap-2 pb-6">
+                        <div className="grid grid-cols-2 gap-2 pb-8">
                           {/* 1. Arduino Uno */}
                           <button
                             type="button"
@@ -6508,39 +6542,135 @@ export default function App() {
                           </button>
                         </div>
                       </div>
-                    </aside>
-                    </ResizablePanel>
-                  )}
-                  {showPalette && showInspector && <ResizableHandle withHandle orientation="horizontal" />}
-                  {showInspector && (
-                    <ResizablePanel
-                      id="inspector-panel"
-                      defaultSize={showPalette ? Math.min(70, layoutConfig.rightInspectorSplit ?? 55) : 100}
-                      minSize="20%"
+                    ) : (
+                      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                        <ErrorBoundary fallbackTitle="Property Inspector Error">
+                          <PropertyInspector
+                            selectedCompId={selectedCompId}
+                            selectedWireId={selectedWireId}
+                            components={components}
+                            wires={wires}
+                            litLeds={litLeds}
+                            ledBrightness={ledBrightness}
+                            pinVoltages={pinVoltages}
+                            branchCurrents={branchCurrents}
+                            onUpdateComponent={handleUpdateComponent}
+                            onUpdateWire={handleUpdateWire}
+                            onDeleteComponent={handleDeleteComponent}
+                            onDeleteWire={handleDeleteWire}
+                            onButtonPress={(id, pressed) => {
+                              tauriInvoke('press_button', { id, pressed });
+                            }}
+                            onClose={() => setRightActiveTab('components')}
+                          />
+                        </ErrorBoundary>
+                      </div>
+                    )}
+                  </aside>
+                ) : (
+                  <aside className="h-full w-full flex flex-col bg-[#121215] border-l border-[#222226] overflow-hidden">
+                    <ResizablePanelGroup
+                      orientation="vertical"
+                      className="h-full w-full min-h-0"
+                      onLayoutChanged={(layout) => {
+                        const updates: Partial<WorkspaceLayout> = {};
+                        if (layout['palette-panel'] !== undefined) {
+                          updates.rightPaletteSplit = Math.round(layout['palette-panel']);
+                        }
+                        if (layout['inspector-panel'] !== undefined) {
+                          updates.rightInspectorSplit = Math.round(layout['inspector-panel']);
+                        }
+                        persistLayout(updates);
+                      }}
                     >
-                      <ErrorBoundary fallbackTitle="Property Inspector Error">
-                        <PropertyInspector
-                          selectedCompId={selectedCompId}
-                          selectedWireId={selectedWireId}
-                          components={components}
-                          wires={wires}
-                          litLeds={litLeds}
-                          ledBrightness={ledBrightness}
-                          pinVoltages={pinVoltages}
-                          branchCurrents={branchCurrents}
-                          onUpdateComponent={handleUpdateComponent}
-                          onUpdateWire={handleUpdateWire}
-                          onDeleteComponent={handleDeleteComponent}
-                          onDeleteWire={handleDeleteWire}
-                          onButtonPress={(id, pressed) => {
-                            tauriInvoke('press_button', { id, pressed });
-                          }}
-                          onClose={() => toggleInspector()}
-                        />
-                      </ErrorBoundary>
-                    </ResizablePanel>
-                  )}
-                </ResizablePanelGroup>
+                      <ResizablePanel
+                        id="palette-panel"
+                        className="min-h-0 overflow-hidden flex flex-col"
+                        defaultSize={Math.max(30, layoutConfig.rightPaletteSplit ?? 45)}
+                        minSize="20%"
+                      >
+                        <div className="h-7 px-3 border-b border-[#222226] flex items-center justify-between text-xs text-zinc-400 bg-[#121215] shrink-0">
+                          <span className="font-medium text-zinc-300 flex items-center gap-1.5 text-xs">
+                            <GoPackage className="text-zinc-500" /> Components (13)
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRightSidebarMode('tabs');
+                                setRightActiveTab('components');
+                                persistLayout({ rightSidebarMode: 'tabs', rightActiveTab: 'components' });
+                              }}
+                              title="Switch to Tabs View (Full Height)"
+                              className="h-5 px-1.5 rounded flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                            >
+                              <Columns2 className="w-3 h-3" />
+                              <span className="text-[10px]">Tabs View</span>
+                            </button>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => togglePalette()}
+                              title="Collapse Palette"
+                              className="h-5 w-5 text-zinc-500 hover:text-zinc-200"
+                            >
+                              <GoSidebarCollapse className="rotate-180" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs scrollbar-thin select-none">
+                          <div className="grid grid-cols-2 gap-2 pb-8">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRightSidebarMode('tabs');
+                                setRightActiveTab('components');
+                              }}
+                              className="col-span-2 py-3 px-3 bg-zinc-800/40 hover:bg-zinc-800/80 rounded-lg text-xs text-zinc-300 hover:text-white border border-zinc-700/50 flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                            >
+                              <Columns2 className="w-4 h-4 text-emerald-400" />
+                              <span className="font-medium">Switch to Tabs View for 100% Full Height</span>
+                            </button>
+                          </div>
+                        </div>
+                      </ResizablePanel>
+
+                      <ResizableHandle withHandle orientation="horizontal" />
+
+                      <ResizablePanel
+                        id="inspector-panel"
+                        className="min-h-0 overflow-hidden flex flex-col"
+                        defaultSize={Math.min(70, layoutConfig.rightInspectorSplit ?? 55)}
+                        minSize="20%"
+                      >
+                        <ErrorBoundary fallbackTitle="Property Inspector Error">
+                          <PropertyInspector
+                            selectedCompId={selectedCompId}
+                            selectedWireId={selectedWireId}
+                            components={components}
+                            wires={wires}
+                            litLeds={litLeds}
+                            ledBrightness={ledBrightness}
+                            pinVoltages={pinVoltages}
+                            branchCurrents={branchCurrents}
+                            onUpdateComponent={handleUpdateComponent}
+                            onUpdateWire={handleUpdateWire}
+                            onDeleteComponent={handleDeleteComponent}
+                            onDeleteWire={handleDeleteWire}
+                            onButtonPress={(id, pressed) => {
+                              tauriInvoke('press_button', { id, pressed });
+                            }}
+                            onClose={() => {
+                              setRightSidebarMode('tabs');
+                              setRightActiveTab('components');
+                            }}
+                          />
+                        </ErrorBoundary>
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
+                  </aside>
+                )}
               </ResizablePanel>
             </>
           )}

@@ -73,6 +73,8 @@ export interface WorkspaceLayout {
   centerTerminalSplit?: number;
   rightPaletteSplit?: number;
   rightInspectorSplit?: number;
+  rightSidebarMode?: 'tabs' | 'split';
+  rightActiveTab?: 'components' | 'inspector';
   showEditor?: boolean;
   showExplorer?: boolean;
   showTerminal?: boolean;
